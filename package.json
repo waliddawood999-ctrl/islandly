@@ -1,0 +1,17 @@
+{
+  "name": "islandly",
+  "version": "0.1.0",
+  "description": "A Dynamic Island for Windows: music, timers, battery and more in one floating pill.",
+  "main": "src/main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "devDependencies": {
+    "electron": "^45.1.0"
+  },
+  "optionalDependencies": {
+    "@coooookies/windows-smtc-monitor": "^1.0.12"
+  }
+}
