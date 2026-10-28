@@ -87,7 +87,10 @@ const Island = (() => {
   function setTarget(w, hgt, y, r, nextBelow) {
     const now = liveSize();
     const grow = (a, b) => Math.max(a, b) * OVERSHOOT;
-    const extra = nextBelow || belowShape ? { w: Math.max(nextBelow ? nextBelow.w : 0, belowShape ? belowShape.w : 0), h: Math.max(nextBelow ? nextBelow.h : 0, belowShape ? belowShape.h : 0) } : null;
+    const extra =
+      nextBelow || belowShape
+        ? { w: Math.max(nextBelow ? nextBelow.w : 0, belowShape ? belowShape.w : 0), h: Math.max(nextBelow ? nextBelow.h : 0, belowShape ? belowShape.h : 0) }
+        : null;
     sendEnvelope(grow(now.w, w), grow(now.h, hgt), Math.max(now.y, y), extra);
     Object.assign(shape, { w, h: hgt, y, r });
     placeBelow(nextBelow);
@@ -198,7 +201,18 @@ const Island = (() => {
       const f = list[selected];
       const v = f.view('expanded');
       const hgt = heightOf(v) + (list.length > 1 ? FOOTER : 0);
-      return { key: 'x:' + f.id, mode: 'expanded', el: v.el, w: v.w, h: hgt, y: TOP, r: radiusFor(v.w, hgt, v), withDots: list.length > 1, auto: !!v.auto, below: v.below || null };
+      return {
+        key: 'x:' + f.id,
+        mode: 'expanded',
+        el: v.el,
+        w: v.w,
+        h: hgt,
+        y: TOP,
+        r: radiusFor(v.w, hgt, v),
+        withDots: list.length > 1,
+        auto: !!v.auto,
+        below: v.below || null,
+      };
     }
     if (peekState && Date.now() < peekState.until) {
       compactKey = null;
@@ -300,7 +314,11 @@ const Island = (() => {
     out.then(() => {
       if (token !== swapToken) return;
       mount(v);
-      M.animate(stage, { opacity: [0, 1], scale: [0.96, 1], filter: ['blur(4px)', 'blur(0px)'] }, { duration: reducedMotion ? 0.08 : 0.24, ease: [0.2, 0.9, 0.3, 1], delay: reducedMotion ? 0 : 0.12 });
+      M.animate(
+        stage,
+        { opacity: [0, 1], scale: [0.96, 1], filter: ['blur(4px)', 'blur(0px)'] },
+        { duration: reducedMotion ? 0.08 : 0.24, ease: [0.2, 0.9, 0.3, 1], delay: reducedMotion ? 0 : 0.12 }
+      );
     });
   }
 
@@ -540,6 +558,18 @@ const Island = (() => {
     feature: (id) => features.find((f) => f.id === id),
     setContext: (id) => (contextPanel = id || null),
     /** For tests and the dev preview. */
-    debug: () => ({ key: current && current.key, mode: current && current.mode, hovered, pointer, pinned, animating, shape: { ...shape }, below: belowShape, stats: { ...stats }, motion: !!M, reducedMotion }),
+    debug: () => ({
+      key: current && current.key,
+      mode: current && current.mode,
+      hovered,
+      pointer,
+      pinned,
+      animating,
+      shape: { ...shape },
+      below: belowShape,
+      stats: { ...stats },
+      motion: !!M,
+      reducedMotion,
+    }),
   };
 })();

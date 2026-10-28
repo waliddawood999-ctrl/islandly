@@ -24,7 +24,10 @@ page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 
 const appIcon = (bg, letter) =>
-  'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="14" fill="${bg}"/><text x="32" y="43" font-family="Segoe UI,Arial" font-size="30" font-weight="700" text-anchor="middle" fill="#fff">${letter}</text></svg>`);
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="14" fill="${bg}"/><text x="32" y="43" font-family="Segoe UI,Arial" font-size="30" font-weight="700" text-anchor="middle" fill="#fff">${letter}</text></svg>`
+  );
 const shortcuts = [
   { name: 'Edge', icon: appIcon('#0f7bd8', 'E') },
   { name: 'File Explorer', icon: appIcon('#e8a91c', 'F') },
@@ -97,7 +100,18 @@ const art =
   encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff7a59"/><stop offset=".55" stop-color="#c2338a"/><stop offset="1" stop-color="#3a1c71"/></linearGradient></defs><rect width="200" height="200" fill="url(#g)"/><circle cx="140" cy="60" r="34" fill="#ffd36e" opacity=".9"/><path d="M0 150 Q60 110 110 140 T200 130 V200 H0Z" fill="#1b0f3a" opacity=".55"/></svg>'
   );
-const media = (playing, position = 72) => ({ type: 'media', active: true, title: 'Golden Hour', artist: 'Islandly Demo Band', playing, position, duration: 214, sentAt: Date.now(), trackChanged: false, thumb: art });
+const media = (playing, position = 72) => ({
+  type: 'media',
+  active: true,
+  title: 'Golden Hour',
+  artist: 'Islandly Demo Band',
+  playing,
+  position,
+  duration: 214,
+  sentAt: Date.now(),
+  trackChanged: false,
+  thumb: art,
+});
 
 // 1. resting clock (auto-hide off) and the thin line
 await shot('clock-compact', lang === 'ar' ? 'ساعة مصغّرة (الوضع الهادئ)' : 'Compact clock');
@@ -226,7 +240,14 @@ const timing = await page.evaluate(async () => {
   gaps.shift();
   gaps.sort((a, b) => a - b);
   const p = (q) => gaps[Math.min(gaps.length - 1, Math.floor(q * gaps.length))].toFixed(1);
-  return { frames: gaps.length, median: p(0.5), p95: p(0.95), max: gaps[gaps.length - 1].toFixed(1), over20ms: gaps.filter((g) => g > 20).length, debug: Island.debug() };
+  return {
+    frames: gaps.length,
+    median: p(0.5),
+    p95: p(0.95),
+    max: gaps[gaps.length - 1].toFixed(1),
+    over20ms: gaps.filter((g) => g > 20).length,
+    debug: Island.debug(),
+  };
 });
 
 const video = page.video();
@@ -234,5 +255,12 @@ await context.close();
 const vpath = await video.path();
 fs.renameSync(vpath, path.join(out, 'transitions.webm'));
 await browser.close();
-console.log('frame timing (ms):', JSON.stringify({ ...timing, debug: undefined }), 'motion:', timing.debug.motion, 'lastSpring(ms):', Math.round(timing.debug.stats.lastDuration));
+console.log(
+  'frame timing (ms):',
+  JSON.stringify({ ...timing, debug: undefined }),
+  'motion:',
+  timing.debug.motion,
+  'lastSpring(ms):',
+  Math.round(timing.debug.stats.lastDuration)
+);
 console.log('shots:', n, 'errors:', errors.length ? errors : 'none');

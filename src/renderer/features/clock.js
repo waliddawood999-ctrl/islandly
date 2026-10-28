@@ -41,7 +41,12 @@ Island.register({
           h('span', { class: 'ck-app-name', dir: 'auto' }, a.name)
         )
       ),
-      h('button', { class: 'ck-app', title: t('settings'), 'data-interactive': '1', onclick: () => API.send('settings:open') }, h('span', { class: 'ck-app-fallback' }, html(ICONS.gear)), h('span', { class: 'ck-app-name' }, t('settings')))
+      h(
+        'button',
+        { class: 'ck-app', title: t('settings'), 'data-interactive': '1', onclick: () => API.send('settings:open') },
+        h('span', { class: 'ck-app-fallback' }, html(ICONS.gear)),
+        h('span', { class: 'ck-app-name' }, t('settings'))
+      )
     );
     Island.render();
   },
@@ -59,7 +64,11 @@ Island.register({
     this.bigSec.textContent = ':' + pad2(now.getSeconds());
     this.dateEl.textContent = now.toLocaleDateString(LANG === 'ar' ? 'ar' : 'en', { weekday: 'long', day: 'numeric', month: 'long' });
     try {
-      this.hijriEl.textContent = new Intl.DateTimeFormat((LANG === 'ar' ? 'ar-SA' : 'en') + '-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }).format(now);
+      this.hijriEl.textContent = new Intl.DateTimeFormat((LANG === 'ar' ? 'ar-SA' : 'en') + '-u-ca-islamic-umalqura', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }).format(now);
     } catch (_) {
       this.hijriEl.textContent = '';
     }

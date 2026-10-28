@@ -54,7 +54,10 @@ const names = (calls) => calls.map((c) => c[0]);
     s.setMode('appbar');
     ok(names(calls).join(',') === 'remove,register,setPos', 'entering appbar removes any old bar, registers, positions: ' + names(calls));
     const pos = calls.find((c) => c[0] === 'setPos')[1];
-    ok(pos.left === 0 && pos.top === 0 && pos.right === 2400 && pos.bottom === 54, 'bar rect is the display width x resting height, in physical px: ' + JSON.stringify(pos));
+    ok(
+      pos.left === 0 && pos.top === 0 && pos.right === 2400 && pos.bottom === 54,
+      'bar rect is the display width x resting height, in physical px: ' + JSON.stringify(pos)
+    );
     ok(calls[1][2] === 0x81a1, 'the callback message is passed to ABM_NEW');
 
     calls.length = 0;

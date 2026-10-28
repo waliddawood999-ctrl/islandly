@@ -46,7 +46,13 @@ Island.register({
     this.peekTitle = h('div', { class: 'm-title' });
     this.peekSub = h('div', { class: 'm-artist' });
     this.peekAction = h('button', { class: 'pill primary sm', onclick: () => this.startNext() });
-    this.peekEl = h('div', { class: 'view timer-peek' }, h('div', { class: 'done-badge' }, html(ICONS.check)), h('div', { class: 'm-text' }, this.peekTitle, this.peekSub), this.peekAction);
+    this.peekEl = h(
+      'div',
+      { class: 'view timer-peek' },
+      h('div', { class: 'done-badge' }, html(ICONS.check)),
+      h('div', { class: 'm-text' }, this.peekTitle, this.peekSub),
+      this.peekAction
+    );
 
     this.paint();
   },
@@ -189,7 +195,9 @@ Island.register({
     this.mainBtn.replaceChildren(html(this.running ? ICONS.pause : ICONS.play), h('span', {}, this.running ? t('pause') : started ? t('resume') : t('start')));
 
     this.modeTabs.replaceChildren(
-      ...['focus', 'rest', 'quick', 'stopwatch'].map((m) => h('button', { class: 'seg-btn' + (this.mode === m ? ' on' : ''), onclick: () => this.setMode(m) }, t(m === 'quick' ? 'timerTab' : m)))
+      ...['focus', 'rest', 'quick', 'stopwatch'].map((m) =>
+        h('button', { class: 'seg-btn' + (this.mode === m ? ' on' : ''), onclick: () => this.setMode(m) }, t(m === 'quick' ? 'timerTab' : m))
+      )
     );
 
     const minutes = Math.round(this.total / 60);
@@ -198,7 +206,9 @@ Island.register({
     } else if (this.mode === 'quick') {
       const isPreset = this.presets.quick.includes(minutes);
       this.chips.replaceChildren(
-        ...this.presets.quick.map((mins) => h('button', { class: 'chip' + (mins === minutes ? ' on' : ''), dir: 'ltr', onclick: () => this.setMinutes(mins) }, `${num(mins)} ${t('min')}`)),
+        ...this.presets.quick.map((mins) =>
+          h('button', { class: 'chip' + (mins === minutes ? ' on' : ''), dir: 'ltr', onclick: () => this.setMinutes(mins) }, `${num(mins)} ${t('min')}`)
+        ),
         h(
           'div',
           { class: 'stepper' + (isPreset ? '' : ' on'), dir: 'ltr' },
@@ -209,7 +219,9 @@ Island.register({
       );
     } else {
       this.chips.replaceChildren(
-        ...this.presets[this.mode].map((mins) => h('button', { class: 'chip' + (mins === minutes ? ' on' : ''), dir: 'ltr', onclick: () => this.setMinutes(mins) }, `${num(mins)} ${t('min')}`))
+        ...this.presets[this.mode].map((mins) =>
+          h('button', { class: 'chip' + (mins === minutes ? ' on' : ''), dir: 'ltr', onclick: () => this.setMinutes(mins) }, `${num(mins)} ${t('min')}`)
+        )
       );
     }
     this.paintTime();
