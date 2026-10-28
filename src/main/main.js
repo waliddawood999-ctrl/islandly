@@ -174,12 +174,16 @@ function positionWindow() {
   const width = Math.min(bounds.width, Math.ceil(envelope.w * z));
   const height = Math.min(bounds.height, Math.ceil(envelope.h * z));
   const pos = settings.get().position;
-  const x =
+  const preferredX =
     pos === "left"
       ? bounds.x + 16
       : pos === "right"
         ? bounds.x + bounds.width - width - 16
         : Math.round(bounds.x + (bounds.width - width) / 2);
+  const x = Math.max(
+    bounds.x,
+    Math.min(preferredX, bounds.x + bounds.width - width),
+  );
   if (!fullscreenActive) win.setBounds({ x, y: bounds.y, width, height });
 }
 

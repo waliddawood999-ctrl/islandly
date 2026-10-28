@@ -52,15 +52,15 @@ const dependency = (name) =>
           parentPort.postMessage({ progress: Math.round(m.progress * 100) });
       },
     });
+    let text;
     try {
       const result = await worker.recognize(input);
-      parentPort.postMessage({
-        ok: true,
-        text: result.data.text.slice(0, 50000),
-      });
+      text = result.data.text.slice(0, 50000);
     } finally {
       await worker.terminate();
     }
+    // Finish nested OCR worker cleanup before the parent terminates this file worker.
+    parentPort.postMessage({ ok: true, text });
     return;
   } else {
     const sharp = dependency("sharp");

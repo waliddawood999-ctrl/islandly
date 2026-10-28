@@ -2,7 +2,7 @@ name: Windows verification
 on:
   pull_request:
   push:
-    branches: [main, feat/reliability-and-productivity]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,6 +19,8 @@ jobs:
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
       - run: npm test
+      - name: Real local OCR integration
+        run: npm run test:ocr
       - name: Electron update flow
         run: npx electron test/update-flow.js
       - name: Electron renderer and IPC smoke

@@ -50,6 +50,11 @@ app.whenReady().then(() => {
   return setTimeout(async () => {
     console.log("SMOKE timer fired");
     try {
+      if (process.platform === "win32")
+        assert.ok(
+          require("../src/main/win32").available(),
+          "Win32 FFI must initialize",
+        );
       const win = BrowserWindow.getAllWindows().find((w) =>
         w.webContents.getURL().includes("renderer"),
       );

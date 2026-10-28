@@ -17,7 +17,7 @@ class FocusMode {
       .split(",")
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
-    if (!on || !this.dim) this.clear();
+    if (!on || !this.dim) this.clear(true);
     else if (this.dim)
       this.timer = setInterval(() => this.foreground(win32.foreground()), 300);
   }
@@ -87,8 +87,13 @@ class FocusMode {
       } else w.hide();
     });
   }
-  clear() {
-    for (const w of this.overlays) if (!w.isDestroyed()) w.hide();
+  clear(destroy = false) {
+    for (const w of this.overlays)
+      if (!w.isDestroyed()) {
+        if (destroy) w.destroy();
+        else w.hide();
+      }
+    if (destroy) this.overlays = [];
   }
   stop() {
     clearInterval(this.timer);
