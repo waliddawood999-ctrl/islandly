@@ -20,6 +20,17 @@ const info = global.__ISLANDLY || {
 };
 const asset = (name) => path.join(info.root, 'assets', name);
 
+// A background widget should not pop up a modal crash dialog: keep running and write the error to a log file.
+process.on('uncaughtException', (err) => {
+  try {
+    const dir = app.getPath('userData');
+    require('fs').mkdirSync(dir, { recursive: true });
+    require('fs').appendFileSync(path.join(dir, 'error.log'), `${new Date().toISOString()} ${err && err.stack ? err.stack : err}\n`);
+  } catch (_) {
+    /* logging is best effort */
+  }
+});
+
 let win = null;
 let tray = null;
 let settingsWin = null;

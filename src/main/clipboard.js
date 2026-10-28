@@ -36,14 +36,15 @@ class ClipboardHistory {
   constructor(onChange) {
     this.onChange = onChange;
     this.items = [];
-    this.last = '';
+    this.last = null; // null until the first poll has recorded what was already on the clipboard
     this.timer = null;
+    this.busy = false;
     this.seq = 1;
   }
 
   start() {
     if (this.timer) return;
-    this.last = clipboard.readText();
+    this.last = null;
     this.timer = setInterval(() => this.poll(), 800);
   }
 
@@ -52,11 +53,22 @@ class ClipboardHistory {
     this.timer = null;
   }
 
-  poll() {
-    const text = clipboard.readText();
-    if (!text || text === this.last) return;
-    this.last = text;
-    this.add(text);
+  // Electron's clipboard.readText()/writeText() return promises, so this is async and never overlaps itself.
+  async poll() {
+    if (this.busy) return;
+    this.busy = true;
+    try {
+      const text = await clipboard.readText();
+      if (typeof text !== 'string') return;
+      const first = this.last === null;
+      if (text === this.last) return;
+      this.last = text;
+      if (text && !first) this.add(text);
+    } catch (_) {
+      /* the clipboard can be locked by another app for a moment; try again next tick */
+    } finally {
+      this.busy = false;
+    }
   }
 
   add(text) {
@@ -93,7 +105,7 @@ class ClipboardHistory {
     if (!item) return;
     const text = as === 'rgb' && item.rgb ? item.rgb : as === 'result' && item.type === 'math' ? String(item.result) : item.text;
     this.last = text;
-    clipboard.writeText(text);
+    Promise.resolve(clipboard.writeText(text)).catch(() => {});
   }
 
   pin(id) {

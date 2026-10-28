@@ -3,12 +3,10 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, clipboard } = require('electron');
 
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'islandly-smoke-'));
 app.setPath('userData', userData);
-// Headless Linux has no clipboard owner and reading it can stall, so keep the poller off for this test.
-fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ clipboard: false }));
 require('../src/main/main.js');
 
 app.on('web-contents-created', (_e, wc) => {
@@ -27,6 +25,8 @@ app.whenReady().then(() => {
     console.log('SMOKE step: window found=' + !!win);
     console.log('SMOKE 1+1=' + (await win.webContents.executeJavaScript('1+1')));
     console.log('SMOKE typeof Island=' + (await win.webContents.executeJavaScript('typeof Island')));
+    await clipboard.writeText('https://example.com/from-smoke-test');
+    await new Promise((r) => setTimeout(r, 2200));
     const result = await win.webContents.executeJavaScript(`(async () => {
       const out = {};
       out.island = typeof Island;
@@ -34,7 +34,7 @@ app.whenReady().then(() => {
       out.api = Object.keys(window.islandAPI).sort();
       out.settings = window.islandAPI.settings;
       out.shelf = await islandAPI.call('shelf:list');
-      out.clipboard = await islandAPI.call('clipboard:list');
+      out.clipboard = (await islandAPI.call('clipboard:list')).map((i) => i.type + ':' + i.text);
       out.calendar = await islandAPI.call('calendar:get');
       out.blocked = await islandAPI.call('not:allowed').then(() => 'NOT BLOCKED', (e) => 'blocked');
       Island.open('clipboard');
