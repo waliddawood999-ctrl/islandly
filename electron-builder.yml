@@ -1,0 +1,28 @@
+appId: com.islandly.desktop
+productName: Islandly
+asar: false
+directories:
+  output: dist
+files:
+  - src/**/*
+  - assets/**/*
+  - package.json
+  - LICENSE
+  - '!node_modules/koffi/build/koffi/!(win32_x64)/**/*'
+  - '!node_modules/koffi/doc/**/*'
+  - '!node_modules/koffi/src/**/*'
+win:
+  artifactName: Islandly-win64.${ext}
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+  signAndEditExecutable: false
+nsis:
+  artifactName: Islandly-Setup-${version}.exe
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false

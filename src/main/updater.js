@@ -3,15 +3,19 @@ const path = require('path');
 const { app, net } = require('electron');
 const { cmp, gitBlobSha } = require('./util');
 
-// The app updates itself from the public repository: the newest commit on `main` is the newest version.
+// Discover only published stable Releases; resolve their tag to an immutable commit.
 // Only the app's own code (src/, assets/, package.json) is downloaded, so an update is about 1 MB.
 const OWNER = 'waliddawood999-ctrl';
 const REPO = 'islandly';
-const BRANCH = 'main';
+const { latestRelease } = require('./releases');
 const CHECK_EVERY_MS = 6 * 3600 * 1000;
 // Overridable so the update flow can be tested against a local server.
 const API_BASE = process.env.ISLANDLY_API_BASE || 'https://api.github.com';
 const RAW_BASE = process.env.ISLANDLY_RAW_BASE || 'https://raw.githubusercontent.com';
+
+function safePath(p) {
+  return typeof p === 'string' && !p.includes('\\') && !p.includes(':') && !p.includes('\0') && p.split('/').every(s => s && s !== '.' && s !== '..');
+}
 
 const info = () => global.__ISLANDLY || { version: '0.0.0', baseVersion: '0.0.0', root: '' };
 
@@ -32,11 +36,13 @@ class Updater {
   }
 
   start() {
-    setTimeout(() => this.check(), 20 * 1000);
+    this.stop();
+    this.initialTimer = setTimeout(() => this.check(), 20 * 1000);
     this.timer = setInterval(() => this.check(), CHECK_EVERY_MS);
   }
 
   stop() {
+    clearTimeout(this.initialTimer);
     clearInterval(this.timer);
   }
 
@@ -46,9 +52,11 @@ class Updater {
     if (this.pending) return { status: 'ready', version: this.pending };
     this.busy = true;
     try {
-      const commit = await (await fetchOk(`${API_BASE}/repos/${OWNER}/${REPO}/commits/${BRANCH}`)).json();
-      const sha = commit.sha;
+      const release = await latestRelease(fetchOk, API_BASE);
+      if (!release) return { status: 'up-to-date', version: info().version };
+      const { sha, version: releaseVersion } = release;
       const remote = JSON.parse(await (await fetchOk(raw(sha, 'package.json'))).text());
+      if (remote.version !== releaseVersion) throw new Error('release tag/package version mismatch');
       const running = info();
       const basePkg = JSON.parse(fs.readFileSync(path.join(running.baseRoot || running.root, 'package.json'), 'utf8'));
 
@@ -68,7 +76,9 @@ class Updater {
       const updatesDir = path.join(app.getPath('userData'), 'updates');
       const dir = path.join(updatesDir, remote.version);
       fs.rmSync(dir, { recursive: true, force: true });
+      if (!files.some(f => f.path === 'package.json') || !files.some(f => f.path === 'src/main/main.js')) throw new Error('incomplete release');
       for (const f of files) {
+        if (!safePath(f.path) || !/^[a-f0-9]{40}$/.test(f.sha)) throw new Error('invalid release file');
         const buf = Buffer.from(await (await fetchOk(raw(sha, f.path))).arrayBuffer());
         if (gitBlobSha(buf) !== f.sha) throw new Error('checksum mismatch: ' + f.path);
         const dest = path.join(dir, f.path);
