@@ -13,14 +13,24 @@ class Tools {
         process.platform === "win32" ? "where.exe" : "which",
         [name],
         { windowsHide: true, timeout: 3000 },
-        (err) => resolve(!err),
+        (err, stdout) => {
+          const executable = String(stdout || "").split(/\r?\n/)[0].trim();
+          try {
+            resolve(!err && path.isAbsolute(executable) && fs.statSync(executable).isFile() ? executable : false);
+          } catch (_) { resolve(false); }
+        },
       ),
     );
   }
   async run(file, op) {
     const allowed = { gif: "ffmpeg", audio: "ffmpeg", background: "rembg" };
     const tool = allowed[op];
-    if (!tool || !(await this.available(tool)))
+    if (!require("../settings").get()[tool + "Enabled"])
+      return { ok: false, error: "External tool is disabled in Settings" };
+    if (tool === "rembg")
+      return { ok: false, error: "rembg deferred pending model licensing and download consent" };
+    const executable = tool && await this.available(tool);
+    if (!executable)
       return {
         ok: false,
         error: `Install ${tool} separately to enable this action.`,
@@ -56,7 +66,7 @@ class Tools {
         : op === "audio"
           ? ["-n", "-i", file, "-vn", "-c:a", "aac", out]
           : ["i", file, out];
-    const id = this.jobs.start(path.basename(file) + " — " + op, tool, args);
+    const id = this.jobs.start(path.basename(file) + " — " + op, executable, args);
     return { ok: true, id, path: out };
   }
 }

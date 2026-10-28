@@ -2,7 +2,7 @@ name: Windows verification
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [dev]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,8 +19,6 @@ jobs:
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
       - run: npm test
-      - name: Real local OCR integration
-        run: npm run test:ocr
       - name: Electron update flow
         run: npx electron test/update-flow.js
       - name: Electron renderer and IPC smoke
@@ -53,3 +51,17 @@ jobs:
           name: islandly-windows-review-build
           path: out/
           retention-days: 7
+
+  ui-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y xvfb python3-xlib libgtk-3-0 libnss3 libasound2t64
+      - run: npm ci
+      - name: Real pointer and keyboard regression checks
+        run: xvfb-run -a -s "-screen 0 1600x900x24" npx electron test/ui-e2e.js --no-sandbox --disable-gpu --disable-dev-shm-usage

@@ -27,7 +27,7 @@ const DEFAULTS = {
   hasAiKey: false,
   hasGithubToken: false,
   monitorId: "",
-  disabledFeatures: "",
+  disabledFeatures: "activity,jobs,plugins,adhkar",
   quickLaunch: "GitHub: https://github.com",
   lyrics: false,
   prayerAlways: true,
@@ -43,6 +43,10 @@ const DEFAULTS = {
   githubRepos: "",
   coverAccent: true,
   nativeNotifications: false,
+  lanShare: false,
+  captureEnabled: false,
+  ffmpegEnabled: false,
+  rembgEnabled: false,
 };
 
 // Secrets (API keys) are encrypted with the OS (DPAPI on Windows) and kept out of settings.json's plain fields.

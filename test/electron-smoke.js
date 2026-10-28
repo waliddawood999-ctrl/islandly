@@ -203,7 +203,9 @@ app.whenReady().then(() => {
             secretInGet: "secrets" in st.get(),
           }),
       );
-      assert.equal(st.getSecret("aiKey"), "sk-smoke-123");
+      if (require("electron").safeStorage.isEncryptionAvailable())
+        assert.equal(st.getSecret("aiKey"), "sk-smoke-123");
+      else console.log("SKIP encrypted-key roundtrip: OS secure storage unavailable");
       assert.equal(raw.includes("sk-smoke-123"), false);
       assert.equal("secrets" in st.get(), false);
       // A foreign main frame cannot mutate privileged settings even if it can send raw Electron IPC.

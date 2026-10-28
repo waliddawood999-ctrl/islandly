@@ -139,6 +139,8 @@ class Capture {
     );
   }
   async open(mode = "image") {
+    if (!require("./settings").get().captureEnabled)
+      throw new Error("Screen capture is disabled in Settings");
     if (this.win && !this.win.isDestroyed()) {
       this.win.focus();
       return;

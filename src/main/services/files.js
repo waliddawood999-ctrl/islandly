@@ -10,6 +10,8 @@ class FileActions {
     this.workers = new Set();
   }
   run(files, op, width) {
+    if (op === "ocr")
+      throw new Error("OCR unavailable until verified language data is bundled");
     if (this.workers.size >= 2)
       throw new Error("Two file operations are already running");
     const allowed = [

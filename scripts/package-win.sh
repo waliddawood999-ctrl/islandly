@@ -20,6 +20,8 @@ app="$work/out/Islandly-win32-x64/resources/app"
 for m in @coooookies/windows-smtc-monitor @coooookies/windows-smtc-monitor-win32-x64-msvc koffi adhan @anthropic-ai/sdk @img/sharp-win32-x64 pdf-lib tesseract.js; do
   [ -d "$app/node_modules/$m" ] || { echo "missing $m in the package" >&2; exit 1; }
 done
+# Retain only the target Koffi native build.
+find "$app/node_modules/koffi/build/koffi" -mindepth 1 -maxdepth 1 -type d ! -name win32_x64 -exec rm -rf {} +
 # Keep the explicit terminal helper next to the executable for discoverability.
 cp "$root/scripts/islandly-run.ps1" "$work/out/Islandly-win32-x64/"
 
