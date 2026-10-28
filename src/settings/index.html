@@ -1,143 +1,318 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'">
-  <title>Islandly</title>
-  <link rel="stylesheet" href="settings.css">
-</head>
-<body>
-  <h1>إعدادات Islandly</h1>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self'"
+    />
+    <title>Islandly</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <h1>إعدادات Islandly</h1>
 
-  <section>
-    <h2>المظهر</h2>
-    <label>الموضع
-      <select id="position">
-        <option value="center">الوسط</option>
-        <option value="left">اليسار</option>
-        <option value="right">اليمين</option>
-      </select>
-    </label>
-    <label>الإخفاء التلقائي
-      <select id="autoHide">
-        <option value="auto">تصغير بعد ٥ ثوانٍ (موصى به)</option>
-        <option value="always">خط رفيع حتى تمرّ عليه</option>
-        <option value="never">دائماً ظاهرة</option>
-      </select>
-    </label>
-    <label class="check"><input type="checkbox" id="hideFullscreen"> إخفاء الجزيرة عند ملء الشاشة (فيديو، ألعاب)</label>
-    <label>حجم الجزيرة
-      <select id="scale">
-        <option value="0.7">صغير</option>
-        <option value="0.8">متوسط</option>
-        <option value="1">كبير</option>
-      </select>
-    </label>
-    <label>اللغة
-      <select id="lang">
-        <option value="auto">تلقائي</option>
-        <option value="ar">العربية</option>
-        <option value="en">English</option>
-      </select>
-    </label>
-  </section>
+    <section>
+      <h2>المظهر</h2>
+      <label
+        >الموضع
+        <select id="position">
+          <option value="center">الوسط</option>
+          <option value="left">اليسار</option>
+          <option value="right">اليمين</option>
+        </select>
+      </label>
+      <label
+        >الإخفاء التلقائي
+        <select id="autoHide">
+          <option value="auto">تصغير بعد ٥ ثوانٍ (موصى به)</option>
+          <option value="always">خط رفيع حتى تمرّ عليه</option>
+          <option value="never">دائماً ظاهرة</option>
+        </select>
+      </label>
+      <label class="check"
+        ><input type="checkbox" id="hideFullscreen" /> إخفاء الجزيرة عند ملء
+        الشاشة (فيديو، ألعاب)</label
+      >
+      <label
+        >حجم الجزيرة
+        <select id="scale">
+          <option value="0.7">صغير</option>
+          <option value="0.8">متوسط</option>
+          <option value="1">كبير</option>
+        </select>
+      </label>
+      <label
+        >اللغة
+        <select id="lang">
+          <option value="auto">تلقائي</option>
+          <option value="ar">العربية</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+    </section>
 
-  <section>
-    <h2>اليوم: الصلاة والطقس</h2>
-    <label>المدينة
-      <select id="city"></select>
-    </label>
-    <div id="customBox" class="grid2" hidden>
-      <label>خط العرض<input id="lat" type="number" step="0.0001" dir="ltr"></label>
-      <label>خط الطول<input id="lng" type="number" step="0.0001" dir="ltr"></label>
-      <label class="span2">اسم المكان<input id="cityName" type="text"></label>
-    </div>
-    <label>طريقة حساب المواقيت
-      <select id="prayerMethod">
-        <option value="auto">تلقائي حسب المدينة</option>
-        <option value="UmmAlQura">أم القرى</option>
-        <option value="MuslimWorldLeague">رابطة العالم الإسلامي</option>
-        <option value="Egyptian">الهيئة المصرية</option>
-        <option value="Kuwait">الكويت</option>
-        <option value="Qatar">قطر</option>
-        <option value="Dubai">دبي</option>
-        <option value="Karachi">كراتشي</option>
-        <option value="NorthAmerica">أمريكا الشمالية (ISNA)</option>
-        <option value="Turkey">تركيا</option>
-      </select>
-    </label>
-    <label>المذهب (لوقت العصر)
-      <select id="madhab">
-        <option value="shafi">الجمهور (شافعي، مالكي، حنبلي)</option>
-        <option value="hanafi">حنفي</option>
-      </select>
-    </label>
-    <label class="check"><input type="checkbox" id="prayerAlerts"> تنبيه قبل الصلاة بـ ١٠ دقائق وعند الأذان</label>
-    <label class="check"><input type="checkbox" id="weather"> عرض الطقس (من Open-Meteo، بدون حساب)</label>
-  </section>
+    <section>
+      <h2>اليوم: الصلاة والطقس</h2>
+      <label
+        >المدينة
+        <select id="city"></select>
+      </label>
+      <div id="customBox" class="grid2" hidden>
+        <label
+          >خط العرض<input id="lat" type="number" step="0.0001" dir="ltr"
+        /></label>
+        <label
+          >خط الطول<input id="lng" type="number" step="0.0001" dir="ltr"
+        /></label>
+        <label class="span2"
+          >اسم المكان<input id="cityName" type="text"
+        /></label>
+      </div>
+      <label
+        >طريقة حساب المواقيت
+        <select id="prayerMethod">
+          <option value="auto">تلقائي حسب المدينة</option>
+          <option value="UmmAlQura">أم القرى</option>
+          <option value="MuslimWorldLeague">رابطة العالم الإسلامي</option>
+          <option value="Egyptian">الهيئة المصرية</option>
+          <option value="Kuwait">الكويت</option>
+          <option value="Qatar">قطر</option>
+          <option value="Dubai">دبي</option>
+          <option value="Karachi">كراتشي</option>
+          <option value="NorthAmerica">أمريكا الشمالية (ISNA)</option>
+          <option value="Turkey">تركيا</option>
+        </select>
+      </label>
+      <label
+        >المذهب (لوقت العصر)
+        <select id="madhab">
+          <option value="shafi">الجمهور (شافعي، مالكي، حنبلي)</option>
+          <option value="hanafi">حنفي</option>
+        </select>
+      </label>
+      <label class="check"
+        ><input type="checkbox" id="prayerAlerts" /> تنبيه قبل الصلاة بـ ١٠
+        دقائق وعند الأذان</label
+      >
+      <label class="check"
+        ><input type="checkbox" id="weather" /> عرض الطقس (من Open-Meteo، بدون
+        حساب)</label
+      >
+    </section>
 
-  <section>
-    <h2>الصحة والإنتاجية</h2>
-    <label>تذكير بالاستراحة كل
-      <select id="breakEvery">
-        <option value="0">إيقاف</option>
-        <option value="30">٣٠ دقيقة</option>
-        <option value="45">٤٥ دقيقة</option>
-        <option value="60">ساعة</option>
-        <option value="90">ساعة ونصف</option>
-      </select>
-    </label>
-    <label class="check"><input type="checkbox" id="timeTracking"> تتبّع وقت استخدام التطبيقات (يُحفظ على جهازك فقط)</label>
-    <label class="check"><input type="checkbox" id="micCamIndicator"> إظهار مؤشر عند استخدام الميكروفون أو الكاميرا</label>
-  </section>
+    <section>
+      <h2>الصحة والإنتاجية</h2>
+      <label
+        >تذكير بالاستراحة كل
+        <select id="breakEvery">
+          <option value="0">إيقاف</option>
+          <option value="30">٣٠ دقيقة</option>
+          <option value="45">٤٥ دقيقة</option>
+          <option value="60">ساعة</option>
+          <option value="90">ساعة ونصف</option>
+        </select>
+      </label>
+      <label class="check"
+        ><input type="checkbox" id="timeTracking" /> تتبّع وقت استخدام التطبيقات
+        (يُحفظ على جهازك فقط)</label
+      >
+      <label class="check"
+        ><input type="checkbox" id="micCamIndicator" /> إظهار مؤشر عند استخدام
+        الميكروفون أو الكاميرا</label
+      >
+    </section>
 
-  <section>
-    <h2>مساحات العمل ولوحة الأوامر</h2>
-    <p class="hint">افتح لوحة الأوامر بـ Ctrl + Alt + Space. كل سطر مساحة عمل: الاسم ثم نقطتان ثم العناصر مفصولة بـ |</p>
-    <textarea id="workspaces" rows="4" dir="auto" placeholder="الدراسة: https://classroom.google.com | C:\Users\me\Documents\Uni | Word"></textarea>
-  </section>
+    <section>
+      <h2>مساحات العمل ولوحة الأوامر</h2>
+      <p class="hint">
+        افتح لوحة الأوامر بـ Ctrl + Alt + Space. كل سطر مساحة عمل: الاسم ثم
+        نقطتان ثم العناصر مفصولة بـ |
+      </p>
+      <textarea
+        id="workspaces"
+        rows="4"
+        dir="auto"
+        placeholder="الدراسة: https://classroom.google.com | C:\Users\me\Documents\Uni | Word"
+      ></textarea>
+    </section>
 
-  <section>
-    <h2>المفاتيح (تُشفَّر على جهازك)</h2>
-    <label>مفتاح Anthropic API (للأسئلة بالذكاء الاصطناعي في لوحة الأوامر)
-      <div class="row"><input id="aiKey" type="password" dir="ltr" autocomplete="off"><button id="aiKeySave" type="button">حفظ</button></div>
-    </label>
-    <p class="hint" id="aiKeyState"></p>
-    <label>رمز GitHub (لإشعارات GitHub في الجزيرة)
-      <div class="row"><input id="githubToken" type="password" dir="ltr" autocomplete="off"><button id="ghSave" type="button">حفظ</button></div>
-    </label>
-    <p class="hint" id="ghState">أنشئ رمزاً من GitHub ← Settings ← Developer settings ← Personal access tokens (classic) بصلاحية notifications فقط.</p>
-  </section>
+    <section>
+      <h2>المفاتيح (تُشفَّر على جهازك)</h2>
+      <label
+        >مفتاح Anthropic API (للأسئلة بالذكاء الاصطناعي في لوحة الأوامر)
+        <div class="row">
+          <input
+            id="aiKey"
+            type="password"
+            dir="ltr"
+            autocomplete="off"
+          /><button id="aiKeySave" type="button">حفظ</button>
+        </div>
+      </label>
+      <p class="hint" id="aiKeyState"></p>
+      <label
+        >رمز GitHub (لإشعارات GitHub في الجزيرة)
+        <div class="row">
+          <input
+            id="githubToken"
+            type="password"
+            dir="ltr"
+            autocomplete="off"
+          /><button id="ghSave" type="button">حفظ</button>
+        </div>
+      </label>
+      <label
+        >مستودعات متابعة CI (owner/repo، بحد أقصى خمسة)<input
+          id="githubRepos"
+          dir="ltr"
+      /></label>
+      <p class="hint">
+        قراءة PR وCI للمستودعات الخاصة تحتاج صلاحيات الرمز المناسبة. لا يغيّر
+        التطبيق صلاحيات حسابك.
+      </p>
+      <p class="hint" id="ghState">
+        أنشئ رمزاً من GitHub ← Settings ← Developer settings ← Personal access
+        tokens (classic) بصلاحية notifications فقط.
+      </p>
+    </section>
 
-  <section>
-    <h2>التقويم والاجتماعات</h2>
-    <label>رابط التقويم (iCal / ICS)
-      <input id="icsUrl" type="url" dir="ltr" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics">
-    </label>
-    <p class="hint">من Google Calendar: الإعدادات ← اختر التقويم ← «العنوان السري بتنسيق iCal». الرابط سري، لا تشاركه مع أحد. يُحفظ على جهازك فقط.</p>
-  </section>
+    <section>
+      <h2>التقويم والاجتماعات</h2>
+      <label
+        >رابط التقويم (iCal / ICS)
+        <input
+          id="icsUrl"
+          type="url"
+          dir="ltr"
+          placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
+        />
+      </label>
+      <p class="hint">
+        من Google Calendar: الإعدادات ← اختر التقويم ← «العنوان السري بتنسيق
+        iCal». الرابط سري، لا تشاركه مع أحد. يُحفظ على جهازك فقط.
+      </p>
+    </section>
 
-  <section>
-    <h2>الخصوصية</h2>
-    <label class="check"><input type="checkbox" id="clipboard"> تسجيل سجل الحافظة (النصوص فقط، في الذاكرة ولا يُحفظ على القرص)</label>
-  </section>
+    <section>
+      <h2>الخصوصية</h2>
+      <label class="check"
+        ><input type="checkbox" id="clipboard" /> تسجيل سجل الحافظة (آخر ٢٠ نصًا
+        أو صورة، في الذاكرة فقط؛ تجاهل مديري كلمات المرور المعروفين وإشارات
+        الحافظة الحساسة)</label
+      >
+    </section>
 
-  <section>
-    <h2>التحديثات</h2>
-    <label class="check"><input type="checkbox" id="updates"> التحقق من التحديثات وتثبيتها تلقائياً</label>
-    <div class="row">
-      <button id="check">التحقق الآن</button>
-      <span id="status" class="hint"></span>
-    </div>
-    <p class="hint" id="version"></p>
-  </section>
+    <section>
+      <h2>التحديثات</h2>
+      <label class="check"
+        ><input type="checkbox" id="updates" /> التحقق من التحديثات وتثبيتها
+        تلقائياً</label
+      >
+      <div class="row">
+        <button id="check">التحقق الآن</button>
+        <span id="status" class="hint"></span>
+      </div>
+      <p class="hint" id="version"></p>
+    </section>
 
-  <section>
-    <h2>التطبيق</h2>
-    <button id="quit" class="danger">إغلاق Islandly بالكامل</button>
-    <p class="hint">يغلق الجزيرة تماماً. للتشغيل مرة ثانية افتح Islandly.exe.</p>
-  </section>
+    <section>
+      <h2>التطبيق</h2>
+      <button id="quit" class="danger">إغلاق Islandly بالكامل</button>
+      <p class="hint">
+        يغلق الجزيرة تماماً. للتشغيل مرة ثانية افتح Islandly.exe.
+      </p>
+    </section>
 
-  <script src="settings.js"></script>
-</body>
+    <section>
+      <h2>الوسائط والشاشات</h2>
+      <label class="check"
+        ><input type="checkbox" id="lyrics" /> كلمات الأغنية من LRCLIB (يرسل
+        عنوان المقطع والفنان عند التفعيل)</label
+      >
+      <label class="check"
+        ><input type="checkbox" id="coverAccent" /> تلوين لوحة الموسيقى من
+        الغلاف</label
+      >
+      <label
+        >شاشة الجزيرة
+        <select id="monitorId"></select
+      ></label>
+      <p class="hint">
+        Alt + سكرول للتبديل بين الشاشات. Ctrl + سكرول في لوحة الموسيقى لتغيير
+        الصوت.
+      </p>
+      <label class="check"
+        ><input type="checkbox" id="prayerAlways" /> إبقاء عدّاد الصلاة القادمة
+        متاحًا في الكبسولة</label
+      >
+      <label class="check"
+        ><input type="checkbox" id="pauseForPrayer" /> إيقاف جلسة التركيز مؤقتًا
+        عند دخول وقت الصلاة</label
+      >
+    </section>
+    <section>
+      <h2>المفضلات السريعة</h2>
+      <p class="hint">
+        كل سطر: الاسم ثم نقطتان ثم الموقع أو مسار الملف أو اسم التطبيق.
+      </p>
+      <label
+        >مجلد البحث عن الملفات (فارغ = المستندات)<input
+          id="searchRoot"
+          dir="ltr"
+      /></label>
+      <textarea id="quickLaunch" rows="4" dir="auto"></textarea>
+    </section>
+    <section>
+      <h2>التركيز والتنبيهات</h2>
+      <label class="check"
+        ><input type="checkbox" id="nativeNotifications" /> طلب الوصول إلى
+        إشعارات Windows (يتطلب نسخة MSIX والجسر الأصلي؛ إذن مستقل من
+        Windows)</label
+      >
+      <label class="check"
+        ><input type="checkbox" id="focusDim" /> تعتيم المساحة خارج نافذة العمل
+        أثناء Pomodoro</label
+      >
+      <label
+        >تطبيقات مشتتة (أسماء تنفيذية دون .exe، مفصولة بفواصل)<input
+          id="distractionApps"
+          dir="ltr"
+      /></label>
+      <label class="check"
+        ><input type="checkbox" id="notificationDigest" /> تجميع تنبيهات
+        Islandly بدل إظهار كل تنبيه فورًا</label
+      >
+      <label
+        >فترة التجميع بالدقائق
+        <input id="notificationMinutes" type="number" min="1" max="60"
+      /></label>
+      <label class="check"
+        ><input type="checkbox" id="downloadAlerts" /> التنبيه عند اكتمال تنزيل
+        معروف في مجلد Downloads</label
+      >
+      <label class="check"
+        ><input type="checkbox" id="healthReminders" /> تذكير ٢٠-٢٠-٢٠ والوقوف
+        والماء</label
+      >
+      <p class="hint">
+        التركيز يكتم تنبيهات Islandly. للتحكم في عدم الإزعاج على مستوى Windows
+        افتح إعداداته من لوحة النظام.
+      </p>
+    </section>
+    <section>
+      <h2>وحدات الواجهة والإضافات</h2>
+      <p class="hint">
+        يمكن إخفاء كل لوحة مستقلة. خدمات الخلفية ذات الصلة تُضبط من خياراتها
+        أعلاه.
+      </p>
+      <div id="features"></div>
+      <label class="check"
+        ><input type="checkbox" id="pluginsEnabled" /> السماح بتشغيل إضافات
+        JavaScript المعزولة يدويًا (بطاقات نصية فقط)</label
+      >
+    </section>
+
+    <script src="settings.js"></script>
+  </body>
 </html>
