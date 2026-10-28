@@ -216,6 +216,57 @@ app.whenReady().then(() =>
       assert.strictEqual(win.isFocusable(), false, 'window still accepts focus after the to-do panel closed');
     });
 
+    await step('0.5 panels: opt-in ones stay hidden by default, each one fits inside the island, the assistant takes real typing', async () => {
+      const PANELS = ['launcher', 'assistant', 'activity', 'jobs', 'plugins', 'adhkar'];
+      const OPT_IN = ['activity', 'jobs', 'plugins', 'adhkar'];
+      // default: only launcher and assistant can be opened (S2 in the PR #1 review)
+      const reachable = await js(`(async () => {
+        const out = {};
+        for (const id of ${JSON.stringify(PANELS)}) {
+          Island.open(id);
+          await new Promise((r) => setTimeout(r, 150));
+          out[id] = Island.selectedId() === id;
+        }
+        return out;
+      })()`);
+      for (const id of PANELS) assert.strictEqual(reachable[id], !OPT_IN.includes(id), `${id} reachable=${reachable[id]} by default`);
+      // with every panel enabled, each one fits inside the island and above the dots
+      const all = await js('({ ...API.settings })');
+      win.webContents.send('settings:update', { ...all, disabledFeatures: '' });
+      await sleep(300);
+      const report = await js(`(async () => {
+        const out = [];
+        for (const id of ${JSON.stringify(PANELS)}) {
+          Island.open(id);
+          await new Promise((r) => setTimeout(r, 700));
+          const isl = document.getElementById('island').getBoundingClientRect();
+          const v = document.querySelector('#content > .view').getBoundingClientRect();
+          const d = document.querySelector('.dots').getBoundingClientRect();
+          out.push({ id, selected: Island.selectedId(), contentBottom: Math.round(v.bottom), dotsTop: Math.round(d.top), islandBottom: Math.round(isl.bottom), width: Math.round(v.width), islandW: Math.round(isl.width) });
+        }
+        return out;
+      })()`);
+      const bad = report.filter((r) => r.selected !== r.id || r.contentBottom > r.dotsTop + 1 || r.contentBottom > r.islandBottom + 1 || r.width > r.islandW + 1);
+      assert.strictEqual(bad.length, 0, 'panel problem: ' + JSON.stringify(bad));
+      const fit = await windowFitsIsland();
+      assert(fit.ok, 'window does not fit the open panel: ' + JSON.stringify(fit));
+      // assistant: the real keyboard reaches its text box
+      await js('Island.open("assistant"); 0');
+      await sleep(900);
+      xmouse('move', ...(await screenPoint('.assistant-input')));
+      await sleep(500);
+      xmouse('click');
+      await sleep(600);
+      xmouse('type', 'hello island');
+      await waitFor('assistant text typed', async () => (await js('document.querySelector(".assistant-input").value')).includes('hello island'), 4000);
+      await js('document.querySelector(".assistant-input").blur(); 0');
+      await sleep(300);
+      win.webContents.send('settings:update', all);
+      await js('Island.togglePin(); 0');
+      xmouse('move', 5, 400);
+      await waitFor('island collapsed after the 0.5 panels', async () => !(await js('Island.isExpanded()')), 6000);
+      assert.strictEqual(win.isFocusable(), false, 'window still accepts focus after the assistant closed');
+    });
     await step('mic/camera indicator stays visible while in use and the window fits it', async () => {
       win.webContents.send('privacy:update', { mic: ['Zoom'], cam: ['Zoom'] });
       await sleep(4500); // after the announcement (peek) it settles into the compact indicator
