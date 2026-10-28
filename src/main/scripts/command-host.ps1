@@ -1,20 +1,6 @@
 # Long-lived helper: reads one command per line on stdin, answers with one JSON line on stdout.
-#   <id> playpause | next | prev | seek <seconds> | caps
+#   JSON {id, script, args, command}; one shared process, fixed script allowlist
 $ErrorActionPreference = 'SilentlyContinue'
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public class MediaKeys {
-  [DllImport("user32.dll")] public static extern void keybd_event(byte b, byte s, uint f, UIntPtr e);
-}
-'@
-$null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
-
-$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
-  $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
-})[0]
-
 function Await($op, $type) {
   $task = $asTask.MakeGenericMethod($type).Invoke($null, @($op))
   $null = $task.Wait(4000)
@@ -26,7 +12,26 @@ function Press($vk) {
   [MediaKeys]::keybd_event($vk, 0, 2, [UIntPtr]::Zero)
 }
 
-$manager = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
+function Initialize-Media {
+  if ($script:mediaInitialized) { return }
+  $script:mediaInitialized = $true
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class MediaKeys {
+  [DllImport("user32.dll")] public static extern void keybd_event(byte b, byte s, uint f, UIntPtr e);
+}
+'@
+$null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
+
+$script:asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+  $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+})[0]
+
+$script:manager = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
+}
+
 
 function Reply($id, $ok, $extra) {
   $okText = if ($ok) { 'true' } else { 'false' }
@@ -42,6 +47,7 @@ while ($true) {
     $request = $line | ConvertFrom-Json
     $id = [int]$request.id
     if ($request.script -eq 'media') {
+      Initialize-Media
       $parts = @('id') + ([string]$request.command).Split(' ')
       $cmd = $parts[1]
   $session = $manager.GetCurrentSession()

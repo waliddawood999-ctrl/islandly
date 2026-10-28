@@ -48,6 +48,8 @@ let foregroundApp = { app: '', title: '' };
 let media, clipboardHistory, shelf, calendar, bluetooth, updater, fsWatcher, weather, sysinfo, breaks, midnightTimer;
 let palette, tracker, privacy, github, perf;
 let systemRequested = false;
+let surfaceResting = null;
+const expanded = () => surfaceResting === null ? envelope.h > 150 : !surfaceResting;
 let policy = null;
 const notesStore = jsonStore('notes.json', { todos: [] });
 
@@ -77,7 +79,7 @@ const isIsland = e => !!win && !win.isDestroyed() && e.sender === win.webContent
 const isSettings = e => !!settingsWin && !settingsWin.isDestroyed() && e.sender === settingsWin.webContents && e.senderFrame === settingsWin.webContents.mainFrame;
 function applyActivityPolicy() {
   if (!clipboardHistory || !bluetooth || !sysinfo || !tracker) return;
-  const next = activityPolicy({ hidden: userHidden, fullscreen: fullscreenActive && settings.get().hideFullscreen, expanded: envelope.h > 100,
+  const next = activityPolicy({ hidden: userHidden, fullscreen: fullscreenActive && settings.get().hideFullscreen, expanded: expanded(),
     eco: settings.get().ecoMode, clipboard: settings.get().clipboard, tracking: settings.get().timeTracking });
   if (!policy || next.clipboard !== policy.clipboard || next.clipboardMs !== policy.clipboardMs) next.clipboard ? clipboardHistory.start(next.clipboardMs) : clipboardHistory.stop();
   if (!policy || next.bluetooth !== policy.bluetooth) next.bluetooth ? bluetooth.start() : bluetooth.stop();
@@ -269,6 +271,7 @@ function registerIpc() {
     positionWindow();
     applyActivityPolicy();
   });
+  ipcMain.on('surface:resting', (e, resting) => { if (isIsland(e) && typeof resting === 'boolean') { surfaceResting = resting; applyActivityPolicy(); } });
   ipcMain.on('system:watch', (e, on) => {
     if (isIsland(e) && typeof on === 'boolean') { systemRequested = on; applyActivityPolicy(); }
   });
@@ -299,7 +302,7 @@ function registerIpc() {
     e.sender.startDrag({ files: paths, icon: shelf.iconFor(paths[0]).isEmpty() ? nativeImage.createFromPath(asset('tray.png')) : shelf.iconFor(paths[0]) });
   });
 
-  ipcMain.handle('media:caps', () => media.capabilities(envelope.h > 100 && !userHidden && !fullscreenActive));
+  ipcMain.handle('media:caps', () => media.capabilities(expanded() && !userHidden && !fullscreenActive));
   ipcMain.handle('clipboard:list', () => clipboardHistory.list());
   ipcMain.handle('clipboard:copy', (_e, id, as) => clipboardHistory.copy(id, as));
   ipcMain.handle('clipboard:pin', (_e, id) => clipboardHistory.pin(id));
@@ -468,7 +471,9 @@ app.whenReady().then(() => {
         push('privacy:update', privacy.state);
       }
     }
-    push('settings:update', now);
+    const publicSettings = settings.get();
+    push('settings:update', publicSettings);
+    for (const target of [settingsWin, palette?.win]) if (target && !target.isDestroyed()) target.webContents.send('settings:update', publicSettings);
     if (now.ecoMode !== prev.ecoMode) {
       const payload = { eco: now.ecoMode };
       push('eco:changed', payload);

@@ -1,5 +1,5 @@
 // Microphone / camera in use: Windows records each app's last use in the ConsentStore registry keys.
-// An entry whose LastUsedTimeStop is 0 (and start is not) is using the device right now. Read with the built-in reg.exe.
+// An entry whose LastUsedTimeStop is 0 (and start is not) is using the device right now. Read with native registry APIs and change notifications.
 const { prettyName } = require('./tracker');
 const native = require('../native-perf');
 
