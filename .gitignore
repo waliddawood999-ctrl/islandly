@@ -9,3 +9,5 @@ dev/shots/
 test/__pycache__/
 __pycache__/
 dev/states/*.webm
+dev/fonts/compare/*-*-*.png
+dev/fonts/compare/shots.json
