@@ -423,7 +423,7 @@ app.whenReady().then(() => {
   perf = new PerformanceMonitor({ app, host: commandHost, windows: () => ({ island: win, settings: settingsWin, palette: palette?.win }) });
   applyActivityPolicy();
 
-  if (process.env.ISLANDLY_TEST) global.__islandly = { palette, shelf, tracker, openSettings };
+  if (process.env.ISLANDLY_TEST) global.__islandly = { palette, shelf, tracker, openSettings, cleanup: stopNativeServices };
 
   fsWatcher = watchForeground({
     onFullscreen: (active) => {
@@ -483,6 +483,10 @@ app.whenReady().then(() => {
   screen.on('display-added', positionWindow);
   screen.on('display-removed', positionWindow);
 });
+
+function stopNativeServices() { privacy?.stop(); media?.stop(); perf?.stop(); commandHost.shutdown(true); }
+app.on('before-quit', stopNativeServices);
+process.on('exit', stopNativeServices);
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();

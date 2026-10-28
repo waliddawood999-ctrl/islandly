@@ -54,5 +54,7 @@ app.whenReady().then(async () => {
   console.log('Process breakdown: ' + JSON.stringify({ idle: processAverages(idle), music: processAverages(music) }));
   fs.writeFileSync(output, JSON.stringify(result, null, 2));
   console.log(JSON.stringify({ idle: { mb: idle.avgMB, cpu: idle.avgCPU, launchesPerMinute: idle.externalLaunchesPerMinute }, musicFixture: { mb: music.avgMB, cpu: music.avgCPU, launchesPerMinute: music.externalLaunchesPerMinute } }));
+  global.__islandly?.cleanup?.();
+  await sleep(100);
   app.exit(0);
 }).catch(err => { console.error(err); app.exit(1); });

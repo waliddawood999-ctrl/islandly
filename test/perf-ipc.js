@@ -30,5 +30,6 @@ app.whenReady().then(async () => {
   assert.match(result, /Unauthorized/);
   foreign.destroy(); settings.destroy();
   console.log('real Electron perf IPC: scoped get/watch, 5s update, Eco change, hide cleanup and foreign-sender rejection passed');
+  global.__islandly?.cleanup?.(); await wait(100);
   app.exit(0);
 }).catch(err => { console.error(err); app.exit(1); });
