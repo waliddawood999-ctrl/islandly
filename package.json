@@ -17,5 +17,8 @@
   "optionalDependencies": {
     "@coooookies/windows-smtc-monitor": "^1.0.12"
   },
-  "islandlyBase": 1
+  "islandlyBase": 1,
+  "dependencies": {
+    "koffi": "^2.16.3"
+  }
 }

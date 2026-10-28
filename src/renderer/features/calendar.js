@@ -21,7 +21,7 @@ Island.register({
     this.peekEl = h('div', { class: 'view calendar-peek' }, h('span', { class: 'n-icon' }, html(ICONS.calendar)), h('div', { class: 'm-text' }, this.pTitle, this.pSub), this.pJoin);
 
     // expanded
-    this.rows = h('div', { class: 'cal-list' });
+    this.rows = h('div', { class: 'cal-list stagger' });
     this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-title lg' }), h('div', { class: 'm-artist' }), h('button', { class: 'chip', onclick: () => API.send('settings:open') }, t('openSettings')));
     this.expandedEl = h('div', { class: 'view auto panel' }, h('div', { class: 'p-head' }, h('div', { class: 'p-title' }, t('calendar'))), this.rows, this.empty);
 

@@ -6,13 +6,11 @@ const { ClipboardHistory } = require('./clipboard');
 const { Shelf } = require('./shelf');
 const { CalendarFeed } = require('./calendar');
 const { BluetoothWatcher } = require('./bluetooth');
-const { watchFullscreen } = require('./fullscreen');
+const { watchForeground } = require('./fullscreen');
 const { Updater, markBootOk } = require('./updater');
 const { runOnce } = require('./ps');
 const { logError } = require('./log');
 
-const WIN_W = 640;
-const WIN_H = 320;
 const isDev = process.argv.includes('--dev');
 const info = global.__ISLANDLY || {
   root: path.join(__dirname, '..', '..'),
@@ -29,10 +27,9 @@ let win = null;
 let tray = null;
 let settingsWin = null;
 let userHidden = false;
-let islandRect = null; // island bounds in CSS pixels, reported by the renderer
-let pointerInside = false;
-let pointerTimer = null;
+let envelope = { w: 160, h: 60 }; // the size the island needs right now, in CSS pixels (reported by the renderer)
 let fullscreenActive = false;
+let foregroundApp = { app: '', title: '' };
 let media, clipboardHistory, shelf, calendar, bluetooth, updater, fsWatcher;
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -43,12 +40,18 @@ const push = (channel, payload) => {
 
 // ---------------------------------------------------------------- window
 
+const zoom = () => Number(settings.get().scale) || 0.8;
+
+/** Size the window to the island's envelope and keep it anchored at the top of the primary display. */
 function positionWindow() {
-  if (!win) return;
+  if (!win || win.isDestroyed()) return;
   const { bounds } = screen.getPrimaryDisplay();
+  const z = zoom();
+  const width = Math.min(bounds.width, Math.ceil(envelope.w * z));
+  const height = Math.min(bounds.height, Math.ceil(envelope.h * z));
   const pos = settings.get().position;
-  const x = pos === 'left' ? bounds.x + 16 : pos === 'right' ? bounds.x + bounds.width - WIN_W - 16 : Math.round(bounds.x + (bounds.width - WIN_W) / 2);
-  win.setBounds({ x, y: bounds.y, width: WIN_W, height: WIN_H });
+  const x = pos === 'left' ? bounds.x + 16 : pos === 'right' ? bounds.x + bounds.width - width - 16 : Math.round(bounds.x + (bounds.width - width) / 2);
+  win.setBounds({ x, y: bounds.y, width, height });
 }
 
 function applyVisibility() {
@@ -59,34 +62,10 @@ function applyVisibility() {
   buildTrayMenu();
 }
 
-const zoom = () => Number(settings.get().scale) || 0.85;
-
-/**
- * Hover detection lives here, not in the page: every 40 ms the cursor position is compared with the island's
- * rectangle. While the cursor is over it the window accepts clicks; everywhere else clicks fall through to the
- * app underneath. This does not depend on Windows forwarding mouse messages to a click-through window.
- */
-function watchPointer() {
-  pointerTimer = setInterval(() => {
-    if (!win || win.isDestroyed() || !win.isVisible() || !islandRect) return;
-    const p = screen.getCursorScreenPoint();
-    const b = win.getBounds();
-    const z = zoom();
-    const lx = p.x - b.x;
-    const ly = p.y - b.y;
-    const r = islandRect;
-    const inside = lx >= (r.x - r.padX) * z && lx <= (r.x + r.w + r.padX) * z && ly >= (r.y - r.padY) * z && ly <= (r.y + r.h + r.padY) * z;
-    if (inside === pointerInside) return;
-    pointerInside = inside;
-    win.setIgnoreMouseEvents(!inside, { forward: true });
-    push('pointer:inside', inside);
-  }, 40);
-}
-
 function createWindow() {
   win = new BrowserWindow({
-    width: WIN_W,
-    height: WIN_H,
+    width: 200,
+    height: 60,
     frame: false,
     transparent: true,
     resizable: false,
@@ -108,8 +87,6 @@ function createWindow() {
   positionWindow();
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  // Click-through by default; the renderer turns it off while the pointer is over the island.
-  win.setIgnoreMouseEvents(true, { forward: true });
   win.loadFile(path.join(info.root, 'src', 'renderer', 'index.html'));
   win.once('ready-to-show', () => applyVisibility());
   win.webContents.on('did-finish-load', () => {
@@ -231,8 +208,10 @@ async function stashFromExplorer() {
 
 function registerIpc() {
   ipcMain.on('settings:get', (e) => (e.returnValue = settings.get()));
-  ipcMain.on('island:rect', (_e, rect) => {
-    if (rect && [rect.x, rect.y, rect.w, rect.h].every(Number.isFinite)) islandRect = { padX: 6, padY: 6, ...rect };
+  ipcMain.on('island:envelope', (_e, env) => {
+    if (!env || !Number.isFinite(env.w) || !Number.isFinite(env.h)) return;
+    envelope = { w: Math.max(40, Math.min(1200, env.w)), h: Math.max(10, Math.min(800, env.h)) };
+    positionWindow();
   });
   ipcMain.on('log:error', (_e, text) => logError('renderer', String(text).slice(0, 2000)));
   ipcMain.on('media:control', (_e, action, value) => media.control(action, value));
@@ -286,7 +265,6 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   registerIpc();
-  watchPointer();
 
   media = new MediaBridge((payload) => {
     if (payload && payload.type === 'unavailable') logError('media unavailable:', payload.reason);
@@ -312,9 +290,15 @@ app.whenReady().then(() => {
   updater = new Updater((version) => push('update:ready', { version }));
   if (settings.get().updates) updater.start();
 
-  fsWatcher = watchFullscreen((active) => {
-    fullscreenActive = active;
-    applyVisibility();
+  fsWatcher = watchForeground({
+    onFullscreen: (active) => {
+      fullscreenActive = active;
+      applyVisibility();
+    },
+    onApp: (fg) => {
+      foregroundApp = fg;
+      push('foreground', fg);
+    },
   });
 
   const send = (cmd) => push('shortcut', cmd);
@@ -324,7 +308,10 @@ app.whenReady().then(() => {
 
   settings.onChange((now, prev) => {
     if (now.position !== prev.position) positionWindow();
-    if (now.scale !== prev.scale && win) win.webContents.setZoomFactor(zoom());
+    if (now.scale !== prev.scale && win) {
+      win.webContents.setZoomFactor(zoom());
+      positionWindow();
+    }
     if (now.icsUrl !== prev.icsUrl) calendar.configure(now.icsUrl);
     if (now.clipboard !== prev.clipboard) now.clipboard ? clipboardHistory.start() : clipboardHistory.stop();
     if (now.hideFullscreen !== prev.hideFullscreen) applyVisibility();
@@ -341,7 +328,6 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory].forEach((m) => m && m.stop && m.stop());
-  clearInterval(pointerTimer);
 });
 
 // Having this listener stops Electron from quitting when the settings window closes; only the tray menu quits.

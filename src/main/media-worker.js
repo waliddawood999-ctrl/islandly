@@ -39,6 +39,9 @@ function toPayload() {
     playing: s.playback.playbackStatus === PLAYING,
     position: s.timeline.position || 0,
     duration: s.timeline.duration || 0,
+    // When Windows last updated the position (ms). Browsers often only update it on play/pause/seek,
+    // so the position must be projected forward from this moment, not from when we received it.
+    updatedAt: Number(s.lastUpdatedTime) || 0,
     sentAt: Date.now(),
     trackChanged,
     thumb: lastThumb,

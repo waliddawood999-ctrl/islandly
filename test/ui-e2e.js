@@ -11,13 +11,6 @@ const { app, BrowserWindow } = require('electron');
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'islandly-e2e-'));
 app.setPath('userData', userData);
 
-// Spies: what the main process was asked to do.
-const ignoreCalls = [];
-const origIgnore = BrowserWindow.prototype.setIgnoreMouseEvents;
-BrowserWindow.prototype.setIgnoreMouseEvents = function (...a) {
-  ignoreCalls.push(a[0]);
-  return origIgnore.apply(this, a);
-};
 const { MediaBridge } = require('../src/main/media');
 const controls = [];
 MediaBridge.prototype.control = function (action, value) {
@@ -70,17 +63,32 @@ app.whenReady().then(() =>
     win.webContents.send('media:update', { type: 'media', active: true, title: 'Test track', artist: 'Tester', playing: true, position: 30, duration: 200, sentAt: Date.now(), trackChanged: true, thumb: art });
     await sleep(400);
 
-    await step('island reports its rectangle and is click-through while the cursor is away', async () => {
-      xmouse('move', 5, 5);
-      await sleep(300);
-      assert.strictEqual(ignoreCalls.at(-1) === undefined || ignoreCalls.at(-1) === true, true, 'window must ignore clicks when the cursor is away: ' + ignoreCalls.join());
+    // The window must hug the island: nothing outside it may be covered.
+    const windowFitsIsland = async () => {
+      const b = win.getBounds();
+      const z = win.webContents.getZoomFactor();
+      const r = await js(`(() => { const b = document.getElementById('island').getBoundingClientRect(); return { w: b.width, h: b.bottom }; })()`);
+      const slackW = b.width - r.w * z;
+      const slackH = b.height - r.h * z;
+      return { b, slackW, slackH, ok: slackW >= -1 && slackH >= -1 && slackW <= 60 && slackH <= 40 };
+    };
+
+    await step('when idle the window is only as big as the thin line (does not cover tabs or pages)', async () => {
+      xmouse('move', 5, 400);
+      await js('Island.configure({ autoHide: "always" }); 0');
+      await waitFor('thin line', () => js('Island.isSliver()'), 6000);
+      await sleep(800);
+      const fit = await windowFitsIsland();
+      assert(fit.ok && fit.b.width < 160 && fit.b.height < 40, 'idle window too big: ' + JSON.stringify(fit));
+      await js('Island.configure({ autoHide: "auto" }); 0');
     });
 
-    await step('hovering the island makes the window accept clicks and opens the panel', async () => {
+    await step('hovering the island opens the panel and the window grows to fit it', async () => {
       await hoverIsland();
-      await waitFor('window interactive', () => ignoreCalls.at(-1) === false);
       await waitFor('panel open', () => js('Island.isExpanded()'));
-      await sleep(500);
+      await sleep(900);
+      const fit = await windowFitsIsland();
+      assert(fit.ok, 'window does not fit the open panel: ' + JSON.stringify(fit));
     });
 
     await step('play/pause button click reaches the app', async () => {
@@ -174,17 +182,20 @@ app.whenReady().then(() =>
       assert.strictEqual(bad.length, 0, 'overlap: ' + JSON.stringify(bad));
     });
 
-    await step('moving away closes the island and the window lets clicks through again', async () => {
+    await step('moving away closes the island and the window shrinks back', async () => {
       await js('Island.open("music"); Island.togglePin(); 0');
-      xmouse('move', 5, 5);
-      await waitFor('window click-through', () => ignoreCalls.at(-1) === true);
+      xmouse('move', 5, 400);
       await waitFor('island collapsed', async () => !(await js('Island.isExpanded()')), 6000);
+      await sleep(900);
+      const fit = await windowFitsIsland();
+      assert(fit.ok, 'window not trimmed after closing: ' + JSON.stringify(fit));
     });
 
     await step('pushing the cursor against the top screen edge opens the island and keeps it open', async () => {
       await js('Island.configure({ autoHide: "always" }); 0');
       xmouse('move', 5, 400);
       await waitFor('island back to a thin line', () => js('Island.isSliver()'), 6000);
+      await sleep(800);
       const [x] = await screenPoint('#island');
       xmouse('move', x, 0);
       await waitFor('opens from the top edge', () => js('Island.isExpanded()'), 3000);

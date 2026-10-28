@@ -2,6 +2,7 @@ const path = require('path');
 const readline = require('readline');
 const { Worker } = require('worker_threads');
 const { spawnScript, isWindows } = require('./ps');
+const win32 = require('./win32');
 
 /**
  * "Now playing" comes from Windows (SMTC) through a worker thread.
@@ -16,6 +17,7 @@ class MediaBridge {
     this.ps = null;
     this.nextId = 1;
     this.pending = new Map();
+    this.ready = false; // true once the helper has answered once (PowerShell needs a moment to start)
   }
 
   start() {
@@ -26,6 +28,7 @@ class MediaBridge {
     this.worker = new Worker(path.join(__dirname, 'media-worker.js'), { workerData: { baseRoot: this.baseRoot } });
     this.worker.on('message', (m) => this.onUpdate(m));
     this.worker.on('error', (err) => this.onUpdate({ type: 'unavailable', reason: String(err) }));
+    setTimeout(() => this.warmUp(), 4000);
   }
 
   stop() {
@@ -39,12 +42,14 @@ class MediaBridge {
     if (!this.ps) return null;
     this.ps.on('exit', () => {
       this.ps = null;
+      this.ready = false;
       for (const resolve of this.pending.values()) resolve({ ok: false });
       this.pending.clear();
     });
     readline.createInterface({ input: this.ps.stdout }).on('line', (line) => {
       try {
         const msg = JSON.parse(line);
+        this.ready = true;
         const resolve = this.pending.get(msg.id);
         if (resolve) {
           this.pending.delete(msg.id);
@@ -59,7 +64,16 @@ class MediaBridge {
 
   send(command) {
     const ps = this.helper();
-    if (!ps) return Promise.resolve({ ok: false });
+    // Until the helper is up (or if it cannot start), play/pause/next/previous go straight to the media keys,
+    // so the very first click works instantly and a slow helper can never cause a double toggle.
+    const isKey = ['playpause', 'next', 'prev'].includes(command);
+    if (!ps || (!this.ready && isKey)) {
+      return Promise.resolve({ ok: isKey && win32.mediaKey(command), fallback: true });
+    }
+    return this.ask(ps, command);
+  }
+
+  ask(ps, command) {
     const id = this.nextId++;
     return new Promise((resolve) => {
       this.pending.set(id, resolve);
@@ -68,6 +82,12 @@ class MediaBridge {
         if (this.pending.delete(id)) resolve({ ok: false });
       }, 6000);
     });
+  }
+
+  /** Start the helper early so it is ready by the time the user clicks something. */
+  warmUp() {
+    const ps = this.helper();
+    if (ps) this.ask(ps, 'caps');
   }
 
   control(action, value) {

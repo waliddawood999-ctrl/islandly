@@ -1,14 +1,27 @@
-const readline = require('readline');
-const { spawnScript } = require('./ps');
+const win32 = require('./win32');
 
-/** Calls onChange(true/false) when a fullscreen window (video, game) takes over the screen. */
-function watchFullscreen(onChange) {
-  const child = spawnScript('fg-watch.ps1');
-  if (!child) return { stop() {} };
-  readline.createInterface({ input: child.stdout }).on('line', (line) => {
-    if (line === '1' || line === '0') onChange(line === '1');
-  });
-  return { stop: () => child.kill() };
+/**
+ * Polls the foreground window once a second (a few cheap native calls, no extra process) and reports:
+ *   onFullscreen(true|false) when a fullscreen video/game starts or stops
+ *   onApp({ app, title })    when the active app or window title changes (time tracker, context)
+ */
+function watchForeground({ onFullscreen, onApp, intervalMs = 1000 }) {
+  if (!win32.available()) return { stop() {} };
+  let lastFull = null;
+  let lastKey = '';
+  const timer = setInterval(() => {
+    const fg = win32.foreground();
+    if (fg.fullscreen !== lastFull) {
+      lastFull = fg.fullscreen;
+      onFullscreen(fg.fullscreen);
+    }
+    const key = fg.app + '|' + fg.title;
+    if (key !== lastKey) {
+      lastKey = key;
+      if (onApp) onApp({ app: fg.app, title: fg.title });
+    }
+  }, intervalMs);
+  return { stop: () => clearInterval(timer) };
 }
 
-module.exports = { watchFullscreen };
+module.exports = { watchForeground };

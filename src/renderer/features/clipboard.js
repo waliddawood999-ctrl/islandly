@@ -6,7 +6,7 @@ Island.register({
   flash: 0,
 
   init() {
-    this.list = h('div', { class: 'cl-list' });
+    this.list = h('div', { class: 'cl-list stagger' });
     this.title = h('div', { class: 'p-title' }, t('clipboard'));
     this.clearBtn = h('button', { class: 'chip', onclick: () => API.call('clipboard:clear') }, t('clear'));
     this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-title lg' }, t('clipEmpty')), h('div', { class: 'm-artist' }, t('clipEmptySub')));

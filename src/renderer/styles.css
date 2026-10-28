@@ -33,9 +33,12 @@ button:disabled { opacity: 0.3; pointer-events: none; }
   transform: translateX(-50%);
   background: #000;
   overflow: hidden;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.09), 0 14px 36px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(180deg, #0c0c10 0%, #000 60%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 24px rgba(0, 0, 0, 0.45);
   will-change: width, height, top;
+  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2), background 0.3s;
 }
+#island.hint { transform: translateX(-50%) scale(1.06); }
 /* auto-hide: a thin, findable line at the very top edge */
 #island.sliver { background: rgba(255, 255, 255, 0.3); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
 #island.sliver:has(.sliver.active) { background: var(--accent); }
@@ -45,9 +48,28 @@ button:disabled { opacity: 0.3; pointer-events: none; }
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  transition: opacity 0.12s ease, filter 0.12s ease;
+  transition: opacity 0.11s ease, filter 0.11s ease, transform 0.11s ease;
 }
-#content.out { opacity: 0; filter: blur(6px); }
+#content.out { opacity: 0; filter: blur(6px); transform: translateX(-50%) scale(0.97); }
+
+/* entrance: the new view fades and scales in, its lists cascade in one after another */
+.view { transform-origin: 50% 0; }
+.view.enter { animation: viewIn 0.34s cubic-bezier(0.2, 0.9, 0.25, 1.12) both; }
+@keyframes viewIn { from { opacity: 0; transform: scale(0.94); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+.view.enter .stagger > * { animation: itemIn 0.38s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.view.enter .stagger > *:nth-child(2) { animation-delay: 0.04s; }
+.view.enter .stagger > *:nth-child(3) { animation-delay: 0.08s; }
+.view.enter .stagger > *:nth-child(4) { animation-delay: 0.12s; }
+.view.enter .stagger > *:nth-child(5) { animation-delay: 0.16s; }
+.view.enter .stagger > *:nth-child(n + 6) { animation-delay: 0.2s; }
+@keyframes itemIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+#island.sliver:has(.sliver.active) { box-shadow: 0 0 12px rgba(167, 139, 250, 0.7); }
+
+@media (prefers-reduced-motion: reduce) {
+  .view.enter, .view.enter .stagger > * { animation: none; }
+  #content { transition: none; }
+  #island { transition: none; }
+}
 
 .view { position: absolute; inset: 0; display: flex; align-items: center; }
 .view.sliver { display: block; }

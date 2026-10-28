@@ -14,7 +14,7 @@ Island.register({
     this.state = h('div', { class: 'b-state' });
     this.eta = h('div', { class: 'b-eta' });
     this.tip = h('div', { class: 'tip' }, t('tip80'));
-    this.devs = h('div', { class: 'devs' });
+    this.devs = h('div', { class: 'devs stagger' });
     this.expandedEl = h(
       'div',
       { class: 'view auto battery-expanded' },

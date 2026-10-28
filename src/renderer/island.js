@@ -21,8 +21,9 @@ const Island = (() => {
   const TOP = 8; // gap above the island
   const AUTO_HIDE_MS = 5000;
   const HOVER_DWELL_MS = 280; // pointer must rest on the island before it opens (avoids accidental opens)
-  const STIFFNESS = 320;
-  const DAMPING = 26; // ~0.73 damping ratio: a touch of overshoot, settles fast
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const STIFFNESS = reducedMotion ? 900 : 320;
+  const DAMPING = reducedMotion ? 60 : 26; // ~0.73 damping ratio: a touch of overshoot, settles fast
 
   const spring = (x) => ({ x, v: 0, t: x });
   const S = { w: spring(90), h: spring(22), y: spring(TOP) };
@@ -48,18 +49,17 @@ const Island = (() => {
   document.body.appendChild(meter);
   const sliverEl = h('div', { class: 'view sliver' });
 
-  // Tell the main process where the island is, so it can decide when the window should accept clicks.
-  let lastRect = '';
-  function reportRect() {
-    const r = el.getBoundingClientRect();
-    const thin = !!(current && current.sliver);
-    // The hit area starts at the very top edge, so a cursor pushed against the screen edge still counts as "on the island".
-    const rect = { x: Math.round(r.left), y: 0, w: Math.round(r.width), h: Math.round(r.bottom), padX: thin ? 14 : 6, padY: thin ? 8 : 6 };
-    const key = JSON.stringify(rect);
-    if (key !== lastRect) {
-      lastRect = key;
-      API.send('island:rect', rect);
-    }
+  // The window is only as big as the island (plus room for its shadow), so it never covers anything else.
+  // Before an animation it grows to fit both the old and new size; once the spring settles it is trimmed.
+  const GUTTER = 18;
+  const OVERSHOOT = 1.08;
+  let lastEnvelope = '';
+  function sendEnvelope(w, hgt, y) {
+    const env = { w: Math.ceil(w + 2 * GUTTER), h: Math.ceil(y + hgt + GUTTER) };
+    const key = env.w + 'x' + env.h;
+    if (key === lastEnvelope) return;
+    lastEnvelope = key;
+    API.send('island:envelope', env);
   }
 
   function apply() {
@@ -67,7 +67,6 @@ const Island = (() => {
     el.style.height = S.h.x + 'px';
     el.style.top = S.y.x + 'px';
     el.style.borderRadius = Math.min(S.h.x / 2, 34) + 'px';
-    reportRect();
   }
 
   /** Natural height of a view: panels (v.auto) are measured, small pills use their fixed height. */
@@ -94,10 +93,15 @@ const Island = (() => {
       }
     }
     apply();
-    raf = moving ? requestAnimationFrame(step) : 0;
+    if (moving) raf = requestAnimationFrame(step);
+    else {
+      raf = 0;
+      sendEnvelope(S.w.t, S.h.t, S.y.t); // trim the window to the final size
+    }
   }
 
   function setTarget(w, hgt, y) {
+    sendEnvelope(Math.max(S.w.x, w) * OVERSHOOT, Math.max(S.h.x, hgt) * OVERSHOOT, Math.max(S.y.x, y));
     S.w.t = w;
     S.h.t = hgt;
     S.y.t = y;
@@ -182,6 +186,10 @@ const Island = (() => {
     }
     stage.replaceChildren(...kids);
     el.classList.toggle('sliver', !!v.sliver);
+    // replay the entrance animation (fade + scale + staggered children)
+    v.el.classList.remove('enter');
+    void v.el.offsetWidth;
+    v.el.classList.add('enter');
   }
 
   function render() {
@@ -249,10 +257,13 @@ const Island = (() => {
   function setHover(value) {
     pointer = value;
     clearTimeout(hoverTimer);
+    // immediate feedback: the island swells slightly while it waits to open
+    el.classList.toggle('hint', value && !(hovered || pinned));
     if (value) {
       clearTimeout(pinTimer);
       hoverTimer = setTimeout(() => {
         hovered = true;
+        el.classList.remove('hint');
         render();
       }, HOVER_DWELL_MS);
     } else {
@@ -312,6 +323,7 @@ const Island = (() => {
   });
 
   apply();
+  sendEnvelope(S.w.x, S.h.x, S.y.x);
 
   return {
     el,

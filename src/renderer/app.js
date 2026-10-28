@@ -1,7 +1,8 @@
 // Wiring: pointer handling, drag & drop, shortcuts, settings, updates.
 (() => {
-  // Hover is decided in the main process (it watches the cursor) and arrives here.
-  API.on('pointer:inside', (inside) => Island.setHover(inside));
+  // The window is only as large as the island plus a small margin, so "pointer inside the window" is the hover.
+  document.documentElement.addEventListener('mouseenter', () => Island.setHover(true));
+  document.documentElement.addEventListener('mouseleave', () => Island.setHover(false));
 
   // Report script errors to the log file so problems can be diagnosed.
   window.addEventListener('error', (e) => API.send('log:error', `${e.message} (${e.filename}:${e.lineno})`));

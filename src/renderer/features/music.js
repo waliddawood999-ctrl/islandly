@@ -38,7 +38,7 @@ Island.register({
     this.playBtn = h('button', { class: 'ctl main', onclick: () => this.control('playpause') });
     this.fwdBtn = h('button', { class: 'ctl', onclick: () => this.skip(10) }, html(ICONS.fwd10));
     this.nextBtn = this.button('next', ICONS.next, 'next');
-    this.ctls = h('div', { class: 'ctls', dir: 'ltr' }, this.prevBtn, this.backBtn, this.playBtn, this.fwdBtn, this.nextBtn);
+    this.ctls = h('div', { class: 'ctls stagger', dir: 'ltr' }, this.prevBtn, this.backBtn, this.playBtn, this.fwdBtn, this.nextBtn);
     this.empty = h('div', { class: 'm-empty' }, h('div', { class: 'm-title lg' }, t('nothingPlaying')), h('div', { class: 'm-artist' }, t('openPlayer')));
     this.body = h('div', { class: 'm-body' }, this.title, this.artist, this.bar, h('div', { class: 'times' }, this.posLabel, this.durLabel), this.ctls);
     this.expandedEl = h('div', { class: 'view auto music-expanded' }, this.bg, this.art, this.body, this.empty);
@@ -58,6 +58,7 @@ Island.register({
     if (action === 'playpause' && this.media) {
       this.media.position = this.position();
       this.media.sentAt = Date.now();
+      this.media.updatedAt = 0;
       this.media.playing = !this.media.playing;
       this.paint();
     }
@@ -69,6 +70,7 @@ Island.register({
     const s = Math.max(0, Math.min(m.duration, seconds));
     m.position = s;
     m.sentAt = Date.now();
+    m.updatedAt = 0;
     API.send('media:control', 'seek', s);
     this.updateProgress();
   },
@@ -160,11 +162,19 @@ Island.register({
     el.classList.toggle('empty', !thumb);
   },
 
+  /** Moment the reported position was true: Windows' own timestamp when it is plausible, else when it arrived. */
+  anchor() {
+    const m = this.media;
+    const u = m.updatedAt;
+    const plausible = u && u <= m.sentAt + 2000 && m.sentAt - u < Math.max(0, (m.duration - m.position) * 1000);
+    return plausible ? u : m.sentAt;
+  },
+
   position() {
     const m = this.media;
     if (!m) return 0;
-    const elapsed = m.playing ? (Date.now() - m.sentAt) / 1000 : 0;
-    return Math.min(m.duration || Infinity, m.position + elapsed);
+    const elapsed = m.playing ? Math.max(0, (Date.now() - this.anchor()) / 1000) : 0;
+    return Math.max(0, Math.min(m.duration || Infinity, m.position + elapsed));
   },
 
   paint() {

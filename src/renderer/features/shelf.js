@@ -11,7 +11,7 @@ Island.register({
     this.title = h('div', { class: 'p-title' }, t('shelf'));
     this.count = h('span', { class: 'count' });
     this.clearBtn = h('button', { class: 'chip', onclick: () => this.clear() }, t('clearAll'));
-    this.strip = h('div', { class: 'sh-strip scroll' });
+    this.strip = h('div', { class: 'sh-strip scroll stagger' });
     this.empty = h('div', { class: 'sh-empty' }, h('div', { class: 'm-title lg' }, t('shelfEmpty')), h('div', { class: 'm-artist' }, t('shelfEmptySub')));
     this.expandedEl = h('div', { class: 'view auto panel shelf' }, h('div', { class: 'p-head' }, h('div', { class: 'p-title-wrap' }, this.title, this.count), this.clearBtn), this.strip, this.empty);
 
