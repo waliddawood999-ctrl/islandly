@@ -489,8 +489,8 @@ const Island = (() => {
       compactKey = null;
       render();
     }
-    if (opts.surfaceMode) {
-      surfaceMode = opts.surfaceMode;
+    if (opts.islandMode) {
+      islandMode = opts.islandMode;
       applyTint();
     }
   }
@@ -531,7 +531,7 @@ const Island = (() => {
   // ------------------------------------------------------------------ tint ("over the page" mode)
   // While resting (compact or the thin line) the pill takes a tone of the page under it, so it blends in.
   // Expanded panels and alerts always use the dark glass, so their text stays readable.
-  let surfaceMode = (window.islandAPI && window.islandAPI.settings.surfaceMode) || 'overlay';
+  let islandMode = (window.islandAPI && window.islandAPI.settings.islandMode) || 'overlay';
   let tint = null;
   function setTint(rgb) {
     tint = rgb && [rgb.r, rgb.g, rgb.b].every(Number.isFinite) ? rgb : null;
@@ -539,7 +539,7 @@ const Island = (() => {
   }
   function applyTint() {
     const resting = current && (current.mode === 'compact' || current.mode === 'sliver');
-    const on = !!(tint && resting && surfaceMode === 'overlay');
+    const on = !!(tint && resting && islandMode === 'overlay');
     el.classList.toggle('tinted', on);
     if (!on) return;
     // 45% page colour over the dark glass; light results switch the text to dark.

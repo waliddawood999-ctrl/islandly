@@ -72,7 +72,7 @@
     } catch (_) {
       /* settings object from the preload may be read-only; the next reload picks changes up */
     }
-    Island.configure({ autoHide: s.autoHide, surfaceMode: s.surfaceMode });
+    Island.configure({ autoHide: s.autoHide, islandMode: s.islandMode });
     applyMaterial(s.materialEffective || s.material); // materialEffective: what main actually applied (contract §2.11)
     Island.render();
   });

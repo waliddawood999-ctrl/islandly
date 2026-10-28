@@ -41,7 +41,7 @@ await page.addInitScript(
     const handlers = {};
     window.__emit = (ch, payload) => handlers[ch] && handlers[ch](payload);
     window.islandAPI = {
-      settings: { lang, autoHide: 'never', position: 'center', surfaceMode: 'overlay' },
+      settings: { lang, autoHide: 'never', position: 'center', islandMode: 'overlay' },
       call: (ch, ...args) => {
         window.__sent.push(['call', ch, ...args]);
         if (ch === 'media:caps') return Promise.resolve({ ok: true, next: true, prev: true, seek: true, toggle: true });
