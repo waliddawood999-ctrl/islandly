@@ -21,6 +21,8 @@ jobs:
       - run: npm test
       - name: Native notification and shared PowerShell protocol
         run: node test/perf-native.js
+      - name: Scoped performance IPC and Eco events
+        run: npx electron test/perf-ipc.js
       - name: Baseline and current metrics
         shell: pwsh
         run: |
@@ -36,7 +38,11 @@ jobs:
           $env:ISLANDLY_PERF_OUTPUT = "$pwd/perf-after.json"
           npx electron test/perf-probe.js
           if ($LASTEXITCODE -ne 0) { throw 'Current probe failed' }
-          foreach ($file in @('perf-before.json','perf-after.json')) {
+          $env:ISLANDLY_PERF_GPU_OFF = '1'
+          $env:ISLANDLY_PERF_OUTPUT = "$pwd/perf-gpu-off.json"
+          npx electron test/perf-probe.js
+          if ($LASTEXITCODE -ne 0) { throw 'GPU-off comparison probe failed' }
+          foreach ($file in @('perf-before.json','perf-after.json','perf-gpu-off.json')) {
             $p = Get-Content $file -Raw | ConvertFrom-Json
             "$file idle: $($p.idle.avgMB) MB; CPU $($p.idle.avgCPU)%; launches/min $($p.idle.externalLaunchesPerMinute)" >> $env:GITHUB_STEP_SUMMARY
             "$file music fixture: $($p.music.avgMB) MB; CPU $($p.music.avgCPU)%" >> $env:GITHUB_STEP_SUMMARY

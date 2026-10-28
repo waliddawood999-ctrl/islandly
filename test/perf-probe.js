@@ -46,6 +46,7 @@ async function measure(mode) {
 }
 app.whenReady().then(async () => {
   await sleep(15000); // keep startup costs separate from the steady-state window
+  if (!global.__islandly) throw Error('Application startup did not complete');
   const idle = await measure('idle');
   const music = await measure('music-fixture');
   const processAverages = phase => [...new Set(phase.samples.flatMap(s => s.processes.map(p => p.type)))].map(type => ({ type, mb: phase.samples.reduce((sum, s) => sum + s.processes.filter(p => p.type === type).reduce((sum, p) => sum + p.mb, 0), 0) / phase.samples.length }));

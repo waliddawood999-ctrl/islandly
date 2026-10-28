@@ -85,10 +85,19 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS ' + name
     callback(null, 0); assert.equal(changed, 1); assert.equal(notifications, 2);
     stop(); assert.equal(changed, 1); assert.equal(closes, 2);
   });
-  await test('calendar does not load ICS until refresh parses a feed; Anthropic remains lazy', () => {
-    assert(!Object.keys(require.cache).some(file => file.endsWith('/@anthropic-ai/sdk/index.js')));
-    const text = fs.readFileSync(path.join(__dirname, '../src/main/calendar.js'), 'utf8');
-    assert(!/^const.*require\('\.\/ics'\)/m.test(text));
+  await test('calendar defers parsing until a response arrives and optional service pause retains configuration', async () => {
+    const parser = require.resolve('../src/main/ics'); delete require.cache[parser];
+    Module._load = function(id, ...args) {
+      if (id === 'electron') return { net: { fetch: async () => new Response('BEGIN:VCALENDAR\r\nEND:VCALENDAR') } };
+      return original.call(this, id, ...args);
+    };
+    const { CalendarFeed } = require('../src/main/calendar');
+    Module._load = original;
+    assert(!require.cache[parser]);
+    const feed = new CalendarFeed(() => {}); feed.url = 'https://fixture.invalid/calendar';
+    await feed.refresh(); assert(require.cache[parser]);
+    feed.setPaused(true); assert.equal(feed.timer, null); assert.equal(feed.url, 'https://fixture.invalid/calendar');
+    feed.setPaused(false); assert(feed.timer); feed.stop();
   });
   console.log(`${passed} T9 regressions passed`);
 })().catch(err => { console.error(err); process.exitCode = 1; }).finally(() => { native.clipboardSequence = originalSequence; });
