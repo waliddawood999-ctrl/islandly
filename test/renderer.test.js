@@ -153,6 +153,19 @@ const dom = new JSDOM(fs.readFileSync(path.join(root, "index.html"), "utf8"), {
     { id: "job", label: "Build", status: "running", progress: 50 },
   ]);
   run(
+    "const originalContext = Island.setContext; Island.setContext = id => { window.contextPanel = id; return originalContext(id); };",
+  );
+  emit("foreground", { app: "code.exe" });
+  assert.equal(
+    w.contextPanel,
+    "jobs",
+    "running developer jobs become the context panel",
+  );
+  emit("foreground", { app: "chrome" });
+  assert.equal(w.contextPanel, "clipboard");
+  emit("foreground", { app: "Teams" });
+  assert.equal(w.contextPanel, "calendar");
+  run(
     'Island.feature("timer").setMinutes(10);Island.feature("timer").start();Island.feature("timer").persist();',
   );
   assert(JSON.parse(w.localStorage.getItem("islandly-timer")).running);

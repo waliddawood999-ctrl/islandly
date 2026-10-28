@@ -48,19 +48,35 @@
   // Context: the panel that fits the app you are using opens first on hover (unless something urgent is showing).
   const CONTEXT = [
     [/^(zoom|teams|ms-teams|outlook|olk|webex|slack)$/, "calendar"],
-    [/^(explorer)$/, "shelf"],
-    [
-      /^(code|devenv|winword|notepad|obsidian|notion|onenote|windowsterminal)$/,
-      "notes",
-    ],
+    [/^explorer$/, "shelf"],
+    [/^(chrome|msedge|firefox|brave|vivaldi|opera)$/, "clipboard"],
+    [/^(winword|excel|powerpnt|notepad|obsidian|notion|onenote)$/, "notes"],
     [/^(spotify|music\.ui|vlc|applemusic)$/, "music"],
-    [/^(taskmgr)$/, "system"],
+    [/^taskmgr$/, "system"],
   ];
-  API.on("foreground", (fg) => {
-    const app = String((fg && fg.app) || "").toLowerCase();
-    const hit = CONTEXT.find(([re]) => re.test(app));
+  let foreground = "";
+  function updateContext() {
+    if (
+      /^(code|devenv|windowsterminal|powershell|pwsh|cmd)$/.test(foreground)
+    ) {
+      const working = Island.feature("jobs")?.items.some(
+        (j) => j.status === "running",
+      );
+      Island.setContext(
+        working ? "jobs" : API.settings.hasGithubToken ? "github" : "launcher",
+      );
+      return;
+    }
+    const hit = CONTEXT.find(([re]) => re.test(foreground));
     Island.setContext(hit ? hit[1] : null);
+  }
+  API.on("foreground", (fg) => {
+    foreground = String(fg?.app || "")
+      .toLowerCase()
+      .replace(/\.exe$/, "");
+    updateContext();
   });
+  API.on("jobs:update", updateContext);
 
   API.on("language:reload", () => {
     Island.feature("timer").persist();
@@ -68,6 +84,7 @@
   });
   API.on("settings:update", (s) => {
     Object.assign(API.settings, s);
+    updateContext();
     Island.configure({ autoHide: s.autoHide });
     Island.render();
   });

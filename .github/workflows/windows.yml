@@ -25,6 +25,16 @@ jobs:
         run: npx electron test/update-flow.js
       - name: Electron renderer and IPC smoke
         run: npm run test:smoke
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'

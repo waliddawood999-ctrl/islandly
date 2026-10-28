@@ -200,7 +200,7 @@ function operation(files, op, width) {
     process.exitCode = 1;
   })
   .finally(() =>
-    fs.rmSync(tmp, {
+    fs.promises.rm(tmp, {
       recursive: true,
       force: true,
       maxRetries: 10,

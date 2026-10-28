@@ -55,7 +55,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "islandly-ocr-test-"));
     process.exitCode = 1;
   })
   .finally(() =>
-    fs.rmSync(tmp, {
+    fs.promises.rm(tmp, {
       recursive: true,
       force: true,
       maxRetries: 10,

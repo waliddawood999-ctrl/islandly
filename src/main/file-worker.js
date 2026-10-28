@@ -16,9 +16,11 @@ const dependency = (name) =>
   if (d.op === "pdf-merge" || d.op === "pdf-optimize") {
     const { PDFDocument } = dependency("pdf-lib");
     const out = await PDFDocument.create();
+    let totalPages = 0;
     for (const file of d.files) {
       const doc = await PDFDocument.load(fs.readFileSync(file));
-      if (doc.getPageCount() > 500) throw new Error("PDF has too many pages");
+      totalPages += doc.getPageCount();
+      if (totalPages > 500) throw new Error("Combined PDF exceeds 500 pages");
       const pages = await out.copyPages(doc, doc.getPageIndices());
       pages.forEach((p) => out.addPage(p));
     }
@@ -37,6 +39,7 @@ const dependency = (name) =>
     }
   } else if (d.op === "ocr") {
     const sharp = dependency("sharp");
+    sharp.cache(false);
     const input = await sharp(d.files[0], {
       limitInputPixels: 40 * 1000 * 1000,
     })
@@ -64,6 +67,7 @@ const dependency = (name) =>
     return;
   } else {
     const sharp = dependency("sharp");
+    sharp.cache(false);
     let image = sharp(d.files[0], {
       limitInputPixels: 40 * 1000 * 1000,
     }).rotate();
