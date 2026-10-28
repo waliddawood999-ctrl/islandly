@@ -1,0 +1,79 @@
+name: Windows installer
+on:
+  pull_request:
+    branches: [dev]
+  push:
+    branches: [dev]
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Validate release version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -cne "v$version" -or $version -notmatch '^\d+\.\d+\.\d+$') {
+            throw 'Stable tag must equal v followed by package.json version'
+          }
+      - run: npm test
+      - name: Electron release update flow
+        run: npx electron test/update-flow.js
+      - run: npm run dist:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify artifacts and packaged native modules
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          foreach ($file in @("dist/Islandly-Setup-$version.exe", 'dist/Islandly-win64.zip')) {
+            if (!(Test-Path $file)) { throw "Missing $file" }
+            "$file : $((Get-Item $file).Length) bytes" >> $env:GITHUB_STEP_SUMMARY
+          }
+          $app = 'dist/win-unpacked/resources/app'
+          foreach ($file in @('src/main/bootstrap.js', 'src/main/main.js', 'node_modules/koffi/build/koffi/win32_x64/koffi.node')) {
+            if (!(Test-Path "$app/$file")) { throw "Missing packaged $file" }
+          }
+          if (@(Get-ChildItem "$app/node_modules/koffi/build/koffi" -Directory).Count -ne 1) {
+            throw 'Non-Windows Koffi builds were not pruned'
+          }
+          Get-FileHash dist/Islandly-Setup-*.exe, dist/Islandly-win64.zip -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } |
+            Set-Content dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: islandly-windows
+          path: |
+            dist/Islandly-Setup-*.exe
+            dist/Islandly-win64.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: islandly-windows
+          path: dist
+      - name: Publish stable tag release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/Islandly-Setup-*.exe dist/Islandly-win64.zip dist/SHA256SUMS.txt --verify-tag --title "Islandly $GITHUB_REF_NAME" --generate-notes --latest

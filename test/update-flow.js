@@ -23,12 +23,13 @@ const files = {
 let corrupt = null;
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url);
-  if (url.endsWith('/commits/main')) return res.end(JSON.stringify({ sha: 'deadbeef' }));
+  if (url.endsWith('/releases/latest')) return res.end(JSON.stringify({ tag_name: 'v' + JSON.parse(files['package.json']).version, draft: false, prerelease: false }));
+  if (url.includes('/commits/v')) return res.end(JSON.stringify({ sha: 'd'.repeat(40) }));
   if (url.includes('/git/trees/')) {
     const tree = Object.entries(files).map(([p, c]) => ({ path: p, type: 'blob', sha: gitBlobSha(Buffer.from(c)) }));
     return res.end(JSON.stringify({ truncated: false, tree }));
   }
-  const m = url.match(/\/deadbeef\/(.+)$/);
+  const m = url.match(/\/d{40}\/(.+)$/);
   if (m && files[m[1]] !== undefined) return res.end(corrupt === m[1] ? 'tampered' : files[m[1]]);
   res.statusCode = 404;
   res.end('nope');
