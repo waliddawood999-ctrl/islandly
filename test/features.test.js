@@ -160,6 +160,23 @@ function operation(files, op, width) {
   await staleRead;
   assert.equal(history.list().length, 0, "old reads cannot cross stop/restart");
   history.stop();
+  history.timer = 1;
+  history.last = null;
+  snapshot = [];
+  await history.poll();
+  snapshot = [
+    {
+      types: ["text/plain"],
+      getType: async () => new Blob(["first new copy"], { type: "text/plain" }),
+    },
+  ];
+  await history.poll();
+  assert.equal(
+    history.list()[0].text,
+    "first new copy",
+    "an initially empty clipboard must not lose the next copy",
+  );
+  history.items = [];
   for (let i = 0; i < 30; i++) history.add("item " + i);
   assert.equal(history.list().length, 20);
   assert.equal(classify("SA0380000000608010167519").type, "iban");

@@ -134,7 +134,10 @@ class ClipboardHistory {
         return;
       }
       const textItem = batch?.find((item) => item.types.includes("text/plain"));
-      if (batch && !textItem) return;
+      if (batch && !textItem) {
+        if (canCapture()) this.last = "";
+        return;
+      }
       const text = textItem
         ? await (await textItem.getType("text/plain")).text()
         : await clipboard.readText();

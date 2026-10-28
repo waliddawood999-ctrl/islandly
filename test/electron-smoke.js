@@ -91,6 +91,16 @@ app.whenReady().then(() => {
       assert.equal(result.features.length, 14);
       assert.equal(result.blocked, "blocked");
       assert.ok(result.panelWidth > 100);
+      console.log(
+        "SMOKE clipboard formats",
+        (await clipboard.read()).map((i) => i.types),
+      );
+      assert.ok(
+        result.clipboard.some((s) =>
+          s.includes("https://example.com/from-smoke-test"),
+        ),
+        "new text must appear in clipboard history",
+      );
 
       // shelf image action: halve a generated 40x20 PNG
       const { nativeImage } = require("electron");
@@ -110,6 +120,21 @@ app.whenReady().then(() => {
       const size = nativeImage.createFromPath(processed.path).getSize();
       assert.deepEqual(size, { width: 20, height: 10 });
       console.log("SMOKE image worker", size);
+      const { ClipboardItem } = require("electron");
+      await clipboard.write([
+        new ClipboardItem({
+          "image/png": new Blob([fs.readFileSync(png)], { type: "image/png" }),
+        }),
+      ]);
+      await new Promise((r) => setTimeout(r, 1500));
+      const copiedImage = await win.webContents.executeJavaScript(
+        `islandAPI.call('clipboard:list').then(items => items.find(i => i.type === 'image'))`,
+      );
+      assert.ok(copiedImage, "new image must appear in clipboard history");
+      await win.webContents.executeJavaScript(
+        `islandAPI.call('clipboard:copy', ${JSON.stringify(copiedImage?.id)})`,
+      );
+      console.log("SMOKE image clipboard read/write: ok");
 
       // command palette: open, type, Enter copies the result and closes it
       t.palette.toggle();
@@ -197,6 +222,29 @@ app.whenReady().then(() => {
       assert.equal(denied, true, "foreign sender must be rejected");
       assert.equal(st.get().scale, 0.8);
       foreign.destroy();
+      const pluginDir = path.join(userData, "plugins", "isolation-check");
+      fs.mkdirSync(pluginDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(pluginDir, "manifest.json"),
+        JSON.stringify({ name: "Isolation check", entry: "plugin.js" }),
+      );
+      fs.writeFileSync(
+        path.join(pluginDir, "plugin.js"),
+        `(async()=>{let access='blocked';try{await fetch('https://example.com');access='allowed'}catch(_){}islandPlugin.publish({title:'Isolation',text:typeof require+'|'+typeof process+'|'+access});})()`,
+      );
+      st.set({ pluginsEnabled: true });
+      await win.webContents.executeJavaScript(
+        `islandAPI.call('plugins:enable', 'isolation-check', true)`,
+      );
+      await new Promise((r) => setTimeout(r, 1500));
+      const card = await win.webContents.executeJavaScript(
+        `Island.feature('plugins').cards.textContent`,
+      );
+      assert.ok(card.includes("undefined|undefined|blocked"), card);
+      await win.webContents.executeJavaScript(
+        `islandAPI.call('plugins:enable', 'isolation-check', false)`,
+      );
+      console.log("SMOKE plugin has no Node/process/network: ok");
 
       sw.webContents
         .capturePage()

@@ -18,6 +18,7 @@ class MediaBridge {
     this.retry = null;
     this.warmTimer = null;
     this.commands = Promise.resolve();
+    this.generation = 0;
   }
   start() {
     if (!this.stopped) return;
@@ -36,12 +37,14 @@ class MediaBridge {
     });
     this.worker = w;
     w.on("message", (m) => {
+      if (this.stopped || this.worker !== w) return;
       this.app = m.app || "";
       this.onUpdate(m);
     });
-    w.on("error", (err) =>
-      this.onUpdate({ type: "unavailable", reason: String(err) }),
-    );
+    w.on("error", (err) => {
+      if (!this.stopped && this.worker === w)
+        this.onUpdate({ type: "unavailable", reason: String(err) });
+    });
     w.on("exit", () => {
       if (this.worker !== w) return;
       this.worker = null;
@@ -55,6 +58,7 @@ class MediaBridge {
     this.worker?.postMessage({ select: this.preferred });
   }
   stop() {
+    this.generation++;
     this.stopped = true;
     clearTimeout(this.retry);
     clearTimeout(this.warmTimer);
@@ -138,8 +142,11 @@ class MediaBridge {
     return result;
   }
   control(action, value, expectedApp) {
+    const generation = this.generation;
     return this.serialize(() =>
-      this.performControl(action, value, expectedApp),
+      !this.stopped && generation === this.generation
+        ? this.performControl(action, value, expectedApp)
+        : { ok: false },
     );
   }
   async performControl(action, value, expectedApp) {
@@ -166,7 +173,12 @@ class MediaBridge {
     );
   }
   capabilities() {
-    return this.serialize(() => this.readCapabilities());
+    const generation = this.generation;
+    return this.serialize(() =>
+      !this.stopped && generation === this.generation
+        ? this.readCapabilities()
+        : { ok: false },
+    );
   }
   async readCapabilities() {
     const ps = this.helper();

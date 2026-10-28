@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "test": "node test/ics.test.js && node test/updater.test.js && node test/palette.test.js && node test/ai.test.js && node test/reliability.test.js && node test/features.test.js && node test/renderer.test.js",
+    "test": "node test/ics.test.js && node test/updater.test.js && node test/palette.test.js && node test/ai.test.js && node test/reliability.test.js && node test/features.test.js && node test/renderer.test.js && node test/media-lifecycle.test.js",
     "test:smoke": "electron test/electron-smoke.js",
     "test:e2e": "electron test/ui-e2e.js",
     "test:ocr": "node test/ocr.test.js"
