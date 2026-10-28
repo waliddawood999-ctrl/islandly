@@ -15,7 +15,7 @@ const repoRoot = path.join(__dirname, '..');
 
 // A fake "remote repository" with a newer version.
 const files = {
-  'package.json': JSON.stringify({ name: 'islandly', version: '9.9.9', islandlyBase: require('../package.json').islandlyBase }),
+  'package.json': JSON.stringify({ ...require('../package.json'), version: '9.9.9' }),
   'src/main/main.js': "console.log('FIXTURE MAIN RUNNING from ' + __dirname.split(require('path').sep).slice(-4, -2).join('/')); require('electron').app.exit(0);",
   'assets/note.txt': 'hello',
   'README.md': 'not part of an update',
@@ -23,12 +23,13 @@ const files = {
 let corrupt = null;
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url);
-  if (url.endsWith('/commits/main')) return res.end(JSON.stringify({ sha: 'deadbeef' }));
+  if (url.endsWith('/releases/latest')) return res.end(JSON.stringify({ tag_name: 'v' + JSON.parse(files['package.json']).version, draft: false, prerelease: false }));
+  if (url.includes('/commits/v')) return res.end(JSON.stringify({ sha: 'd'.repeat(40) }));
   if (url.includes('/git/trees/')) {
-    const tree = Object.entries(files).map(([p, c]) => ({ path: p, type: 'blob', sha: gitBlobSha(Buffer.from(c)) }));
+    const tree = Object.entries(files).map(([p, c]) => ({ path: p, type: 'blob', mode: '100644', sha: gitBlobSha(Buffer.from(c)) }));
     return res.end(JSON.stringify({ truncated: false, tree }));
   }
-  const m = url.match(/\/deadbeef\/(.+)$/);
+  const m = url.match(/\/d{40}\/(.+)$/);
   if (m && files[m[1]] !== undefined) return res.end(corrupt === m[1] ? 'tampered' : files[m[1]]);
   res.statusCode = 404;
   res.end('nope');
@@ -49,7 +50,7 @@ app.whenReady().then(() => {
       let r = await new Updater(() => {}).check();
       assert.strictEqual(r.status, 'error');
       assert(/checksum/.test(r.message), r.message);
-      assert(!fs.existsSync(path.join(updatesDir, 'current.json')), 'bad update must not be staged');
+      assert(!fs.existsSync(path.join(updatesDir, 'staged.json')), 'bad update must not be staged');
       console.log('UPDATE rejected tampered file: ok');
 
       // 2. a good download is staged with only src/, assets/ and package.json
@@ -57,7 +58,7 @@ app.whenReady().then(() => {
       let readyVersion = null;
       r = await new Updater((v) => (readyVersion = v)).check();
       assert.deepStrictEqual([r.status, r.version, readyVersion], ['ready', '9.9.9', '9.9.9']);
-      const cur = JSON.parse(fs.readFileSync(path.join(updatesDir, 'current.json'), 'utf8'));
+      const cur = JSON.parse(fs.readFileSync(path.join(updatesDir, 'staged.json'), 'utf8'));
       assert.strictEqual(cur.version, '9.9.9');
       assert(fs.existsSync(path.join(cur.dir, 'src/main/main.js')));
       assert.strictEqual(fs.readFileSync(path.join(cur.dir, 'assets/note.txt'), 'utf8'), 'hello');
@@ -70,7 +71,7 @@ app.whenReady().then(() => {
 
       // 4. a release that needs newer native modules than this install has is not hot-installed
       const good = files['package.json'];
-      files['package.json'] = JSON.stringify({ name: 'islandly', version: '10.0.0', islandlyBase: require('../package.json').islandlyBase + 1 });
+      files['package.json'] = JSON.stringify({ ...require('../package.json'), version: '10.0.0', islandlyBase: 4 });
       r = await new Updater(() => {}).check();
       assert.strictEqual(r.status, 'needs-full-download');
       files['package.json'] = good;

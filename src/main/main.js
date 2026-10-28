@@ -60,7 +60,8 @@ function scheduleMidnight() {
   }, next - now);
 }
 
-if (!app.requestSingleInstanceLock()) app.quit();
+// Normal startup is already locked; keep the direct main entry used by smoke tests safe too.
+if (!global.__ISLANDLY?.instanceLock && !app.requestSingleInstanceLock()) app.quit();
 
 const push = (channel, payload) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -115,14 +116,19 @@ function createWindow() {
   positionWindow();
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  let startupFailed = false;
+  win.webContents.on('preload-error', (_e, p, err) => {
+    startupFailed = true;
+    logError('preload', p, err);
+  });
+  win.webContents.on('did-fail-load', () => { startupFailed = true; });
   win.loadFile(path.join(info.root, 'src', 'renderer', 'index.html'));
   win.once('ready-to-show', () => applyVisibility());
   win.webContents.on('did-finish-load', () => {
-    markBootOk();
+    if (!startupFailed) markBootOk();
     win.webContents.setZoomFactor(zoom());
   });
   win.webContents.on('render-process-gone', (_e, d) => logError('renderer gone', JSON.stringify(d)));
-  win.webContents.on('preload-error', (_e, p, err) => logError('preload', p, err));
   if (isDev) win.webContents.openDevTools({ mode: 'detach' });
 }
 
