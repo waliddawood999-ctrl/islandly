@@ -3,7 +3,25 @@ const $ = (id) => document.getElementById(id);
 const current = api.get();
 
 const fields = ['position', 'autoHide', 'lang', 'prayerMethod', 'madhab'];
-const checks = ['hideFullscreen', 'clipboard', 'updates', 'prayerAlerts', 'weather', 'timeTracking', 'micCamIndicator'];
+const checks = [
+  'hideFullscreen',
+  'clipboard',
+  'updates',
+  'prayerAlerts',
+  'weather',
+  'timeTracking',
+  'micCamIndicator',
+  'lyrics',
+  'prayerAlways',
+  'pauseForPrayer',
+  'focusDim',
+  'notificationDigest',
+  'downloadAlerts',
+  'healthReminders',
+  'pluginsEnabled',
+  'coverAccent',
+  'nativeNotifications',
+];
 
 fields.forEach((k) => {
   $(k).value = current[k];
@@ -60,7 +78,10 @@ $('breakEvery').value = String(current.breakEvery);
 $('breakEvery').addEventListener('change', () => api.set({ breakEvery: parseInt($('breakEvery').value, 10) }));
 
 $('workspaces').value = current.workspaces || '';
-$('workspaces').addEventListener('input', debounced(() => api.set({ workspaces: $('workspaces').value })));
+$('workspaces').addEventListener(
+  'input',
+  debounced(() => api.set({ workspaces: $('workspaces').value }))
+);
 
 // --- secrets: never read back, only replaced or cleared
 function secretField(input, button, state, name, flag, label) {
@@ -72,7 +93,12 @@ function secretField(input, button, state, name, flag, label) {
   paint(!!current[flag]);
   button.addEventListener('click', async () => {
     const value = input.value.trim();
-    await api.setSecret(name, value);
+    try {
+      await api.setSecret(name, value);
+    } catch (e) {
+      state.textContent = e.message;
+      return;
+    }
     input.value = '';
     paint(!!value);
   });
@@ -104,3 +130,65 @@ $('check').addEventListener('click', async () => {
 });
 
 $('quit').addEventListener('click', () => api.quit());
+
+for (const key of ['quickLaunch', 'distractionApps', 'searchRoot', 'githubRepos']) {
+  $(key).value = current[key] || '';
+  $(key).addEventListener(
+    'input',
+    debounced(() => api.set({ [key]: $(key).value }))
+  );
+}
+$('notificationMinutes').value = current.notificationMinutes;
+$('notificationMinutes').addEventListener('change', () =>
+  api.set({
+    notificationMinutes: Math.max(1, Math.min(60, Number($('notificationMinutes').value) || 5)),
+  })
+);
+api.displays().then((displays) => {
+  for (const d of displays) {
+    const o = document.createElement('option');
+    o.value = d.id;
+    o.textContent = d.name + (d.primary ? ' (الأساسية)' : '');
+    $('monitorId').append(o);
+  }
+  $('monitorId').value = current.monitorId || displays.find((d) => d.primary)?.id || '';
+});
+$('monitorId').addEventListener('change', () => api.set({ monitorId: $('monitorId').value }));
+let disabled = new Set(
+  String(current.disabledFeatures || '')
+    .split(',')
+    .filter(Boolean)
+);
+for (const id of [
+  'clock',
+  'music',
+  'timer',
+  'battery',
+  'clipboard',
+  'shelf',
+  'calendar',
+  'today',
+  'notes',
+  'system',
+  'usage',
+  'github',
+  'privacy',
+  'activity',
+  'launcher',
+  'jobs',
+  'assistant',
+  'plugins',
+  'adhkar',
+]) {
+  const label = document.createElement('label');
+  label.className = 'check';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.checked = !disabled.has(id);
+  input.addEventListener('change', () => {
+    input.checked ? disabled.delete(id) : disabled.add(id);
+    api.set({ disabledFeatures: [...disabled].join(',') });
+  });
+  label.append(input, document.createTextNode(id));
+  $('features').append(label);
+}

@@ -18,12 +18,30 @@ Island.register({
     this.pTitle = h('div', { class: 'm-title' });
     this.pSub = h('div', { class: 'm-artist' });
     this.pJoin = h('button', { class: 'pill primary sm', onclick: () => this.joinNext() }, t('join'));
-    this.peekEl = h('div', { class: 'view calendar-peek' }, h('span', { class: 'n-icon' }, html(ICONS.calendar)), h('div', { class: 'm-text' }, this.pTitle, this.pSub), this.pJoin);
+    this.peekEl = h(
+      'div',
+      { class: 'view calendar-peek' },
+      h('span', { class: 'n-icon' }, html(ICONS.calendar)),
+      h('div', { class: 'm-text' }, this.pTitle, this.pSub),
+      this.pJoin
+    );
 
     // expanded
     this.rows = h('div', { class: 'cal-list stagger' });
-    this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-title lg' }), h('div', { class: 'm-artist' }), h('button', { class: 'chip', onclick: () => API.send('settings:open') }, t('openSettings')));
-    this.expandedEl = h('div', { class: 'view auto panel' }, h('div', { class: 'p-head' }, h('div', { class: 'p-title' }, t('calendar'))), this.rows, this.empty);
+    this.empty = h(
+      'div',
+      { class: 'p-empty' },
+      h('div', { class: 'm-title lg' }),
+      h('div', { class: 'm-artist' }),
+      h('button', { class: 'chip', onclick: () => API.send('settings:open') }, t('openSettings'))
+    );
+    this.expandedEl = h(
+      'div',
+      { class: 'view auto panel' },
+      h('div', { class: 'p-head' }, h('div', { class: 'p-title' }, t('calendar'))),
+      this.rows,
+      this.empty
+    );
 
     API.on('calendar:update', (s) => this.set(s));
     API.call('calendar:get').then((s) => s && this.set(s));
@@ -115,7 +133,20 @@ Island.register({
           { class: 'cal-row' },
           h('div', { class: 'cal-time' }, h('b', { dir: 'ltr' }, time), h('small', {}, this.dayLabel(e))),
           h('div', { class: 'cal-title', dir: 'auto' }, e.title),
-          e.url ? h('button', { class: 'pill primary sm', 'data-interactive': '1', onclick: (ev) => { ev.stopPropagation(); API.send('open:external', e.url); } }, t('join')) : null
+          e.url
+            ? h(
+                'button',
+                {
+                  class: 'pill primary sm',
+                  'data-interactive': '1',
+                  onclick: (ev) => {
+                    ev.stopPropagation();
+                    API.send('open:external', e.url);
+                  },
+                },
+                t('join')
+              )
+            : null
         );
       })
     );

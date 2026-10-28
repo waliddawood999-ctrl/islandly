@@ -57,7 +57,10 @@ const Island = (() => {
   const OVERSHOOT = 1.08;
   let lastEnvelope = '';
   function sendEnvelope(w, hgt, y) {
-    const env = { w: Math.ceil(w + 2 * GUTTER), h: Math.ceil(y + hgt + GUTTER) };
+    const env = {
+      w: Math.ceil(w + 2 * GUTTER),
+      h: Math.ceil(y + hgt + GUTTER),
+    };
     const key = env.w + 'x' + env.h;
     if (key === lastEnvelope) return;
     lastEnvelope = key;
@@ -69,6 +72,14 @@ const Island = (() => {
     el.style.height = S.h.x + 'px';
     el.style.top = S.y.x + 'px';
     el.style.borderRadius = Math.min(S.h.x / 2, 34) + 'px';
+    const r = el.getBoundingClientRect();
+    API.send('island:hitbox', {
+      x: r.x,
+      y: r.y,
+      width: r.width,
+      height: r.height,
+      radius: Math.min(S.h.x / 2, 34),
+    });
   }
 
   /** Natural height of a view: panels (v.auto) are measured, small pills use their fixed height. */
@@ -113,12 +124,17 @@ const Island = (() => {
     }
   }
 
-  const expandable = () => features.filter((f) => f.view('expanded'));
+  const enabled = (f) =>
+    !String(API.settings.disabledFeatures || '')
+      .split(',')
+      .includes(f.id);
+  const expandable = () => features.filter((f) => enabled(f) && f.view('expanded'));
 
   function bestCompact(includeIdle) {
     let best = null;
     let bestPriority = 0;
     for (const f of features) {
+      if (!enabled(f)) continue;
       if (f.idle && !includeIdle) continue;
       const p = f.priority();
       if (p > bestPriority && f.view('compact')) {
@@ -137,26 +153,43 @@ const Island = (() => {
       selected = Math.min(selected, list.length - 1);
       const f = list[selected];
       const v = f.view('expanded');
-      return { key: 'x:' + f.id, el: v.el, w: v.w, h: heightOf(v) + (list.length > 1 ? FOOTER : 0), y: TOP, withDots: list.length > 1, auto: !!v.auto };
+      return {
+        key: 'x:' + f.id,
+        el: v.el,
+        w: v.w,
+        h: heightOf(v) + (list.length > 1 ? FOOTER : 0),
+        y: TOP,
+        withDots: list.length > 1,
+        auto: !!v.auto,
+      };
     }
     if (peekState && Date.now() < peekState.until) {
       compactKey = null;
       const f = peekState.feature;
       const v = f.view('peek') || f.view('expanded');
-      if (v) return { key: 'p:' + f.id, el: v.el, w: v.w, h: heightOf(v), y: TOP, auto: !!v.auto };
+      if (v)
+        return {
+          key: 'p:' + f.id,
+          el: v.el,
+          w: v.w,
+          h: heightOf(v),
+          y: TOP,
+          auto: !!v.auto,
+        };
     }
 
     const f = bestCompact(autoHide === 'never');
     sliverEl.classList.toggle('active', !!bestCompact(false));
     // a "sticky" compact view (microphone/camera in use) stays visible whatever the auto-hide setting
-    if (f && (autoHide !== 'always' || f.sticky)) {
+    const sticky = f && (f.sticky || (f.id === 'today' && API.settings.prayerAlways));
+    if (f && (autoHide !== 'always' || sticky)) {
       const key = 'c:' + f.id;
       if (key !== compactKey) {
         compactKey = key;
         compactSince = Date.now();
         if (autoHide === 'auto') setTimeout(render, AUTO_HIDE_MS + 40);
       }
-      if (autoHide === 'never' || f.sticky || Date.now() - compactSince < AUTO_HIDE_MS) {
+      if (autoHide === 'never' || sticky || Date.now() - compactSince < AUTO_HIDE_MS) {
         const v = f.view('compact');
         return { key, el: v.el, w: v.w, h: v.h, y: TOP };
       }
@@ -208,9 +241,15 @@ const Island = (() => {
     v.el.classList.add('enter');
   }
 
+  let lastFocusable = null;
   function render() {
     renderNow();
     for (const f of features) if (f.sync) f.sync();
+    const focusable = (hovered || pinned) && current && ['x:notes', 'x:assistant'].includes(current.key);
+    if (focusable !== lastFocusable) {
+      lastFocusable = focusable;
+      API.send('island:focusable', !!focusable);
+    }
   }
 
   function renderNow() {
@@ -288,7 +327,7 @@ const Island = (() => {
 
   function peek(id, ms = 3500) {
     const feature = features.find((f) => f.id === id);
-    if (!feature) return;
+    if (!feature || !enabled(feature)) return;
     peekState = { feature, until: Date.now() + ms };
     render();
     setTimeout(render, ms + 30);
@@ -363,6 +402,14 @@ const Island = (() => {
   el.addEventListener(
     'wheel',
     (e) => {
+      if (e.altKey) {
+        API.send('display:cycle', e.deltaY);
+        return;
+      }
+      if (e.shiftKey || (e.ctrlKey && Island.selectedId() === 'music')) {
+        API.send('controls:volume', e.deltaY > 0 ? 'voldown' : 'volup');
+        return;
+      }
       if (!(hovered || pinned) || Date.now() < wheelLock || e.target.closest('.scroll')) return;
       const n = expandable().length;
       if (n < 2) return;
@@ -391,6 +438,7 @@ const Island = (() => {
     open,
     configure,
     isExpanded: () => hovered || pinned,
+    hasPointer: () => pointer,
     hold,
     selectedId: () => {
       const list = expandable();

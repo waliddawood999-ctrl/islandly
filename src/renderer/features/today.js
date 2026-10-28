@@ -36,7 +36,12 @@ Island.register({
 
     this.pTitle = h('div', { class: 'm-title' });
     this.pSub = h('div', { class: 'm-artist' });
-    this.peekEl = h('div', { class: 'view notice-view' }, h('span', { class: 'n-icon gold' }, html(ICONS.moon)), h('div', { class: 'm-text' }, this.pTitle, this.pSub));
+    this.peekEl = h(
+      'div',
+      { class: 'view notice-view' },
+      h('span', { class: 'n-icon gold' }, html(ICONS.moon)),
+      h('div', { class: 'm-text' }, this.pTitle, this.pSub)
+    );
 
     API.on('today:update', (d) => this.set(d));
     API.call('today:get').then((d) => d && this.set(d));
@@ -81,7 +86,10 @@ Island.register({
   },
 
   fmtTime(ms) {
-    return new Date(ms).toLocaleTimeString(LANG === 'ar' ? 'ar-SA' : 'en', { hour: 'numeric', minute: '2-digit' });
+    return new Date(ms).toLocaleTimeString(LANG === 'ar' ? 'ar-SA' : 'en', {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
   },
 
   tick() {
@@ -113,6 +121,13 @@ Island.register({
         this.pTitle.textContent = t('prayerNow', { p: t('p_' + started.name) });
         this.pSub.textContent = this.sched.location || '';
         Island.peek('today', 15000);
+        API.send('activity:notify', {
+          source: 'prayer',
+          title: t('prayerNow', { p: t('p_' + started.name) }),
+          important: true,
+        });
+        const timer = Island.feature('timer');
+        if (API.settings.pauseForPrayer && timer && timer.running) timer.pause();
         beep();
       }
     }
@@ -163,7 +178,14 @@ Island.register({
     const today = this.sched ? this.sched.today.filter((p) => p.name !== 'sunrise') : [];
     this.row.replaceChildren(
       ...today.map((p) =>
-        h('div', { class: 'pr' + (next && next.time === p.time ? ' on' : '') + (p.time < Date.now() ? ' past' : '') }, h('small', {}, t('p_' + p.name)), h('b', {}, this.fmtTime(p.time)))
+        h(
+          'div',
+          {
+            class: 'pr' + (next && next.time === p.time ? ' on' : '') + (p.time < Date.now() ? ' past' : ''),
+          },
+          h('small', {}, t('p_' + p.name)),
+          h('b', {}, this.fmtTime(p.time))
+        )
       )
     );
   },
@@ -171,7 +193,7 @@ Island.register({
   // The countdown pill shows during the 15 minutes before a prayer.
   priority() {
     const next = this.upcoming();
-    return next && next.time - Date.now() <= 15 * 60000 ? 35 : 0;
+    return next ? (next.time - Date.now() <= 15 * 60000 ? 35 : API.settings.prayerAlways ? 5 : 0) : 0;
   },
 
   view(mode) {

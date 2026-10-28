@@ -43,7 +43,12 @@ Island.register({
         const fill = h('i');
         fill.style.width = Math.max(4, (a.seconds / max) * 100) + '%';
         fill.style.background = colors[i % colors.length];
-        return h('div', { class: 'us-row' }, h('div', { class: 'us-top' }, h('span', { class: 'us-name', dir: 'auto' }, a.name), h('span', { class: 'us-time' }, this.dur(a.seconds))), h('div', { class: 'meter thin' }, fill));
+        return h(
+          'div',
+          { class: 'us-row' },
+          h('div', { class: 'us-top' }, h('span', { class: 'us-name', dir: 'auto' }, a.name), h('span', { class: 'us-time' }, this.dur(a.seconds))),
+          h('div', { class: 'meter thin' }, fill)
+        );
       })
     );
   },

@@ -39,10 +39,43 @@ Island.register({
       Island.render();
     });
 
+    const nativePoll = async () => {
+      try {
+        const s = await API.call('battery:get');
+        if (!s) return;
+        if (s.hasBattery === null) return;
+        this.nativePower = true;
+        this.noBattery = !s.hasBattery;
+        if (!s.hasBattery) {
+          this.bat = null;
+          Island.render();
+          return;
+        }
+        if (s.level === null) return;
+        const first = !this.bat;
+        this.bat = {
+          level: s.level,
+          charging: s.charging,
+          chargingTime: Infinity,
+          dischargingTime: s.remaining || Infinity,
+        };
+        if (first) {
+          this.lastLevel = s.level;
+          this.lastCharging = s.charging;
+          this.paint();
+          Island.render();
+        } else this.onChange();
+      } catch (_) {}
+    };
+    nativePoll();
+    setInterval(nativePoll, 30000);
     if (!navigator.getBattery) return;
     navigator.getBattery().then((b) => {
+      if (this.noBattery || this.bat) return;
       this.bat = b;
-      const update = () => this.onChange();
+      const update = () => {
+        if (!this.nativePower) this.onChange();
+      };
       ['levelchange', 'chargingchange', 'chargingtimechange', 'dischargingtimechange'].forEach((e) => b.addEventListener(e, update));
       this.lastLevel = b.level;
       this.lastCharging = b.charging;
@@ -85,9 +118,9 @@ Island.register({
 
   paintDevices() {
     this.devs.replaceChildren(
-      ...this.devices.slice(0, 3).map((d) =>
-        h('span', { class: 'dev' }, html(ICONS.headphones), h('span', { class: 'dev-name' }, d.name), h('b', { dir: 'ltr' }, d.battery + '%'))
-      )
+      ...this.devices
+        .slice(0, 3)
+        .map((d) => h('span', { class: 'dev' }, html(ICONS.headphones), h('span', { class: 'dev-name' }, d.name), h('b', { dir: 'ltr' }, d.battery + '%')))
     );
     this.devs.style.display = this.devices.length ? '' : 'none';
   },
@@ -123,7 +156,7 @@ Island.register({
   },
 
   view(mode) {
-    if (!this.bat) return null;
+    if (!this.bat) return mode === 'expanded' && this.devices.length ? { el: this.devs, w: 420, auto: true } : null;
     if (mode === 'compact') return this.priority() ? { el: this.compact, w: 128, h: 42 } : null;
     if (mode === 'peek') return { el: this.peekEl, w: 330, h: 80 };
     if (mode === 'expanded') {

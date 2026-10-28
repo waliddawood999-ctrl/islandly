@@ -12,16 +12,58 @@ Island.register({
     this.memText = h('div', { class: 'm-artist', dir: 'ltr' });
     this.uptime = h('div', { class: 'm-artist' });
     // quick controls: volume keys and laptop screen brightness
-    const vol = (action, icon, label) => h('button', { class: 'qc-btn', title: label, 'data-interactive': '1', onclick: () => API.send('controls:volume', action) }, html(icon));
-    this.bright = h('input', { class: 'qc-range', type: 'range', min: '0', max: '100', step: '5', dir: 'ltr', 'data-interactive': '1' });
+    const vol = (action, icon, label) =>
+      h(
+        'button',
+        {
+          class: 'qc-btn',
+          title: label,
+          'data-interactive': '1',
+          onclick: () => API.send('controls:volume', action),
+        },
+        html(icon)
+      );
+    this.bright = h('input', {
+      class: 'qc-range',
+      type: 'range',
+      min: '0',
+      max: '100',
+      step: '5',
+      dir: 'ltr',
+      'data-interactive': '1',
+    });
     this.bright.addEventListener('change', () => API.call('controls:brightness', Number(this.bright.value)));
     this.brightRow = h('div', { class: 'qc-bright' }, h('span', { class: 'qc-ic' }, html(ICONS.sun)), this.bright);
     this.brightRow.style.display = 'none';
+    this.netText = h('div', { class: 'm-artist', dir: 'ltr' });
     this.controls = h(
       'div',
       { class: 'qc' },
-      h('div', { class: 'qc-vol', dir: 'ltr' }, vol('voldown', ICONS.volDown, t('volDown')), vol('mute', ICONS.mute, t('mute')), vol('volup', ICONS.volUp, t('volUp'))),
-      this.brightRow
+      h(
+        'div',
+        { class: 'qc-vol', dir: 'ltr' },
+        vol('voldown', ICONS.volDown, t('volDown')),
+        vol('mute', ICONS.mute, t('mute')),
+        vol('volup', ICONS.volUp, t('volUp'))
+      ),
+      this.brightRow,
+      h(
+        'div',
+        { class: 'chips' },
+        ...['wifi', 'bluetooth', 'dnd', 'sound'].map((key) =>
+          h(
+            'button',
+            { class: 'chip', onclick: () => API.send('settings:system', key) },
+            (LANG === 'ar' ? 'إعدادات ' : 'Settings: ') +
+              {
+                wifi: 'Wi-Fi',
+                bluetooth: 'Bluetooth',
+                dnd: LANG === 'ar' ? 'عدم الإزعاج' : 'Do not disturb',
+                sound: LANG === 'ar' ? 'الصوت' : 'Sound',
+              }[key]
+          )
+        )
+      )
     );
     this.expandedEl = h(
       'div',
@@ -37,7 +79,8 @@ Island.register({
           h('div', { class: 'sys-label' }, t('memory')),
           h('div', { class: 'meter', dir: 'ltr' }, this.memFill),
           this.memText,
-          this.uptime
+          this.uptime,
+          this.netText
         )
       ),
       this.controls
@@ -47,6 +90,7 @@ Island.register({
 
   set(d) {
     this.data = d;
+    this.netText.textContent = d.network ? `↓ ${(d.network.rx / 1024).toFixed(1)} KB/s   ↑ ${(d.network.tx / 1024).toFixed(1)} KB/s` : '';
     const color = d.cpu > 85 ? '#f87171' : d.cpu > 60 ? '#fbbf24' : '#60a5fa';
     this.cpuRing.set(d.cpu / 100);
     this.cpuRing.color(color);
@@ -57,7 +101,10 @@ Island.register({
     const gb = (b) => (b / 1024 ** 3).toFixed(1);
     this.memText.textContent = `${gb(d.memUsed)} / ${gb(d.memTotal)} GB`;
     const hrs = Math.floor(d.uptime / 3600);
-    this.uptime.textContent = t('uptime', { h: num(hrs), m: num(Math.floor((d.uptime % 3600) / 60)) });
+    this.uptime.textContent = t('uptime', {
+      h: num(hrs),
+      m: num(Math.floor((d.uptime % 3600) / 60)),
+    });
   },
 
   sync() {

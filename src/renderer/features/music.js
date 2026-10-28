@@ -4,7 +4,7 @@ Island.register({
   media: null,
   unavailable: false,
   progressTimer: 0,
-  caps: { next: true, prev: true, seek: true, toggle: true },
+  caps: { next: false, prev: false, seek: false, toggle: false },
   dragging: false,
   wasExpanded: false,
 
@@ -35,7 +35,10 @@ Island.register({
     this.durLabel = h('span', { dir: 'ltr' }, '0:00');
     this.prevBtn = this.button('prev', ICONS.prev, 'prev');
     this.backBtn = h('button', { class: 'ctl', onclick: () => this.skip(-10) }, html(ICONS.back10));
-    this.playBtn = h('button', { class: 'ctl main', onclick: () => this.control('playpause') });
+    this.playBtn = h('button', {
+      class: 'ctl main',
+      onclick: () => this.control('playpause'),
+    });
     this.fwdBtn = h('button', { class: 'ctl', onclick: () => this.skip(10) }, html(ICONS.fwd10));
     this.nextBtn = this.button('next', ICONS.next, 'next');
     this.ctls = h('div', { class: 'ctls stagger', dir: 'ltr' }, this.prevBtn, this.backBtn, this.playBtn, this.fwdBtn, this.nextBtn);
@@ -43,6 +46,16 @@ Island.register({
     this.body = h('div', { class: 'm-body' }, this.title, this.artist, this.bar, h('div', { class: 'times' }, this.posLabel, this.durLabel), this.ctls);
     this.expandedEl = h('div', { class: 'view auto music-expanded' }, this.bg, this.art, this.body, this.empty);
 
+    this.source = h('select', { class: 'chip', 'data-interactive': '1' });
+    this.source.addEventListener('change', () => API.send('media:select', this.source.value));
+    this.body.prepend(this.source);
+    this.lyrics = h('div', { class: 'lyrics scroll', dir: 'auto' });
+    this.body.append(this.lyrics);
+    API.on('lyrics:update', (d) => {
+      this.lyricData = d;
+      this.paintLyrics();
+      Island.render();
+    });
     this.bindSeekBar();
     API.on('media:update', (m) => this.onUpdate(m));
     this.paint();
@@ -52,16 +65,14 @@ Island.register({
     return h('button', { class: 'ctl', onclick: () => this.control(action) }, html(icon));
   },
 
-  control(action) {
-    API.send('media:control', action);
-    // The real state arrives through the media session a moment later.
-    if (action === 'playpause' && this.media) {
-      this.media.position = this.position();
-      this.media.sentAt = Date.now();
-      this.media.updatedAt = 0;
-      this.media.playing = !this.media.playing;
-      this.paint();
-    }
+  async control(action) {
+    const m = this.media;
+    if (!m) return;
+    const result = await API.call('media:control', action, undefined, m.app).catch(() => ({ ok: false }));
+    if (!result?.ok)
+      Notice.show({
+        text: LANG === 'ar' ? 'تعذر التحكم في جلسة الوسائط' : 'Media command failed',
+      });
   },
 
   seekTo(seconds) {
@@ -71,7 +82,14 @@ Island.register({
     m.position = s;
     m.sentAt = Date.now();
     m.updatedAt = 0;
-    API.send('media:control', 'seek', s);
+    API.call('media:control', 'seek', s, m.app)
+      .then((r) => {
+        if (!r?.ok)
+          Notice.show({
+            text: LANG === 'ar' ? 'تعذر الانتقال في المقطع' : 'Seek failed',
+          });
+      })
+      .catch(() => {});
     this.updateProgress();
   },
 
@@ -126,7 +144,18 @@ Island.register({
       this.media = null;
     } else if (m.active) {
       const trackChanged = m.trackChanged || !this.media || this.media.title !== m.title;
-      this.media = m;
+      if (m.sessions) {
+        const previous = this.source.value;
+        this.source.replaceChildren(
+          h('option', { value: '' }, LANG === 'ar' ? 'اختيار تلقائي' : 'Automatic'),
+          ...m.sessions.map((s) => h('option', { value: s.app }, s.app))
+        );
+        this.source.value = previous;
+      }
+      this.media = {
+        ...m,
+        thumb: m.thumb === undefined && !trackChanged ? this.media.thumb : m.thumb,
+      };
       if (trackChanged) {
         this.refreshCaps();
         if (m.playing && m.title) Island.peek('music', 4000);
@@ -140,9 +169,16 @@ Island.register({
 
   async refreshCaps() {
     try {
+      const source = this.media && this.media.app;
       const c = await API.call('media:caps');
+      if (source !== (this.media && this.media.app)) return;
       if (c && c.ok) {
-        this.caps = { next: !!c.next, prev: !!c.prev, seek: !!c.seek, toggle: c.toggle !== false };
+        this.caps = {
+          next: !!c.next,
+          prev: !!c.prev,
+          seek: !!c.seek,
+          toggle: c.toggle !== false,
+        };
         this.applyCaps();
       }
     } catch (_) {
@@ -151,6 +187,7 @@ Island.register({
   },
 
   applyCaps() {
+    this.playBtn.disabled = !this.caps.toggle;
     this.prevBtn.disabled = !this.caps.prev;
     this.nextBtn.disabled = !this.caps.next;
     this.backBtn.disabled = this.fwdBtn.disabled = !this.caps.seek;
@@ -191,6 +228,33 @@ Island.register({
     this.title.textContent = this.pTitle.textContent = m.title;
     this.artist.textContent = this.pArtist.textContent = m.artist;
     this.cTitle.textContent = m.title;
+    if (m.thumb !== this.accentThumb) {
+      this.accentThumb = m.thumb;
+      if (m.thumb && API.settings.coverAccent) {
+        const image = new Image();
+        const key = m.thumb;
+        image.onload = () => {
+          if (this.accentThumb !== key) return;
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = 16;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(image, 0, 0, 16, 16);
+            const p = ctx.getImageData(0, 0, 16, 16).data;
+            let r = 0,
+              g = 0,
+              b = 0;
+            for (let i = 0; i < p.length; i += 4) {
+              r += p[i];
+              g += p[i + 1];
+              b += p[i + 2];
+            }
+            this.expandedEl.style.setProperty('--cover-accent', `rgb(${Math.round(r / 256)},${Math.round(g / 256)},${Math.round(b / 256)})`);
+          } catch (_) {}
+        };
+        image.src = m.thumb;
+      }
+    }
     this.setArt(this.art, m.thumb);
     this.setArt(this.cArt, m.thumb);
     this.setArt(this.pArt, m.thumb);
@@ -202,9 +266,27 @@ Island.register({
     this.syncProgressTimer();
   },
 
+  paintLyrics() {
+    const d = this.lyricData;
+    if (!d || d.status === 'off') {
+      this.lyrics.hidden = true;
+      return;
+    }
+    this.lyrics.hidden = false;
+    if (d.lines.length) {
+      let index = -1;
+      const p = this.position();
+      for (let i = 0; i < d.lines.length && d.lines[i].at <= p; i++) index = i;
+      this.lyrics.textContent = d.lines
+        .slice(Math.max(0, index), Math.max(0, index) + 3)
+        .map((l) => l.text)
+        .join('\n');
+    } else this.lyrics.textContent = d.text || (LANG === 'ar' ? 'لا توجد كلمات متاحة' : 'Lyrics unavailable');
+  },
   updateProgress() {
     const m = this.media;
     if (!m || this.dragging) return;
+    this.paintLyrics();
     const pos = this.position();
     const f = m.duration ? pos / m.duration : 0;
     this.fill.style.width = f * 100 + '%';
@@ -214,7 +296,7 @@ Island.register({
   },
 
   sync() {
-    const open = Island.isExpanded();
+    const open = Island.isExpanded() && Island.selectedId() === 'music';
     if (open && !this.wasExpanded) this.refreshCaps();
     this.wasExpanded = open;
     this.syncProgressTimer();
@@ -222,7 +304,7 @@ Island.register({
 
   // Only tick while the expanded panel is open and something is playing.
   syncProgressTimer() {
-    const need = this.media && this.media.playing && Island.isExpanded();
+    const need = this.media && this.media.playing && Island.isExpanded() && Island.selectedId() === 'music';
     if (need && !this.progressTimer) this.progressTimer = setInterval(() => this.updateProgress(), 500);
     if (!need && this.progressTimer) {
       clearInterval(this.progressTimer);

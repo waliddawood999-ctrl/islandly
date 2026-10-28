@@ -21,7 +21,10 @@ Island.register({
     this.xRing = ring(92, 8, '#a78bfa');
     this.xLabel = h('div', { class: 'ring-label', dir: 'ltr' });
     this.xTitle = h('div', { class: 't-title' });
-    this.mainBtn = h('button', { class: 'pill primary', onclick: () => this.toggle() });
+    this.mainBtn = h('button', {
+      class: 'pill primary',
+      onclick: () => this.toggle(),
+    });
     this.chips = h('div', { class: 'chips' });
     this.modeTabs = h('div', { class: 'chips modes' });
     this.expandedEl = h(
@@ -32,12 +35,7 @@ Island.register({
         'div',
         { class: 't-side' },
         this.xTitle,
-        h(
-          'div',
-          { class: 't-actions' },
-          this.mainBtn,
-          h('button', { class: 'pill', title: t('reset'), onclick: () => this.reset() }, html(ICONS.reset))
-        ),
+        h('div', { class: 't-actions' }, this.mainBtn, h('button', { class: 'pill', title: t('reset'), onclick: () => this.reset() }, html(ICONS.reset))),
         this.modeTabs,
         this.chips
       )
@@ -46,7 +44,10 @@ Island.register({
     // peek: shown when a round finishes
     this.peekTitle = h('div', { class: 'm-title' });
     this.peekSub = h('div', { class: 'm-artist' });
-    this.peekAction = h('button', { class: 'pill primary sm', onclick: () => this.startNext() });
+    this.peekAction = h('button', {
+      class: 'pill primary sm',
+      onclick: () => this.startNext(),
+    });
     this.peekEl = h(
       'div',
       { class: 'view timer-peek' },
@@ -55,7 +56,37 @@ Island.register({
       this.peekAction
     );
 
+    try {
+      const saved = JSON.parse(localStorage.getItem('islandly-timer') || 'null');
+      if (saved && ['focus', 'rest'].includes(saved.mode) && saved.total > 0 && saved.total <= 36000) {
+        Object.assign(this, {
+          mode: saved.mode,
+          total: saved.total,
+          remaining: saved.remaining,
+          endAt: saved.endAt,
+          running: !!saved.running,
+        });
+        if (this.running) {
+          this.ticker = setInterval(() => this.tick(), 250);
+          this.tick();
+        }
+      }
+    } catch (_) {}
+    if (this.running) API.send('focus:set', this.mode === 'focus');
     this.paint();
+  },
+
+  persist() {
+    localStorage.setItem(
+      'islandly-timer',
+      JSON.stringify({
+        mode: this.mode,
+        total: this.total,
+        remaining: this.remaining,
+        running: this.running,
+        endAt: this.endAt,
+      })
+    );
   },
 
   setMode(mode, minutes) {
@@ -83,6 +114,7 @@ Island.register({
   start() {
     if (this.remaining <= 0) this.remaining = this.total;
     this.running = true;
+    API.send('focus:set', this.mode === 'focus');
     this.endAt = Date.now() + this.remaining * 1000;
     clearInterval(this.ticker);
     this.ticker = setInterval(() => this.tick(), 250);
@@ -99,6 +131,7 @@ Island.register({
 
   stop() {
     this.running = false;
+    API.send('focus:set', false);
     clearInterval(this.ticker);
     this.ticker = 0;
   },
@@ -120,6 +153,10 @@ Island.register({
     this.stop();
     const wasFocus = this.mode === 'focus';
     beep();
+    API.send('activity:notify', {
+      source: 'timer',
+      title: LANG === 'ar' ? 'انتهت الجلسة' : 'Session complete',
+    });
     // Queue up the next round (not auto-started) and let the user decide.
     this.mode = wasFocus ? 'rest' : 'focus';
     this.total = this.presets[this.mode][0] * 60;
@@ -146,6 +183,7 @@ Island.register({
   },
 
   paint() {
+    this.persist();
     const color = this.mode === 'focus' ? '#a78bfa' : '#34d399';
     this.cRing.color(color);
     this.xRing.color(color);
@@ -155,13 +193,28 @@ Island.register({
 
     this.modeTabs.replaceChildren(
       ...['focus', 'rest'].map((m) =>
-        h('button', { class: 'chip' + (this.mode === m ? ' on' : ''), onclick: () => this.setMode(m) }, t(m))
+        h(
+          'button',
+          {
+            class: 'chip' + (this.mode === m ? ' on' : ''),
+            onclick: () => this.setMode(m),
+          },
+          t(m)
+        )
       )
     );
     const minutes = Math.round(this.total / 60);
     this.chips.replaceChildren(
       ...this.presets[this.mode].map((mins) =>
-        h('button', { class: 'chip' + (mins === minutes ? ' on' : ''), dir: 'ltr', onclick: () => this.setMinutes(mins) }, `${mins}${t('min')}`)
+        h(
+          'button',
+          {
+            class: 'chip' + (mins === minutes ? ' on' : ''),
+            dir: 'ltr',
+            onclick: () => this.setMinutes(mins),
+          },
+          `${mins}${t('min')}`
+        )
       )
     );
     this.paintTime();

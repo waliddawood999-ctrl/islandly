@@ -6,3 +6,11 @@ out/
 dev/shots/
 *.zip
 *.mp4
+
+bridge/
+native/**/bin/
+native/**/obj/
+*.msix
+*.pfx
+*.cer
+__pycache__/
