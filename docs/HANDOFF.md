@@ -265,3 +265,7 @@
 - Actual checks: Linux Node 24 `npm test` exit 0 (5 scripts; 72 palette cases plus release regressions), builder configuration schema validation exit 0, `git diff --check` exit 0. npm test required expanded execution permissions for the pre-existing local AI test server. Windows CI pending; no manual Windows test or installer launch has occurred.
 - Claude review requested in the PR description: review installer/update changes and coordinate integration with PR #5. Keep B1/B2/B4 untouched. Signing is not configured; installer is unsigned. Native notification MSIX capability is outside this NSIS task.
 - Publish policy: T16's explicit request to publish stable tags takes priority over the older T3 draft-only wording. PR/dev builds never publish. `/releases/latest` changes only after a maintainer pushes a matching stable tag and its build succeeds.
+
+### T16 first Windows CI result
+
+- PR: https://github.com/waliddawood999-ctrl/islandly/pull/7 . First run https://github.com/waliddawood999-ctrl/islandly/actions/runs/40734698114 failed in the existing app-index fixture: it included the runner's real Start Menu (145 entries instead of the expected 3). Isolated APPDATA/ProgramData to temporary fixture paths in test/palette.test.js; no production/UI behavior changed. Packaging had not run yet. Follow-up CI pending.
