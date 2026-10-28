@@ -22,6 +22,7 @@ class Capture {
     this.mode = "image";
     this.chunks = [];
     this.bytes = 0;
+    this.generation = 0;
     const valid = (e) =>
       this.win &&
       !this.win.isDestroyed() &&
@@ -29,6 +30,8 @@ class Capture {
       e.senderFrame === e.sender.mainFrame;
     const handle = (ch, fn) =>
       ipcMain.handle(ch, (e, ...args) => {
+        if (!require("./settings").get().captureEnabled)
+          throw new Error("Screen capture is disabled in Settings");
         if (!valid(e)) throw new Error("Unauthorized capture request");
         return fn(...args);
       });
@@ -108,6 +111,7 @@ class Capture {
     session.defaultSession.setDisplayMediaRequestHandler(
       async (request, callback) => {
         if (
+          !require("./settings").get().captureEnabled ||
           !this.win ||
           this.win.isDestroyed() ||
           request.frame !== this.win.webContents.mainFrame ||
@@ -121,7 +125,10 @@ class Capture {
             thumbnailSize: { width: 0, height: 0 },
           });
           const source = sources.find((s) => s.id === this.selected);
-          callback(source ? { video: source } : {});
+          callback(require("./settings").get().captureEnabled &&
+            this.win && !this.win.isDestroyed() &&
+            request.frame === this.win.webContents.mainFrame &&
+            this.mode === "record" && source ? { video: source } : {});
         } catch (_) {
           callback({});
         }
@@ -130,7 +137,8 @@ class Capture {
     session.defaultSession.setPermissionRequestHandler(
       (wc, permission, callback) =>
         callback(
-          permission === "display-capture" &&
+          require("./settings").get().captureEnabled &&
+            permission === "display-capture" &&
             this.win &&
             !this.win.isDestroyed() &&
             wc === this.win.webContents &&
@@ -141,10 +149,12 @@ class Capture {
   async open(mode = "image") {
     if (!require("./settings").get().captureEnabled)
       throw new Error("Screen capture is disabled in Settings");
+    if (!["image", "record"].includes(mode)) throw new Error("Invalid capture mode");
     if (this.win && !this.win.isDestroyed()) {
       this.win.focus();
       return;
     }
+    const generation = ++this.generation;
     this.mode = mode;
     this.image = null;
     this.selected = null;
@@ -165,6 +175,10 @@ class Capture {
       types: ["screen"],
       thumbnailSize: { width, height },
     });
+    if (generation !== this.generation || !require("./settings").get().captureEnabled) {
+      this.sources = [];
+      throw new Error("Screen capture is disabled in Settings");
+    }
     this.win = new BrowserWindow({
       width: 1000,
       height: 760,
@@ -193,6 +207,7 @@ class Capture {
     this.win.loadFile(path.join(this.root, "src/capture/index.html"));
   }
   stop() {
+    this.generation++;
     if (this.win && !this.win.isDestroyed()) this.win.destroy();
   }
 }

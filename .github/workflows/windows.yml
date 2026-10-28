@@ -43,6 +43,15 @@ jobs:
       - name: Copy terminal integration
         shell: pwsh
         run: Copy-Item scripts/islandly-run.ps1 out/Islandly-win32-x64/
+      - name: Prune non-Windows Koffi builds and measure ZIP
+        shell: pwsh
+        run: |
+          $builds = 'out/Islandly-win32-x64/resources/app/node_modules/koffi/build/koffi'
+          if (!(Test-Path "$builds/win32_x64")) { throw 'Missing Koffi win32_x64 build' }
+          Get-ChildItem $builds -Directory | Where-Object Name -ne 'win32_x64' | Remove-Item -Recurse -Force
+          Compress-Archive out/Islandly-win32-x64 out/Islandly-win64.zip
+          $bytes = (Get-Item out/Islandly-win64.zip).Length
+          "Islandly-win64.zip: $bytes bytes" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
       - name: Package unsigned MSIX for validation
         shell: pwsh
         run: ./scripts/package-msix.ps1 -AppDirectory out/Islandly-win32-x64 -Output out/Islandly-unsigned.msix

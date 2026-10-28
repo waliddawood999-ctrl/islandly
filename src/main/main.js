@@ -129,6 +129,12 @@ const push = (channel, payload) => {
 };
 
 function updateMouseHit() {
+  if (!settings.get().circularClickThrough) {
+    if (ignoringMouse && win && !win.isDestroyed())
+      win.setIgnoreMouseEvents(false);
+    ignoringMouse = false;
+    return;
+  }
   if (
     process.platform !== "win32" ||
     !win ||
@@ -900,6 +906,8 @@ app.whenReady().then(() => {
     logError("shortcut Ctrl+Alt+Space is taken by another app");
 
   settings.onChange((now, prev) => {
+    if (!now.captureEnabled && prev.captureEnabled) capture.stop();
+    if (now.circularClickThrough !== prev.circularClickThrough) updateMouseHit();
     if (now.nativeNotifications !== prev.nativeNotifications)
       now.nativeNotifications ? notifications.start() : notifications.stop();
     if (now.githubRepos !== prev.githubRepos) github.start();

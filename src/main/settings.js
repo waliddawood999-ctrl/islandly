@@ -47,6 +47,7 @@ const DEFAULTS = {
   captureEnabled: false,
   ffmpegEnabled: false,
   rembgEnabled: false,
+  circularClickThrough: false, // Requires manual Windows pointer verification before enabling.
 };
 
 // Secrets (API keys) are encrypted with the OS (DPAPI on Windows) and kept out of settings.json's plain fields.

@@ -25,17 +25,21 @@ class Tools {
   async run(file, op) {
     const allowed = { gif: "ffmpeg", audio: "ffmpeg", background: "rembg" };
     const tool = allowed[op];
+    if (!Object.hasOwn(allowed, op)) return { ok: false, error: "Invalid tool operation" };
     if (!require("../settings").get()[tool + "Enabled"])
       return { ok: false, error: "External tool is disabled in Settings" };
     if (tool === "rembg")
       return { ok: false, error: "rembg deferred pending model licensing and download consent" };
     const executable = tool && await this.available(tool);
+    if (!require("../settings").get()[tool + "Enabled"])
+      return { ok: false, error: "External tool is disabled in Settings" };
     if (!executable)
       return {
         ok: false,
         error: `Install ${tool} separately to enable this action.`,
       };
     if (
+      typeof file !== "string" || !path.isAbsolute(file) ||
       !fs.statSync(file).isFile() ||
       fs.statSync(file).size > 500 * 1024 * 1024
     )

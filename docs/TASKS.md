@@ -9,7 +9,7 @@
 | ID | المهمة | المالك | الفرع | يعتمد على | الحالة | المراجع | الدليل |
 |---|---|---|---|---|---|---|---|
 | T0 | تنسيق: AGENTS/CLAUDE.md، TASKS، HANDOFF، WINDOWS-TEST، تنظيف، .prettierrc، مراجعة PR #1، عقود IPC v0.5 | Claude | `claude/T0-coordination` | — | review | Codex | PR #2، `docs/reviews/PR1-review.md` |
-| T1 | إنهاء PR #1 حسب المراجعة (`docs/reviews/PR1-review.md`) | Codex | `feat/reliability-and-productivity` | — | doing | Claude | PR #1 إلى dev؛ حواجز أمان واختبار safety-defaults محلي؛ B1/B4/B5 وCI ما زالت معلقة |
+| T1 | إنهاء PR #1 حسب المراجعة (`docs/reviews/PR1-review.md`) | Codex | `codex/T1-review-fixes` | — | blocked | Claude | T1 follow-up to dev; npm test passes; docs/reviews/T1-response.md; B1/B2/B4/B5 await Claude/integration |
 | T2 | تحديث `test/ui-e2e.js` للوحات 0.5.0 وإصلاح أي UI regression | Claude | `claude/T2-e2e-050` | T1 (يبدأ لما يرجع PR #1) | todo | Codex | — |
 | T3 | قناة إصدار آمنة بدل `main` + CI يبني zip artifact و draft Release، و CI يشتغل على `dev` مع كل push | Codex | `codex/T3-release-channel` | — | todo | Claude | — |
 | T4 | توحيد التنسيق بـ prettier (single quotes حسب `.prettierrc`) في PR منفصل | Claude | `claude/T4-prettier` | دمج PR #1 | todo | Codex | — |
