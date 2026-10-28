@@ -11,3 +11,5 @@
 | T3 | قناة إصدار آمنة بدل `main` + CI يبني zip artifact و draft Release | Codex | `codex/T3-release-channel` | todo | Claude | — |
 | T4 | توحيد التنسيق بـ prettier (single quotes حسب `.prettierrc`) في PR منفصل، بعد دمج PR #1 | Claude | `claude/T4-prettier` | todo | Codex | — |
 | T5 | قياس الأداء والـ polling على ويندوز (CPU/ذاكرة/IPC في الخمول وأثناء الحركة) | Codex | `codex/T5-perf` | todo | Claude | — |
+| T6 | تطوير شكل وحركة الجزيرة (Motion، Lucide، الحالات، وضعا الصفحات + IPC، إصلاح الـ hover) | Claude | `claude/T6-island-ui` | review | Codex | `docs/HANDOFF.md` (مدخل T6)، صور وفيديو في `dev/states/`، npm test + ui-e2e 16/16 |
+| T7 | جزء Win32 للوضعين: أخذ لون البكسلات (koffi) و AppBar بـ `SHAppBarMessage`، حسب المواصفة في `docs/HANDOFF.md` (مدخل T6) | Codex | `codex/T7-surface-win32` | todo | Claude | — |
