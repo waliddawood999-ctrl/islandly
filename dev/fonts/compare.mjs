@@ -99,9 +99,19 @@ for (const [key, set] of Object.entries(fontsLoaded)) {
 }
 const fontDir = (id) => (id === 'plex' ? path.join(here, '..', '..', 'assets', 'fonts', 'plex') : path.join(here, id));
 const report = Object.fromEntries(
-  Object.entries(sizes).map(([id, set]) => [id, { files: [...set].sort(), kb: Math.round([...set].reduce((n, f) => n + fs.statSync(path.join(fontDir(id), path.basename(f))).size, 0) / 1024) }])
+  Object.entries(sizes).map(([id, set]) => [
+    id,
+    { files: [...set].sort(), kb: Math.round([...set].reduce((n, f) => n + fs.statSync(path.join(fontDir(id), path.basename(f))).size, 0) / 1024) },
+  ])
 );
-fs.writeFileSync(path.join(out, 'shots.json'), JSON.stringify(shots.map(({ file, ...s }) => ({ ...s, file: path.basename(file) })), null, 1));
+fs.writeFileSync(
+  path.join(out, 'shots.json'),
+  JSON.stringify(
+    shots.map(({ file, ...s }) => ({ ...s, file: path.basename(file) })),
+    null,
+    1
+  )
+);
 console.log('fonts loaded:', JSON.stringify(report));
 console.log('network requests:', network.length ? network : 'none');
 console.log('errors:', errors.length ? errors : 'none');
