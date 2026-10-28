@@ -1,0 +1,46 @@
+name: T9 performance verification
+on:
+  pull_request:
+    branches: [dev]
+  push:
+    branches: [dev]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Baseline and current metrics
+        shell: pwsh
+        run: |
+          git fetch origin 3cfd4909143d6a87d5d6a61cbe94592a6824a263
+          New-Item baseline -ItemType Directory | Out-Null
+          git archive 3cfd4909143d6a87d5d6a61cbe94592a6824a263 -o baseline.tar
+          tar -xf baseline.tar -C baseline
+          $env:ISLANDLY_PERF_ROOT = "$pwd/baseline"
+          $env:ISLANDLY_PERF_OUTPUT = "$pwd/perf-before.json"
+          npx electron test/perf-probe.js
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline probe failed' }
+          $env:ISLANDLY_PERF_ROOT = "$pwd"
+          $env:ISLANDLY_PERF_OUTPUT = "$pwd/perf-after.json"
+          npx electron test/perf-probe.js
+          if ($LASTEXITCODE -ne 0) { throw 'Current probe failed' }
+          foreach ($file in @('perf-before.json','perf-after.json')) {
+            $p = Get-Content $file -Raw | ConvertFrom-Json
+            "$file idle: $($p.idle.avgMB) MB; CPU $($p.idle.avgCPU)%; launches/min $($p.idle.externalLaunchesPerMinute)" >> $env:GITHUB_STEP_SUMMARY
+            "$file music fixture: $($p.music.avgMB) MB; CPU $($p.music.avgCPU)%" >> $env:GITHUB_STEP_SUMMARY
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t9-perf-evidence
+          path: perf-*.json
+          if-no-files-found: error
