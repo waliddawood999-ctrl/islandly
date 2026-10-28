@@ -138,4 +138,5 @@ function mediaKey(action) {
   }
 }
 
-module.exports = { foreground, mediaKey, available: () => !!load(), loadError: () => loadError };
+const surfaceNative = require('./win32-surface');
+module.exports = { sampleScreenColor: surfaceNative.sampleScreenColor, appBar: surfaceNative.appBar, foreground, mediaKey, available: () => !!load(), loadError: () => loadError };
