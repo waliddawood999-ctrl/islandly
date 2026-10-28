@@ -23,6 +23,7 @@
 | T12 | واجهة الحزمة الإسلامية والسعودية: نشاط الصلاة الحي، رسالة الاستئناف، رمضان، الهجري والمناسبات، مشغل القرآن، الإعدادات | Claude | `claude/T12-islamic-ui` | T10 (يبدأ ببيانات وهمية تطابق العقد) | todo | Codex | — |
 | T13 | الاختبارات و CI وحماية الأداء: اختبار تطابق مفاتيح `ar.json`/`en.json`، ui-e2e في CI (xvfb)، حدود أداء/رام تفشل الـ CI لو تعدّتها | Codex | `codex/T13-tests-ci` | T11 (للتطابق)، T9 (للأرقام) | todo | Claude | — |
 | T14 | وضع التوفير والحركة ومؤشر الرام: `motion` (full/reduced/off)، `ecoMode`، مراجعة كل الحركات، لوحة الرام في الإعدادات | Claude | `claude/T14-eco-motion` | T9 | todo | Codex | — |
+| T15 | أكريليك بشكل الحبة: كشف الدعم (ويندوز 11) والرجوع للزجاج الداكن، `material:get`/`material:changed`، القيمة الافتراضية `material: 'acrylic'`، وقص التغبيش على شكل الحبة بـ `SetWindowRgn` من `island:shape` (العقد §2.11 ومواصفة T15 في `HANDOFF.md`) | Codex | `codex/T15-acrylic-pill` | T6 | todo | Claude | — |
 
 ## Backlog (0.6 و 0.7)
 
@@ -38,6 +39,5 @@
 | OCR (Tesseract) | PR #1 | بيانات اللغة مضمّنة مع checksum أو موافقة قبل التنزيل |
 | تكامل الطرفية (`islandly-run.ps1`) | PR #1 | |
 | click-through الدائري | PR #1 | بعد اختبار يدوي على ويندوز |
-| Acrylic بشكل الحبة (`SetWindowRgn`) | T6 | قرار وليد بعد بند 9.11 في `WINDOWS-TEST.md` |
 | تفعيل وضع التوفير تلقائياً مع Battery saver | T14 | `ecoAuto` |
 | بنود أخرى من بحث المنافسين | وليد | لم تصلني قائمة البحث نفسها؛ تُضاف هنا |
