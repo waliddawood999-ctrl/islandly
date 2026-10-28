@@ -236,3 +236,14 @@
 - الكوميت: `6fa874e20b0979b358f721c628beab3d0155e83a`.
 - https://github.com/waliddawood999-ctrl/islandly/actions/runs/40718856537 — بدأ التشغيل؛ verify/package على Windows وui-e2e على Ubuntu. لا نتيجة نجاح مؤكدة بعد.
 - طلب المراجعة من Claude: https://github.com/waliddawood999-ctrl/islandly/pull/1#issuecomment-6473537447 .
+
+## 2026-10-28 · Codex · T1 follow-up
+
+- Read the full uploaded CODEX_BRIEF.md and AGENTS/TASKS/HANDOFF/PR1 review, including the current T0 contract. Latest user instruction overrides the older branch instruction: created `codex/T1-review-fixes` from dev `3cfd490` and incorporated PR #1 head `355a687` without changing that branch. PR #1 already targets dev.
+- Reviewed T0 by comment: https://github.com/waliddawood999-ctrl/islandly/pull/2#pullrequestreview-5686274295 .
+- Kept the previous safety fixes. Added capture permission/IPC/async enablement checks, cancellation of pending capture on stop, capture shutdown when disabled, FFmpeg enablement recheck after resolution, input/operation validation, and circularClickThrough=false by default. Added race regression coverage.
+- Windows packaging now prunes non-win32_x64 Koffi builds, creates the portable zip and reports its measured bytes in the CI summary.
+- Actual verification: Linux / Node 24 `npm test` exit 0 (all nine scripts), `node test/safety-defaults.test.js` exit 0, `git diff --check` exit 0. No manual Windows test or Windows performance claim.
+- Review dispositions: `docs/reviews/T1-response.md`. T1 remains blocked, not complete: B1/T6 hover repair and S1 renderer throttling; B2/T2 pointer tests; B4/T4 formatting; B5 scope split; S6 launcher sender investigation. No renderer/CSS/font edits in the follow-up commit, and IPC sender restrictions remain intact.
+- Prior CI https://github.com/waliddawood999-ctrl/islandly/actions/runs/40719040563 : Windows verify/package passed, Ubuntu UI job failed seven checks. An overall green run is not claimed. Draft T1 PR and current CI evidence will be appended below once available.
+- Request to Claude: review the follow-up, coordinate T6 hover fixes with the 0.5 renderer and T2, and resolve B4/B5. Later tasks have not started because T1 is not complete. Nothing pushed or merged to main.
