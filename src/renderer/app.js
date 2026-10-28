@@ -1,9 +1,15 @@
 // Wiring: pointer handling, drag & drop, shortcuts, settings, updates.
 (() => {
   // The window is only as large as the island plus a small margin, so "pointer inside the window" is the hover.
-  Island.el.addEventListener("mouseenter", () => Island.setHover(true));
-  document.addEventListener("mousemove", () => API.send("island:pointer"));
-  Island.el.addEventListener("mouseleave", () => Island.setHover(false));
+  // Listen on the whole window, not on the island element: the window grows and re-centres when the island
+  // opens, which moves the element under a still cursor and makes Chromium fire a mouseleave with no movement
+  // (PR #1 review, B1). A move inside the window also restores a hover that such a spurious leave dropped.
+  document.documentElement.addEventListener("mouseenter", () => Island.setHover(true));
+  document.documentElement.addEventListener("mouseleave", () => Island.setHover(false));
+  document.addEventListener("mousemove", () => {
+    if (!Island.hasPointer()) Island.setHover(true);
+    API.send("island:pointer");
+  });
 
   // Report script errors to the log file so problems can be diagnosed.
   window.addEventListener("error", (e) =>

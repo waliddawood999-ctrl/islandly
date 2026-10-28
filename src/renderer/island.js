@@ -460,6 +460,7 @@ const Island = (() => {
     open,
     configure,
     isExpanded: () => hovered || pinned,
+    hasPointer: () => pointer,
     hold,
     selectedId: () => {
       const list = expandable();
