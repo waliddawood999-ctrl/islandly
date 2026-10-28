@@ -254,3 +254,39 @@
 - Code head `f4739b5`: https://github.com/waliddawood999-ctrl/islandly/actions/runs/40728979477 . Windows verify passed npm audit, npm test, Electron update flow and renderer/IPC smoke. The launcher:list authorization error did not reproduce; the intentional foreign settings:set rejection did appear, as expected.
 - Ubuntu pointer tests passed 11/12. Remaining failure: `pushing the cursor against the top screen edge opens the island and keeps it open -> island flickered closed while the cursor sat on the top edge`. Overall CI is not green. Claude/T6 and T2 must resolve and verify this; no renderer ownership bypass or skipped CI check.
 - Packaging compiled the native helper and packaged Windows Electron successfully; ZIP measurement/artifact completion was still pending when this entry was written. No size result invented.
+
+## 2026-10-28 · Claude · T1 blockers B1/B2/B4 (فرع `claude/T1-blockers` من `codex/T1-review-fixes`)
+
+**النطاق:** الثلاثة blockers اللي في مناطق Claude فقط على PR #5. ما لمست منطق Codex (`src/main/**`، preload)، وما فيه تغيير على عقد IPC.
+
+**B1 (hover) — مُصلح:**
+- **السبب:** الـ hover كان على عنصر الجزيرة (`Island.el`). لما الجزيرة تنفتح، النافذة تكبر وتعيد التمركز، فيتحرك العنصر تحت مؤشر ثابت، ويطلق Chromium `mouseleave` بدون حركة، فيلغي مؤقت الفتح (280ms).
+- **محلياً قبل الإصلاح:** 0 من 4 تشغيلات نجحت، والجزيرة ما تنفتح أبداً. السبعة فشل في CI 40719040563 هي نفس السبب (كل اللي بعد الفتح يفشل). فشل «حافة الشاشة» في 40728979477 أيضاً.
+- **الإصلاح:** `src/renderer/app.js`: الـ hover على `document.documentElement` (النافذة تلبس الجزيرة، مثل 0.4.0)، وأي حركة داخل النافذة ترجّع hover أسقطه `mouseleave` كاذب.
+- `src/renderer/island.js`: أضفت `hasPointer()` فقط.
+- `island:pointer` يُرسل كما هو، فما تغيّر شيء في main.
+
+**B2 (اختبارات المؤشر) — أخضر + تغطية 0.5:**
+- خطوة جديدة في `test/ui-e2e.js` (استثناء T2):
+  - activity/jobs/plugins/adhkar غير قابلة للفتح افتراضياً (S2).
+  - بعد تفعيلها كلها، كل لوحة من الست تنفتح وتنحط داخل الجزيرة وفوق النقاط، والنافذة تلبسها.
+  - مربع المساعد يستقبل كتابة حقيقية من الكيبورد، ثم النافذة ترجع غير قابلة للتركيز.
+- **النتيجة محلياً (Linux/xvfb، نفس أمر CI):** 13/13 في 5 تشغيلات متتالية على الحالة النهائية. قبلها 12/12 في 10 تشغيلات بعد إصلاح B1.
+
+**B4 (التنسيق) — مفصول في commit تنسيق فقط:**
+- أضفت `.prettierrc` (نفس ملف T0 حرفياً).
+- prettier على JS في `src/renderer` و `src/settings` و `src/palette` (17 ملف، single quotes).
+- **دليل أنه تنسيق فقط:** نسختا كل ملف قبل وبعد، بعد تمريرهما على `prettier --no-config`، متطابقتان (17/17)، و `node --check` نجح على الكل.
+- **ما نسّقته:** CSS و HTML. prettier يفك أسطر CSS المضغوطة اللي هي أسلوب main، فهذا يُقرر في T4.
+- **لـ Codex:** `src/main/**` و `test/**` و preload ملفاتك. لو تبي نفس التوحيد (B4 يطلب نمط main، أي single quotes)، شغّل في commit منفصل:
+  `npx prettier --write "src/main/**/*.js" "test/**/*.js"`
+  وتحقق بنفس طريقة المقارنة.
+
+**الأدلة**
+- `npm test` (Linux، Node 22): exit 0. التسعة سكربتات: ics، updater، palette 72، ai، reliability 7، features، renderer DOM، media lifecycle، safety defaults.
+- `electron-smoke`: SMOKE DONE. رفض `settings:set` من مرسل غريب متعمد، حسب ملاحظة Codex.
+- CI على هذا الـ PR: يُضاف أدناه بعد التشغيل.
+
+**لم يُختبر:**
+- ويندوز حقيقي: hover باليد، و click-through الدائري، وهو مقفول افتراضياً، ومع وضعه الـ hover على مستوى النافذة يشمل الزوايا الشفافة. لو انفتح لاحقاً يحتاج اختبار.
+- B5 (تقسيم النطاق) و S1 و S6: خارج هذا الطلب.
