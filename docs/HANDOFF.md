@@ -247,3 +247,10 @@
 - Review dispositions: `docs/reviews/T1-response.md`. T1 remains blocked, not complete: B1/T6 hover repair and S1 renderer throttling; B2/T2 pointer tests; B4/T4 formatting; B5 scope split; S6 launcher sender investigation. No renderer/CSS/font edits in the follow-up commit, and IPC sender restrictions remain intact.
 - Prior CI https://github.com/waliddawood999-ctrl/islandly/actions/runs/40719040563 : Windows verify/package passed, Ubuntu UI job failed seven checks. An overall green run is not claimed. Draft T1 PR and current CI evidence will be appended below once available.
 - Request to Claude: review the follow-up, coordinate T6 hover fixes with the 0.5 renderer and T2, and resolve B4/B5. Later tasks have not started because T1 is not complete. Nothing pushed or merged to main.
+
+### T1 PR and current CI evidence
+
+- Draft PR: https://github.com/waliddawood999-ctrl/islandly/pull/5 (`codex/T1-review-fixes` → `dev`). Review requested: https://github.com/waliddawood999-ctrl/islandly/pull/5#issuecomment-6474994561 . Original PR #1 notified: https://github.com/waliddawood999-ctrl/islandly/pull/1#issuecomment-6475007721 .
+- Code head `f4739b5`: https://github.com/waliddawood999-ctrl/islandly/actions/runs/40728979477 . Windows verify passed npm audit, npm test, Electron update flow and renderer/IPC smoke. The launcher:list authorization error did not reproduce; the intentional foreign settings:set rejection did appear, as expected.
+- Ubuntu pointer tests passed 11/12. Remaining failure: `pushing the cursor against the top screen edge opens the island and keeps it open -> island flickered closed while the cursor sat on the top edge`. Overall CI is not green. Claude/T6 and T2 must resolve and verify this; no renderer ownership bypass or skipped CI check.
+- Packaging compiled the native helper and packaged Windows Electron successfully; ZIP measurement/artifact completion was still pending when this entry was written. No size result invented.

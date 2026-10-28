@@ -22,6 +22,8 @@ This first plugin API intentionally supports text cards only. Rich controls/nati
 
 ## Operating notes
 
+- Capture is off by default (`captureEnabled:false`). The default Electron session denies all permission requests except display capture from the active, explicitly enabled recording window. Other windows receive no camera, microphone, geolocation or notification permission through this handler. Disabling capture closes the window and prevents pending enumeration or permission requests from opening a new capture session.
+
 - Expanded panel wheel: change panel; Shift+wheel: system volume; Alt+wheel: cycle displays.
 - Ctrl+Alt+O: screenshot selection/OCR window; Ctrl+Alt+T: review clipboard text in the assistant. Buttons choose region/OCR or recording explicitly.
 - Shelf image operations create outputs under Downloads/Islandly. OCR text opens Assistant locally; sending to AI requires another explicit action.
