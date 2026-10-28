@@ -5,6 +5,20 @@ const current = api.get();
 const fields = ['position', 'autoHide', 'lang', 'prayerMethod', 'madhab', 'surfaceMode', 'material'];
 const checks = ['hideFullscreen', 'clipboard', 'updates', 'prayerAlerts', 'weather', 'timeTracking', 'micCamIndicator'];
 
+// material: acrylic needs Windows 11; main says whether it is supported (task T15)
+if (!current.material) current.material = 'acrylic';
+if (api.material)
+  api
+    .material()
+    .then((r) => {
+      if (r && r.supported === false) {
+        $('material').querySelector('option[value="acrylic"]').disabled = true;
+        $('materialHint').hidden = false;
+        $('material').value = 'glass';
+      }
+    })
+    .catch(() => {});
+
 fields.forEach((k) => {
   $(k).value = current[k];
   $(k).addEventListener('change', () => api.set({ [k]: $(k).value }));

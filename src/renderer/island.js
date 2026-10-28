@@ -104,6 +104,7 @@ const Island = (() => {
     }
     animating = true;
     startFollow();
+    startShapeLoop();
     const started = performance.now();
     const anim = M.animate(el, target, SPRING);
     shapeAnim = anim;
@@ -118,6 +119,7 @@ const Island = (() => {
 
   function settle() {
     animating = false;
+    reportShape();
     if (belowShape) below.style.top = el.getBoundingClientRect().bottom + BELOW_GAP + 'px';
     sendEnvelope(shape.w, shape.h, shape.y, belowShape); // trim the window to the final size
   }
@@ -493,6 +495,39 @@ const Island = (() => {
     }
   }
 
+  // ------------------------------------------------------------------ acrylic shape
+  // With the acrylic material, Windows blurs the desktop behind the whole window. Main clips that blur to the
+  // pill (SetWindowRgn, task T15), so it needs the pill's rectangle and corner radius: on every frame while the
+  // pill animates, and once when it settles. Nothing is sent with the glass material.
+  let material = 'glass';
+  let lastShape = '';
+  let shapeLoop = false;
+  function reportShape() {
+    if (material !== 'acrylic') return;
+    const r = el.getBoundingClientRect();
+    const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+    const msg = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), radius: Math.round(radius) };
+    const key = msg.x + ',' + msg.y + ',' + msg.width + ',' + msg.height + ',' + msg.radius;
+    if (key === lastShape) return;
+    lastShape = key;
+    API.send('island:shape', msg);
+  }
+  function shapeFrame() {
+    reportShape();
+    if (animating && material === 'acrylic') requestAnimationFrame(shapeFrame);
+    else shapeLoop = false;
+  }
+  function startShapeLoop() {
+    if (shapeLoop || material !== 'acrylic') return;
+    shapeLoop = true;
+    requestAnimationFrame(shapeFrame);
+  }
+  function setMaterial(m) {
+    material = m === 'acrylic' ? 'acrylic' : 'glass';
+    lastShape = '';
+    reportShape();
+  }
+
   // ------------------------------------------------------------------ tint ("over the page" mode)
   // While resting (compact or the thin line) the pill takes a tone of the page under it, so it blends in.
   // Expanded panels and alerts always use the dark glass, so their text stays readable.
@@ -548,6 +583,7 @@ const Island = (() => {
     open,
     configure,
     setTint,
+    setMaterial,
     isExpanded: () => hovered || pinned,
     hold,
     selectedId: () => {
