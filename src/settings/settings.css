@@ -1,0 +1,13 @@
+* { box-sizing: border-box; }
+body { margin: 0; padding: 22px 26px 30px; background: #14151c; color: #eceef7; font-family: 'Segoe UI Variable Text', 'Segoe UI', Tahoma, sans-serif; font-size: 14px; }
+h1 { font-size: 21px; margin: 0 0 18px; }
+h2 { font-size: 13px; letter-spacing: .3px; color: #9aa0b5; margin: 0 0 10px; font-weight: 600; }
+section { background: #1d1f2a; border-radius: 18px; padding: 16px 18px; margin-bottom: 14px; }
+label { display: block; margin-bottom: 12px; font-weight: 600; }
+label.check { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+select, input[type='url'] { display: block; width: 100%; margin-top: 6px; padding: 9px 12px; border-radius: 12px; border: 1px solid #2f3242; background: #14151c; color: inherit; font: inherit; }
+input[type='checkbox'] { width: 18px; height: 18px; accent-color: #a78bfa; }
+button { padding: 9px 18px; border: 0; border-radius: 18px; background: #a78bfa; color: #14151c; font: inherit; font-weight: 700; cursor: pointer; }
+button:hover { filter: brightness(1.1); }
+.row { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.hint { color: #8a90a6; font-size: 12.5px; line-height: 1.6; margin: 6px 0 0; }

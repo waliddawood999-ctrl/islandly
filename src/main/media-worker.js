@@ -1,9 +1,13 @@
 // Runs in a worker thread: the SMTC binding blocks its thread, so it must stay off Electron's main thread.
-const { parentPort } = require('worker_threads');
+const path = require('path');
+const { parentPort, workerData } = require('worker_threads');
 
 let SMTCMonitor;
 try {
-  ({ SMTCMonitor } = require('@coooookies/windows-smtc-monitor'));
+  // Updates are unpacked outside the app folder, so look for the native module in the packaged app too.
+  const bases = [workerData && workerData.baseRoot, path.join(__dirname, '..', '..')].filter(Boolean);
+  const entry = require.resolve('@coooookies/windows-smtc-monitor', { paths: bases });
+  ({ SMTCMonitor } = require(entry));
 } catch (err) {
   parentPort.postMessage({ type: 'unavailable', reason: String(err) });
   return;
@@ -23,9 +27,7 @@ function toPayload() {
   const trackChanged = key !== lastTrackKey;
   if (trackChanged) {
     lastTrackKey = key;
-    lastThumb = s.media.thumbnail
-      ? 'data:image/bmp;base64,' + Buffer.from(s.media.thumbnail).toString('base64')
-      : null;
+    lastThumb = s.media.thumbnail ? 'data:image/bmp;base64,' + Buffer.from(s.media.thumbnail).toString('base64') : null;
   }
 
   return {

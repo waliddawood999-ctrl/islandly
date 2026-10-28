@@ -1,28 +1,54 @@
 const path = require('path');
-const { app, BrowserWindow, screen, ipcMain, Tray, Menu, globalShortcut, nativeImage } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, Tray, Menu, globalShortcut, nativeImage, shell } = require('electron');
+const settings = require('./settings');
 const { MediaBridge } = require('./media');
+const { ClipboardHistory } = require('./clipboard');
+const { Shelf } = require('./shelf');
+const { CalendarFeed } = require('./calendar');
+const { BluetoothWatcher } = require('./bluetooth');
+const { watchFullscreen } = require('./fullscreen');
+const { Updater, markBootOk } = require('./updater');
+const { runOnce } = require('./ps');
 
 const WIN_W = 640;
-const WIN_H = 300;
+const WIN_H = 320;
 const isDev = process.argv.includes('--dev');
+const info = global.__ISLANDLY || {
+  root: path.join(__dirname, '..', '..'),
+  baseRoot: path.join(__dirname, '..', '..'),
+  version: require('../../package.json').version,
+};
+const asset = (name) => path.join(info.root, 'assets', name);
 
 let win = null;
 let tray = null;
-let media = null;
+let settingsWin = null;
+let userHidden = false;
+let fullscreenActive = false;
+let media, clipboardHistory, shelf, calendar, bluetooth, updater, fsWatcher;
 
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-}
+if (!app.requestSingleInstanceLock()) app.quit();
+
+const push = (channel, payload) => {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+};
+
+// ---------------------------------------------------------------- window
 
 function positionWindow() {
   if (!win) return;
   const { bounds } = screen.getPrimaryDisplay();
-  win.setBounds({
-    x: Math.round(bounds.x + (bounds.width - WIN_W) / 2),
-    y: bounds.y,
-    width: WIN_W,
-    height: WIN_H,
-  });
+  const pos = settings.get().position;
+  const x = pos === 'left' ? bounds.x + 16 : pos === 'right' ? bounds.x + bounds.width - WIN_W - 16 : Math.round(bounds.x + (bounds.width - WIN_W) / 2);
+  win.setBounds({ x, y: bounds.y, width: WIN_W, height: WIN_H });
+}
+
+function applyVisibility() {
+  if (!win || win.isDestroyed()) return;
+  const hide = userHidden || (settings.get().hideFullscreen && fullscreenActive);
+  if (hide && win.isVisible()) win.hide();
+  if (!hide && !win.isVisible()) win.showInactive();
+  buildTrayMenu();
 }
 
 function createWindow() {
@@ -52,23 +78,71 @@ function createWindow() {
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   // Click-through by default; the renderer turns it off while the pointer is over the island.
   win.setIgnoreMouseEvents(true, { forward: true });
-  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  win.once('ready-to-show', () => win.showInactive());
+  win.loadFile(path.join(info.root, 'src', 'renderer', 'index.html'));
+  win.once('ready-to-show', () => applyVisibility());
+  win.webContents.on('did-finish-load', markBootOk);
   if (isDev) win.webContents.openDevTools({ mode: 'detach' });
 }
 
-function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, '..', '..', 'assets', 'tray.png'));
-  tray = new Tray(icon);
-  tray.setToolTip('Islandly');
-  const build = () =>
+function openSettings() {
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    settingsWin.focus();
+    return;
+  }
+  settingsWin = new BrowserWindow({
+    width: 480,
+    height: 680,
+    title: 'Islandly',
+    autoHideMenuBar: true,
+    resizable: false,
+    backgroundColor: '#14151c',
+    webPreferences: {
+      preload: path.join(__dirname, 'settings-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  settingsWin.setMenu(null);
+  settingsWin.loadFile(path.join(info.root, 'src', 'settings', 'index.html'));
+}
+
+// ---------------------------------------------------------------- tray
+
+function buildTrayMenu() {
+  if (!tray) return;
+  const s = settings.get();
+  const radio = (key, value, label) => ({ label, type: 'radio', checked: s[key] === value, click: () => settings.set({ [key]: value }) });
+  tray.setContextMenu(
     Menu.buildFromTemplate([
       {
         label: win && win.isVisible() ? 'إخفاء الجزيرة' : 'إظهار الجزيرة',
         click: () => {
-          if (!win) return;
-          win.isVisible() ? win.hide() : win.showInactive();
-          tray.setContextMenu(build());
+          userHidden = !userHidden;
+          applyVisibility();
+        },
+      },
+      {
+        label: 'الموضع',
+        submenu: [radio('position', 'center', 'الوسط'), radio('position', 'left', 'اليسار'), radio('position', 'right', 'اليمين')],
+      },
+      {
+        label: 'الإخفاء التلقائي',
+        submenu: [
+          radio('autoHide', 'auto', 'تصغير بعد ٥ ثوانٍ (موصى به)'),
+          radio('autoHide', 'always', 'خط رفيع حتى تمرّ عليه'),
+          radio('autoHide', 'never', 'دائماً ظاهرة'),
+        ],
+      },
+      { label: 'الإعدادات…', click: openSettings },
+      { type: 'separator' },
+      {
+        label: 'التحقق من التحديثات',
+        click: async () => {
+          const r = await updater.check();
+          if (r.status === 'up-to-date') push('toast', { key: 'upToDate', version: r.version });
+          else if (r.status === 'needs-full-download') push('toast', { key: 'needsDownload', version: r.version });
+          else if (r.status === 'error') push('toast', { key: 'updateError' });
         },
       },
       {
@@ -78,38 +152,137 @@ function createTray() {
         click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }),
       },
       { type: 'separator' },
+      { label: `Islandly ${info.version}`, enabled: false },
       { label: 'خروج', click: () => app.quit() },
-    ]);
-  tray.setContextMenu(build());
+    ])
+  );
 }
 
-function registerShortcuts() {
-  const send = (cmd) => win && win.webContents.send('shortcut', cmd);
-  globalShortcut.register('Control+Alt+I', () => send('toggle'));
-  globalShortcut.register('Control+Alt+P', () => send('pomodoro'));
+function createTray() {
+  tray = new Tray(nativeImage.createFromPath(asset('tray.png')));
+  tray.setToolTip('Islandly');
+  buildTrayMenu();
 }
 
-ipcMain.on('island:interactive', (_e, interactive) => {
-  if (win) win.setIgnoreMouseEvents(!interactive, { forward: true });
-});
+// ---------------------------------------------------------------- features
 
-ipcMain.on('media:control', (_e, action) => {
-  if (media) media.control(action);
-});
+function openExternal(url) {
+  try {
+    const u = new URL(url);
+    if (['http:', 'https:', 'mailto:'].includes(u.protocol)) shell.openExternal(u.toString());
+  } catch (_) {
+    /* ignore invalid urls */
+  }
+}
+
+async function stashFromExplorer() {
+  const out = await runOnce('explorer-selection.ps1');
+  let paths = [];
+  try {
+    const parsed = JSON.parse(out || '[]');
+    paths = Array.isArray(parsed) ? parsed : [parsed];
+  } catch (_) {
+    /* nothing selected */
+  }
+  const added = shelf.add(paths);
+  push('shelf:added', { count: added, selected: paths.length });
+}
+
+function registerIpc() {
+  ipcMain.on('settings:get', (e) => (e.returnValue = settings.get()));
+  ipcMain.on('island:interactive', (_e, interactive) => {
+    if (win) win.setIgnoreMouseEvents(!interactive, { forward: true });
+  });
+  ipcMain.on('media:control', (_e, action, value) => media.control(action, value));
+  ipcMain.on('open:external', (_e, url) => openExternal(url));
+  ipcMain.on('settings:open', openSettings);
+  ipcMain.on('shelf:drag', (e, ids) => {
+    const paths = shelf.pathsFor(ids);
+    if (!paths.length) return;
+    e.sender.startDrag({ files: paths, icon: shelf.iconFor(paths[0]).isEmpty() ? nativeImage.createFromPath(asset('tray.png')) : shelf.iconFor(paths[0]) });
+  });
+
+  ipcMain.handle('media:caps', () => media.capabilities());
+  ipcMain.handle('clipboard:list', () => clipboardHistory.list());
+  ipcMain.handle('clipboard:copy', (_e, id, as) => clipboardHistory.copy(id, as));
+  ipcMain.handle('clipboard:pin', (_e, id) => clipboardHistory.pin(id));
+  ipcMain.handle('clipboard:remove', (_e, id) => clipboardHistory.remove(id));
+  ipcMain.handle('clipboard:clear', () => clipboardHistory.clear());
+  ipcMain.handle('shelf:list', () => shelf.list());
+  ipcMain.handle('shelf:add', (_e, paths) => shelf.add(Array.isArray(paths) ? paths : []));
+  ipcMain.handle('shelf:remove', (_e, ids) => shelf.remove(ids));
+  ipcMain.handle('shelf:clear', () => shelf.clear());
+  ipcMain.handle('shelf:open', (_e, id) => {
+    const [p] = shelf.pathsFor([id]);
+    if (p) shell.openPath(p);
+  });
+  ipcMain.handle('shelf:reveal', (_e, id) => {
+    const [p] = shelf.pathsFor([id]);
+    if (p) shell.showItemInFolder(p);
+  });
+  ipcMain.handle('calendar:get', () => ({ status: calendar.status, events: calendar.last || [] }));
+  ipcMain.handle('update:check', () => updater.check());
+  ipcMain.handle('update:apply', () => {
+    app.relaunch();
+    app.quit();
+  });
+  ipcMain.handle('settings:set', (_e, patch) => settings.set(patch));
+  ipcMain.handle('app:info', () => ({ version: info.version }));
+}
+
+// ---------------------------------------------------------------- lifecycle
 
 app.on('second-instance', () => {
-  if (win && !win.isVisible()) win.showInactive();
+  userHidden = false;
+  applyVisibility();
 });
 
 app.whenReady().then(() => {
+  settings.init();
   createWindow();
   createTray();
-  registerShortcuts();
+  registerIpc();
 
-  media = new MediaBridge((payload) => {
-    if (win && !win.isDestroyed()) win.webContents.send('media:update', payload);
-  });
+  media = new MediaBridge((payload) => push('media:update', payload), info.baseRoot);
   media.start();
+
+  clipboardHistory = new ClipboardHistory((list) => push('clipboard:update', list));
+  if (settings.get().clipboard) clipboardHistory.start();
+
+  shelf = new Shelf((list) => push('shelf:update', list));
+  shelf.load();
+
+  calendar = new CalendarFeed((state) => {
+    calendar.last = state.events;
+    push('calendar:update', state);
+  });
+  calendar.configure(settings.get().icsUrl);
+
+  bluetooth = new BluetoothWatcher((devices) => push('bluetooth:update', devices));
+  bluetooth.start();
+
+  updater = new Updater((version) => push('update:ready', { version }));
+  if (settings.get().updates) updater.start();
+
+  fsWatcher = watchFullscreen((active) => {
+    fullscreenActive = active;
+    applyVisibility();
+  });
+
+  const send = (cmd) => push('shortcut', cmd);
+  globalShortcut.register('Control+Alt+I', () => send('toggle'));
+  globalShortcut.register('Control+Alt+P', () => send('pomodoro'));
+  globalShortcut.register('Control+Alt+S', stashFromExplorer);
+
+  settings.onChange((now, prev) => {
+    if (now.position !== prev.position) positionWindow();
+    if (now.icsUrl !== prev.icsUrl) calendar.configure(now.icsUrl);
+    if (now.clipboard !== prev.clipboard) now.clipboard ? clipboardHistory.start() : clipboardHistory.stop();
+    if (now.hideFullscreen !== prev.hideFullscreen) applyVisibility();
+    push('settings:update', now);
+    if (now.lang !== prev.lang && win) win.webContents.reload();
+    buildTrayMenu();
+  });
 
   screen.on('display-metrics-changed', positionWindow);
   screen.on('display-added', positionWindow);
@@ -118,7 +291,10 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-  if (media) media.stop();
+  [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory].forEach((m) => m && m.stop && m.stop());
 });
 
-app.on('window-all-closed', () => app.quit());
+// Having this listener stops Electron from quitting when the settings window closes; only the tray menu quits.
+app.on('window-all-closed', () => {
+  if (!win || win.isDestroyed()) app.quit();
+});

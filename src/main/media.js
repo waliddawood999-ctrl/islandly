@@ -1,31 +1,29 @@
 const path = require('path');
+const readline = require('readline');
 const { Worker } = require('worker_threads');
-const { spawn } = require('child_process');
-
-// Virtual-key codes for the system media keys.
-const VK = { playpause: 0xb3, next: 0xb0, prev: 0xb1 };
-
-const PS_INIT = `
-Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class K { [DllImport("user32.dll")] public static extern void keybd_event(byte b, byte s, uint f, UIntPtr e); }'
-`;
+const { spawnScript, isWindows } = require('./ps');
 
 /**
- * Reads "now playing" from Windows (SMTC) in a worker thread and sends media keys
- * through one long-lived PowerShell process, so a button press costs ~no startup time.
+ * "Now playing" comes from Windows (SMTC) through a worker thread.
+ * Controls (play/pause, next, previous, seek) go through one long-lived PowerShell helper that talks to the
+ * same SMTC session API, falling back to the system media keys when the app does not support a command.
  */
 class MediaBridge {
-  constructor(onUpdate) {
+  constructor(onUpdate, baseRoot) {
     this.onUpdate = onUpdate;
+    this.baseRoot = baseRoot;
     this.worker = null;
     this.ps = null;
+    this.nextId = 1;
+    this.pending = new Map();
   }
 
   start() {
-    if (process.platform !== 'win32') {
+    if (!isWindows) {
       this.onUpdate({ type: 'unavailable', reason: 'not-windows' });
       return;
     }
-    this.worker = new Worker(path.join(__dirname, 'media-worker.js'));
+    this.worker = new Worker(path.join(__dirname, 'media-worker.js'), { workerData: { baseRoot: this.baseRoot } });
     this.worker.on('message', (m) => this.onUpdate(m));
     this.worker.on('error', (err) => this.onUpdate({ type: 'unavailable', reason: String(err) }));
   }
@@ -35,15 +33,51 @@ class MediaBridge {
     if (this.ps) this.ps.kill();
   }
 
-  control(action) {
-    const vk = VK[action];
-    if (!vk || process.platform !== 'win32') return;
-    if (!this.ps) {
-      this.ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '-'], { windowsHide: true });
-      this.ps.on('exit', () => (this.ps = null));
-      this.ps.stdin.write(PS_INIT + '\n');
-    }
-    this.ps.stdin.write(`[K]::keybd_event(${vk},0,0,[UIntPtr]::Zero); [K]::keybd_event(${vk},0,2,[UIntPtr]::Zero)\n`);
+  helper() {
+    if (this.ps) return this.ps;
+    this.ps = spawnScript('media-ctl.ps1');
+    if (!this.ps) return null;
+    this.ps.on('exit', () => {
+      this.ps = null;
+      for (const resolve of this.pending.values()) resolve({ ok: false });
+      this.pending.clear();
+    });
+    readline.createInterface({ input: this.ps.stdout }).on('line', (line) => {
+      try {
+        const msg = JSON.parse(line);
+        const resolve = this.pending.get(msg.id);
+        if (resolve) {
+          this.pending.delete(msg.id);
+          resolve(msg);
+        }
+      } catch (_) {
+        /* ignore noise */
+      }
+    });
+    return this.ps;
+  }
+
+  send(command) {
+    const ps = this.helper();
+    if (!ps) return Promise.resolve({ ok: false });
+    const id = this.nextId++;
+    return new Promise((resolve) => {
+      this.pending.set(id, resolve);
+      ps.stdin.write(`${id} ${command}\n`);
+      setTimeout(() => {
+        if (this.pending.delete(id)) resolve({ ok: false });
+      }, 6000);
+    });
+  }
+
+  control(action, value) {
+    if (action === 'seek') return this.send(`seek ${Number(value).toFixed(3)}`);
+    if (['playpause', 'next', 'prev'].includes(action)) return this.send(action);
+    return Promise.resolve({ ok: false });
+  }
+
+  capabilities() {
+    return this.send('caps');
   }
 }
 

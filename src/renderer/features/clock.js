@@ -1,6 +1,7 @@
 // Idle state: a small pill with the time. Lowest priority, so anything else wins.
 Island.register({
   id: 'clock',
+  idle: true, // only shown when auto-hide is off
   icon: null,
   node: null,
   timer: 0,

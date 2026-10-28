@@ -3,8 +3,12 @@ const STRINGS = {
     music: 'الموسيقى',
     timer: 'المؤقت',
     battery: 'البطارية',
+    clipboard: 'الحافظة',
+    shelf: 'الرف',
+    calendar: 'الاجتماعات',
+    notice: 'إشعار',
     nothingPlaying: 'لا يوجد شيء يعمل الآن',
-    openPlayer: 'شغّل أغنية من أي تطبيق',
+    openPlayer: 'شغّل أي مقطع أو أغنية',
     mediaUnavailable: 'قراءة الموسيقى تعمل على ويندوز فقط',
     focus: 'تركيز',
     rest: 'استراحة',
@@ -30,13 +34,55 @@ const STRINGS = {
     low: 'البطارية منخفضة',
     plugged: 'تم توصيل الشاحن',
     unplugged: 'تم فصل الشاحن',
+    // clipboard
+    clipEmpty: 'انسخ أي شيء وسيظهر هنا',
+    clipEmptySub: 'روابط، أرقام، ألوان، عمليات حسابية…',
+    clear: 'مسح',
+    copied: 'تم النسخ ✓',
+    open: 'فتح',
+    mailto: 'مراسلة',
+    whatsapp: 'واتساب',
+    copyRgb: 'RGB',
+    pin: 'تثبيت',
+    // shelf
+    shelfEmpty: 'اسحب ملفات إلى هنا',
+    shelfEmptySub: 'أو حدّدها في المستكشف ثم اضغط Ctrl+Alt+S',
+    clearAll: 'مسح الكل',
+    dropHere: 'أفلت الملفات هنا',
+    shelfAdded: 'أُضيفت {n} ملفات إلى الرف',
+    shelfNothing: 'لا توجد ملفات محددة في المستكشف',
+    shelfAlready: 'الملفات موجودة في الرف بالفعل',
+    // calendar
+    calOff: 'أضف رابط التقويم',
+    calOffSub: 'من الإعدادات ← رابط التقويم (iCal)',
+    calError: 'تعذّر جلب التقويم',
+    calNone: 'لا توجد اجتماعات قادمة',
+    openSettings: 'فتح الإعدادات',
+    join: 'انضمام',
+    startsIn: 'يبدأ بعد {n} د',
+    nowLabel: 'الآن',
+    inMin: 'بعد {n} د',
+    today: 'اليوم',
+    tomorrow: 'غداً',
+    // updates / notices
+    updateReady: 'تحديث جديد جاهز',
+    updateReadySub: 'الإصدار {v} · أعد التشغيل لتثبيته',
+    restartNow: 'إعادة التشغيل',
+    upToDate: 'أنت على آخر إصدار',
+    needsDownload: 'يوجد إصدار جديد يحتاج تحميلاً كاملاً',
+    updateError: 'تعذّر التحقق من التحديثات',
+    seekUnsupported: 'هذا المقطع لا يدعم التقديم',
   },
   en: {
     music: 'Music',
     timer: 'Timer',
     battery: 'Battery',
+    clipboard: 'Clipboard',
+    shelf: 'Shelf',
+    calendar: 'Meetings',
+    notice: 'Notice',
     nothingPlaying: 'Nothing playing',
-    openPlayer: 'Play something in any app',
+    openPlayer: 'Play any video or song',
     mediaUnavailable: 'Music info works on Windows only',
     focus: 'Focus',
     rest: 'Break',
@@ -62,20 +108,57 @@ const STRINGS = {
     low: 'Battery low',
     plugged: 'Charger connected',
     unplugged: 'Charger disconnected',
+    clipEmpty: 'Copy anything and it shows up here',
+    clipEmptySub: 'Links, numbers, colors, calculations…',
+    clear: 'Clear',
+    copied: 'Copied ✓',
+    open: 'Open',
+    mailto: 'Email',
+    whatsapp: 'WhatsApp',
+    copyRgb: 'RGB',
+    pin: 'Pin',
+    shelfEmpty: 'Drop files here',
+    shelfEmptySub: 'or select them in Explorer and press Ctrl+Alt+S',
+    clearAll: 'Clear all',
+    dropHere: 'Drop files here',
+    shelfAdded: '{n} file(s) added to the shelf',
+    shelfNothing: 'No files selected in Explorer',
+    shelfAlready: 'Already on the shelf',
+    calOff: 'Add your calendar link',
+    calOffSub: 'Settings → Calendar link (iCal)',
+    calError: "Couldn't load the calendar",
+    calNone: 'No upcoming meetings',
+    openSettings: 'Open settings',
+    join: 'Join',
+    startsIn: 'Starts in {n} min',
+    nowLabel: 'Now',
+    inMin: 'in {n} min',
+    today: 'Today',
+    tomorrow: 'Tomorrow',
+    updateReady: 'Update ready',
+    updateReadySub: 'Version {v} · restart to install',
+    restartNow: 'Restart',
+    upToDate: "You're up to date",
+    needsDownload: 'A new version needs a full download',
+    updateError: "Couldn't check for updates",
+    seekUnsupported: "This media doesn't support seeking",
   },
 };
 
 const LANG = (() => {
-  try {
-    const saved = localStorage.getItem('islandly.lang');
-    if (saved === 'ar' || saved === 'en') return saved;
-  } catch (_) {
-    /* storage may be unavailable */
-  }
+  const pref = (window.islandAPI && window.islandAPI.settings.lang) || 'ar';
+  if (pref === 'ar' || pref === 'en') return pref;
   return (navigator.language || 'ar').toLowerCase().startsWith('en') ? 'en' : 'ar';
 })();
 
 document.documentElement.lang = LANG;
 document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
 
-const t = (key) => STRINGS[LANG][key] || key;
+const t = (key, vars) => {
+  let s = STRINGS[LANG][key] || key;
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, v);
+  return s;
+};
+
+const nf = new Intl.NumberFormat(LANG === 'ar' ? 'ar-EG' : 'en');
+const num = (n) => nf.format(n);

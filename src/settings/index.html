@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'">
+  <title>Islandly</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <h1>إعدادات Islandly</h1>
+
+  <section>
+    <h2>المظهر</h2>
+    <label>الموضع
+      <select id="position">
+        <option value="center">الوسط</option>
+        <option value="left">اليسار</option>
+        <option value="right">اليمين</option>
+      </select>
+    </label>
+    <label>الإخفاء التلقائي
+      <select id="autoHide">
+        <option value="auto">تصغير بعد ٥ ثوانٍ (موصى به)</option>
+        <option value="always">خط رفيع حتى تمرّ عليه</option>
+        <option value="never">دائماً ظاهرة</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="hideFullscreen"> إخفاء الجزيرة عند ملء الشاشة (فيديو، ألعاب)</label>
+    <label>اللغة
+      <select id="lang">
+        <option value="auto">تلقائي</option>
+        <option value="ar">العربية</option>
+        <option value="en">English</option>
+      </select>
+    </label>
+  </section>
+
+  <section>
+    <h2>التقويم والاجتماعات</h2>
+    <label>رابط التقويم (iCal / ICS)
+      <input id="icsUrl" type="url" dir="ltr" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics">
+    </label>
+    <p class="hint">من Google Calendar: الإعدادات ← اختر التقويم ← «العنوان السري بتنسيق iCal». الرابط سري، لا تشاركه مع أحد. يُحفظ على جهازك فقط.</p>
+  </section>
+
+  <section>
+    <h2>الخصوصية</h2>
+    <label class="check"><input type="checkbox" id="clipboard"> تسجيل سجل الحافظة (النصوص فقط، في الذاكرة ولا يُحفظ على القرص)</label>
+  </section>
+
+  <section>
+    <h2>التحديثات</h2>
+    <label class="check"><input type="checkbox" id="updates"> التحقق من التحديثات وتثبيتها تلقائياً</label>
+    <div class="row">
+      <button id="check">التحقق الآن</button>
+      <span id="status" class="hint"></span>
+    </div>
+    <p class="hint" id="version"></p>
+  </section>
+
+  <script src="settings.js"></script>
+</body>
+</html>
