@@ -24,6 +24,9 @@ const DEFAULTS = {
   timeTracking: true,
   micCamIndicator: true,
   workspaces: '', // one per line: Name: path-or-url | path-or-url
+  surfaceMode: 'overlay', // 'overlay' (floats over the page, tinted to match) | 'appbar' (reserved strip, never covers windows)
+  material: 'glass', // 'glass' (dark translucent pill) | 'acrylic' (Windows 11 blur behind the window, experimental)
+  shortcuts: 'Edge, File Explorer, Calculator, Notepad', // app shortcuts in the clock panel
   hasAiKey: false,
   hasGithubToken: false,
 };

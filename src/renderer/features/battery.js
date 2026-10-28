@@ -23,7 +23,7 @@ Island.register({
     );
 
     // compact (low battery): small ring + percent
-    this.cRing = ring(24, 4, '#f87171', 'rgba(255,255,255,.14)');
+    this.cRing = ring(20, 3, '#f87171', 'rgba(255,255,255,.14)');
     this.cText = h('span', { class: 'tm', dir: 'ltr' });
     this.compact = h('div', { class: 'view battery-compact' }, this.cRing.el, this.cText);
 
@@ -124,7 +124,7 @@ Island.register({
 
   view(mode) {
     if (!this.bat) return null;
-    if (mode === 'compact') return this.priority() ? { el: this.compact, w: 128, h: 42 } : null;
+    if (mode === 'compact') return this.priority() ? { el: this.compact, w: 108, h: 32 } : null;
     if (mode === 'peek') return { el: this.peekEl, w: 330, h: 80 };
     if (mode === 'expanded') {
       return { el: this.expandedEl, w: 420, auto: true };

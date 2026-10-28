@@ -3,6 +3,11 @@
   // The window is only as large as the island plus a small margin, so "pointer inside the window" is the hover.
   document.documentElement.addEventListener('mouseenter', () => Island.setHover(true));
   document.documentElement.addEventListener('mouseleave', () => Island.setHover(false));
+  // The main process watches the real cursor and reports an exit that no mouseleave announced.
+  API.on('island:pointer-left', () => Island.setHover(false));
+  // "Over the page" mode: the colour of the page around the island (null = none).
+  API.on('surface:tint', (rgb) => Island.setTint(rgb));
+  document.documentElement.classList.toggle('acrylic', API.settings.material === 'acrylic');
 
   // Report script errors to the log file so problems can be diagnosed.
   window.addEventListener('error', (e) => API.send('log:error', `${e.message} (${e.filename}:${e.lineno})`));
@@ -29,6 +34,7 @@
     if (cmd === 'pomodoro') Island.feature('timer').toggle();
     if (typeof cmd === 'string' && cmd.startsWith('timer:')) {
       const timer = Island.feature('timer');
+      timer.setMode('quick');
       timer.setMinutes(Number(cmd.slice(6)) || 25);
       timer.start();
       Island.open('timer');
@@ -55,7 +61,8 @@
     } catch (_) {
       /* settings object from the preload may be read-only; the next reload picks changes up */
     }
-    Island.configure({ autoHide: s.autoHide });
+    Island.configure({ autoHide: s.autoHide, surfaceMode: s.surfaceMode });
+    document.documentElement.classList.toggle('acrylic', s.material === 'acrylic');
     Island.render();
   });
 

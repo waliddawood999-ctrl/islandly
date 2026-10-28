@@ -2,7 +2,7 @@ const api = window.settingsAPI;
 const $ = (id) => document.getElementById(id);
 const current = api.get();
 
-const fields = ['position', 'autoHide', 'lang', 'prayerMethod', 'madhab'];
+const fields = ['position', 'autoHide', 'lang', 'prayerMethod', 'madhab', 'surfaceMode', 'material'];
 const checks = ['hideFullscreen', 'clipboard', 'updates', 'prayerAlerts', 'weather', 'timeTracking', 'micCamIndicator'];
 
 fields.forEach((k) => {
@@ -58,6 +58,9 @@ const saveCustom = debounced(() => {
 
 $('breakEvery').value = String(current.breakEvery);
 $('breakEvery').addEventListener('change', () => api.set({ breakEvery: parseInt($('breakEvery').value, 10) }));
+
+$('shortcuts').value = current.shortcuts || '';
+$('shortcuts').addEventListener('input', debounced(() => api.set({ shortcuts: $('shortcuts').value })));
 
 $('workspaces').value = current.workspaces || '';
 $('workspaces').addEventListener('input', debounced(() => api.set({ workspaces: $('workspaces').value })));

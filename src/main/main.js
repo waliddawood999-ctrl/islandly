@@ -18,7 +18,9 @@ const { jsonStore } = require('./services/store');
 const { Tracker } = require('./services/tracker');
 const { PrivacyWatcher } = require('./services/privacy');
 const { GitHubWatcher } = require('./services/github');
-const { Palette } = require('./palette');
+const { Palette, openTarget } = require('./palette');
+const { Surface } = require('./surface');
+const apps = require('./services/apps');
 const win32 = require('./win32');
 const cities = require('./cities');
 
@@ -32,6 +34,8 @@ const asset = (name) => path.join(info.root, 'assets', name);
 
 // A background widget should not pop up a modal crash dialog: keep running and write the error to a log file.
 process.on('uncaughtException', (err) => logError('main', err));
+// Last chance to give back a reserved AppBar strip (normal quit already does this in will-quit).
+process.on('exit', () => surface && surface.stop());
 process.on('unhandledRejection', (err) => logError('main (promise)', err));
 
 let win = null;
@@ -42,7 +46,8 @@ let envelope = { w: 160, h: 60 }; // the size the island needs right now, in CSS
 let fullscreenActive = false;
 let foregroundApp = { app: '', title: '' };
 let media, clipboardHistory, shelf, calendar, bluetooth, updater, fsWatcher, weather, sysinfo, breaks, midnightTimer;
-let palette, tracker, privacy, github;
+let palette, tracker, privacy, github, surface;
+let hoverPoll = null;
 const notesStore = jsonStore('notes.json', { todos: [] });
 
 function todayState() {
@@ -87,7 +92,68 @@ function applyVisibility() {
   const hide = userHidden || (settings.get().hideFullscreen && fullscreenActive);
   if (hide && win.isVisible()) win.hide();
   if (!hide && !win.isVisible()) win.showInactive();
+  if (surface) surface.setVisible(!hide);
   buildTrayMenu();
+}
+
+/** Is the mouse cursor inside the island window right now? (The renderer's mouse events can be wrong while the window is resized.) */
+function cursorInWindow() {
+  if (!win || win.isDestroyed() || !win.isVisible()) return false;
+  const c = screen.getCursorScreenPoint();
+  const b = win.getBounds();
+  return c.x >= b.x && c.x < b.x + b.width && c.y >= b.y && c.y < b.y + b.height;
+}
+
+/**
+ * While the renderer believes the pointer is on the island, watch the real cursor: if it has left the window
+ * (twice in a row, 120 ms apart) without a mouseleave arriving, tell the renderer, so the island never stays open.
+ */
+function watchHover(on) {
+  clearInterval(hoverPoll);
+  hoverPoll = null;
+  if (!on) return;
+  let outside = 0;
+  hoverPoll = setInterval(() => {
+    outside = cursorInWindow() ? 0 : outside + 1;
+    if (outside >= 2) {
+      clearInterval(hoverPoll);
+      hoverPoll = null;
+      push('island:pointer-left');
+    }
+  }, 120);
+}
+
+/** App shortcuts for the clock panel: the names in Settings, matched to Start Menu entries, with their icons. */
+async function shortcutList() {
+  const names = String(settings.get().shortcuts || '')
+    .split(/[,،\n]/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  const out = [];
+  for (const name of names) {
+    const [hit] = apps.search(name, 1);
+    if (!hit || hit.score < 60) continue;
+    let icon = null;
+    try {
+      const img = await app.getFileIcon(hit.path, { size: 'normal' });
+      if (!img.isEmpty()) icon = img.toDataURL();
+    } catch (_) {
+      /* no icon: the panel shows a generic one */
+    }
+    out.push({ name: hit.name, icon });
+  }
+  return out;
+}
+
+/** Window material: 'acrylic' asks Windows 11 to blur what is behind the window (experimental with a transparent window). */
+function applyMaterial() {
+  if (!win || win.isDestroyed() || process.platform !== 'win32' || typeof win.setBackgroundMaterial !== 'function') return;
+  try {
+    win.setBackgroundMaterial(settings.get().material === 'acrylic' ? 'acrylic' : 'none');
+  } catch (err) {
+    logError('background material', err);
+  }
 }
 
 function createWindow() {
@@ -243,6 +309,11 @@ function registerIpc() {
     positionWindow();
   });
   ipcMain.on('system:watch', (_e, on) => sysinfo.watch(!!on));
+  ipcMain.handle('island:pointer-inside', () => cursorInWindow());
+  ipcMain.on('island:hover-state', (_e, on) => watchHover(!!on));
+  ipcMain.on('surface:resting', (_e, resting) => surface && surface.setResting(!!resting));
+  ipcMain.handle('shortcuts:list', () => shortcutList());
+  ipcMain.on('shortcuts:open', (_e, name) => openTarget({ type: 'app', value: String(name || '').slice(0, 120) }));
   // The island only accepts keyboard focus while the to-do panel is on screen; it must never steal focus otherwise.
   ipcMain.on('island:focusable', (_e, on) => {
     if (!win || win.isDestroyed()) return;
@@ -389,6 +460,18 @@ app.whenReady().then(() => {
     openSettings,
   });
 
+  surface = new Surface({
+    win32,
+    screen,
+    getWindow: () => win,
+    onTint: (rgb) => push('surface:tint', rgb),
+    log: (...a) => logError(...a),
+  });
+  // the reserved strip: the resting island (32 px) and its 8 px gap, scaled by the UI zoom
+  surface.setBarHeight((8 + 32 + 4) * zoom());
+  surface.setMode(settings.get().surfaceMode);
+  applyMaterial();
+
   if (process.env.ISLANDLY_TEST) global.__islandly = { palette, shelf, tracker, openSettings };
 
   fsWatcher = watchForeground({
@@ -434,6 +517,10 @@ app.whenReady().then(() => {
       }
     }
     push('settings:update', now);
+    if (now.surfaceMode !== prev.surfaceMode) surface.setMode(now.surfaceMode);
+    if (now.scale !== prev.scale) surface.setBarHeight((8 + 32 + 4) * zoom());
+    if (now.material !== prev.material) applyMaterial();
+    if (now.shortcuts !== prev.shortcuts) shortcutList().then((list) => push('shortcuts:update', list));
     if (now.lang !== prev.lang && win) win.webContents.reload();
     buildTrayMenu();
   });
@@ -445,7 +532,8 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-  [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks, tracker, privacy, github, palette].forEach((m) => m && m.stop && m.stop());
+  [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks, tracker, privacy, github, palette, surface].forEach((m) => m && m.stop && m.stop());
+  clearInterval(hoverPoll);
   clearTimeout(midnightTimer);
 });
 
