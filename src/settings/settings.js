@@ -1,6 +1,7 @@
 const api = window.settingsAPI;
 const $ = (id) => document.getElementById(id);
 const current = api.get();
+document.documentElement.dataset.fonts = current.fontPairing || 'plex';
 
 const fields = ['position', 'autoHide', 'lang', 'prayerMethod', 'madhab', 'surfaceMode', 'material'];
 const checks = ['hideFullscreen', 'clipboard', 'updates', 'prayerAlerts', 'weather', 'timeTracking', 'micCamIndicator'];

@@ -87,6 +87,7 @@ let dirty = false; // typed since the last results arrived
 function applyLang() {
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  document.documentElement.dataset.fonts = API.settings.fontPairing || 'plex';
   input.placeholder = s('placeholder');
   $('lead').innerHTML = ICON.search;
   $('aIcon').innerHTML = ICON.spark;

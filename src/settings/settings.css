@@ -1,7 +1,7 @@
 * { box-sizing: border-box; }
-body { margin: 0; padding: 22px 26px 30px; background: #14151c; color: #eceef7; font-family: 'Segoe UI Variable Text', 'Segoe UI', Tahoma, sans-serif; font-size: 14px; }
+body { margin: 0; padding: 22px 26px 30px; background: #14151c; color: #eceef7; font-family: var(--font); font-size: 14px; }
 h1 { font-size: 21px; margin: 0 0 18px; }
-h2 { font-size: 13px; letter-spacing: .3px; color: #9aa0b5; margin: 0 0 10px; font-weight: 600; }
+h2 { font-size: 13px; color: #9aa0b5; margin: 0 0 10px; font-weight: 600; }
 section { background: #1d1f2a; border-radius: 18px; padding: 16px 18px; margin-bottom: 14px; }
 label { display: block; margin-bottom: 12px; font-weight: 600; }
 label.check { display: flex; align-items: center; gap: 10px; font-weight: 500; }

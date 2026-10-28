@@ -1,7 +1,6 @@
 :root {
   --accent: #a78bfa;
   --muted: #9ba1b6;
-  --font: 'Segoe UI Variable Text', 'Segoe UI', Tahoma, system-ui, sans-serif;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { background: transparent; font-family: var(--font); color: #fff; overflow: hidden; }
