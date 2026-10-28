@@ -2,8 +2,8 @@ const api = window.settingsAPI;
 const $ = (id) => document.getElementById(id);
 const current = api.get();
 
-const fields = ['position', 'autoHide', 'lang'];
-const checks = ['hideFullscreen', 'clipboard', 'updates'];
+const fields = ['position', 'autoHide', 'lang', 'prayerMethod', 'madhab'];
+const checks = ['hideFullscreen', 'clipboard', 'updates', 'prayerAlerts', 'weather', 'timeTracking', 'micCamIndicator'];
 
 fields.forEach((k) => {
   $(k).value = current[k];
@@ -23,6 +23,62 @@ $('icsUrl').addEventListener('input', () => {
   clearTimeout(icsTimer);
   icsTimer = setTimeout(() => api.set({ icsUrl: $('icsUrl').value.trim() }), 600);
 });
+
+// --- city / custom coordinates
+const cities = api.cities();
+for (const c of [...cities, { key: 'custom', ar: 'موقع مخصص…' }]) {
+  const o = document.createElement('option');
+  o.value = c.key;
+  o.textContent = c.ar;
+  $('city').append(o);
+}
+$('city').value = current.city;
+const showCustom = () => ($('customBox').hidden = $('city').value !== 'custom');
+showCustom();
+$('city').addEventListener('change', () => {
+  showCustom();
+  api.set({ city: $('city').value });
+});
+$('lat').value = current.lat || '';
+$('lng').value = current.lng || '';
+$('cityName').value = current.cityName || '';
+const debounced = (fn, ms = 600) => {
+  let t = 0;
+  return () => {
+    clearTimeout(t);
+    t = setTimeout(fn, ms);
+  };
+};
+const saveCustom = debounced(() => {
+  const lat = parseFloat($('lat').value);
+  const lng = parseFloat($('lng').value);
+  if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) api.set({ lat, lng, cityName: $('cityName').value.trim() });
+});
+['lat', 'lng', 'cityName'].forEach((k) => $(k).addEventListener('input', saveCustom));
+
+$('breakEvery').value = String(current.breakEvery);
+$('breakEvery').addEventListener('change', () => api.set({ breakEvery: parseInt($('breakEvery').value, 10) }));
+
+$('workspaces').value = current.workspaces || '';
+$('workspaces').addEventListener('input', debounced(() => api.set({ workspaces: $('workspaces').value })));
+
+// --- secrets: never read back, only replaced or cleared
+function secretField(input, button, state, name, flag, label) {
+  const paint = (has) => {
+    state.textContent = has ? '✓ ' + label + ' محفوظ. اترك الحقل فارغاً واضغط حفظ لحذفه.' : state.dataset.help || '';
+    state.classList.toggle('ok', has);
+  };
+  state.dataset.help = state.textContent;
+  paint(!!current[flag]);
+  button.addEventListener('click', async () => {
+    const value = input.value.trim();
+    await api.setSecret(name, value);
+    input.value = '';
+    paint(!!value);
+  });
+}
+secretField($('aiKey'), $('aiKeySave'), $('aiKeyState'), 'aiKey', 'hasAiKey', 'المفتاح');
+secretField($('githubToken'), $('ghSave'), $('ghState'), 'githubToken', 'hasGithubToken', 'الرمز');
 
 api.info().then((i) => ($('version').textContent = 'الإصدار ' + i.version));
 

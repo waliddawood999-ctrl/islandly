@@ -6,10 +6,10 @@ const ARGS = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-F
 const isWindows = process.platform === 'win32';
 
 /** Run a script once and resolve with its trimmed stdout ('' on any failure). */
-function runOnce(name, timeout = 15000) {
+function runOnce(name, timeout = 15000, args = []) {
   if (!isWindows) return Promise.resolve('');
   return new Promise((resolve) => {
-    execFile('powershell.exe', [...ARGS, path.join(SCRIPTS, name)], { windowsHide: true, timeout }, (err, stdout) =>
+    execFile('powershell.exe', [...ARGS, path.join(SCRIPTS, name), ...args.map(String)], { windowsHide: true, timeout }, (err, stdout) =>
       resolve(err ? '' : String(stdout).trim())
     );
   });

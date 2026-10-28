@@ -46,8 +46,13 @@ Island.register({
         return chip(t('copyRgb'), () => this.copy(item, 'rgb'));
       case 'math':
         return chip('= ' + item.result, () => this.copy(item, 'result'));
-      default:
-        return null;
+      default: {
+        // plain text: translate (Arabic -> English, anything else -> Arabic)
+        const text = item.text.trim().slice(0, 1500);
+        if (!text || text.length < 2) return null;
+        const to = /[\u0600-\u06ff]/.test(text) ? 'en' : 'ar';
+        return chip(t('translate'), () => API.send('open:external', `https://translate.google.com/?sl=auto&tl=${to}&text=${encodeURIComponent(text)}&op=translate`));
+      }
     }
   },
 

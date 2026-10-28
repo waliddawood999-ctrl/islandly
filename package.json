@@ -1,13 +1,13 @@
 {
   "name": "islandly",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A Dynamic Island for Windows: music, timers, battery and more in one floating pill.",
   "main": "src/main/bootstrap.js",
   "private": true,
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "test": "node test/ics.test.js && node test/updater.test.js",
+    "test": "node test/ics.test.js && node test/updater.test.js && node test/palette.test.js && node test/ai.test.js",
     "test:smoke": "electron test/electron-smoke.js",
     "test:e2e": "electron test/ui-e2e.js"
   },
@@ -19,6 +19,7 @@
   },
   "islandlyBase": 2,
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "adhan": "^4.4.6",
     "koffi": "^2.16.3"
   }

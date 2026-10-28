@@ -148,14 +148,15 @@ const Island = (() => {
 
     const f = bestCompact(autoHide === 'never');
     sliverEl.classList.toggle('active', !!bestCompact(false));
-    if (f && autoHide !== 'always') {
+    // a "sticky" compact view (microphone/camera in use) stays visible whatever the auto-hide setting
+    if (f && (autoHide !== 'always' || f.sticky)) {
       const key = 'c:' + f.id;
       if (key !== compactKey) {
         compactKey = key;
         compactSince = Date.now();
         if (autoHide === 'auto') setTimeout(render, AUTO_HIDE_MS + 40);
       }
-      if (autoHide === 'never' || Date.now() - compactSince < AUTO_HIDE_MS) {
+      if (autoHide === 'never' || f.sticky || Date.now() - compactSince < AUTO_HIDE_MS) {
         const v = f.view('compact');
         return { key, el: v.el, w: v.w, h: v.h, y: TOP };
       }
@@ -249,6 +250,9 @@ const Island = (() => {
 
   // Context: open on what matters now (a meeting about to start, the running timer, the song playing...),
   // unless the user picked a panel themselves in the last minute.
+  // Which panel suits the app in front (set by app.js from the foreground window); used when nothing is urgent.
+  let contextPanel = null;
+
   function pickDefault() {
     if (Date.now() - userChoseAt < 60000) return;
     const list = expandable();
@@ -261,6 +265,10 @@ const Island = (() => {
         bestP = p;
       }
     });
+    if (bestP < 30 && contextPanel) {
+      const i = list.findIndex((f) => f.id === contextPanel);
+      if (i >= 0) best = i;
+    }
     selected = best;
   }
 
@@ -390,5 +398,6 @@ const Island = (() => {
     },
     isSliver: () => !!(current && current.sliver),
     feature: (id) => features.find((f) => f.id === id),
+    setContext: (id) => (contextPanel = id || null),
   };
 })();

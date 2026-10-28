@@ -27,9 +27,37 @@
   API.on('shortcut', (cmd) => {
     if (cmd === 'toggle') Island.togglePin();
     if (cmd === 'pomodoro') Island.feature('timer').toggle();
+    if (typeof cmd === 'string' && cmd.startsWith('timer:')) {
+      const timer = Island.feature('timer');
+      timer.setMinutes(Number(cmd.slice(6)) || 25);
+      timer.start();
+      Island.open('timer');
+    }
   });
 
-  API.on('settings:update', (s) => Island.configure({ autoHide: s.autoHide }));
+  // Context: the panel that fits the app you are using opens first on hover (unless something urgent is showing).
+  const CONTEXT = [
+    [/^(zoom|teams|ms-teams|outlook|olk|webex|slack)$/, 'calendar'],
+    [/^(explorer)$/, 'shelf'],
+    [/^(code|devenv|winword|notepad|obsidian|notion|onenote|windowsterminal)$/, 'notes'],
+    [/^(spotify|music\.ui|vlc|applemusic)$/, 'music'],
+    [/^(taskmgr)$/, 'system'],
+  ];
+  API.on('foreground', (fg) => {
+    const app = String((fg && fg.app) || '').toLowerCase();
+    const hit = CONTEXT.find(([re]) => re.test(app));
+    Island.setContext(hit ? hit[1] : null);
+  });
+
+  API.on('settings:update', (s) => {
+    try {
+      Object.assign(API.settings, s);
+    } catch (_) {
+      /* settings object from the preload may be read-only; the next reload picks changes up */
+    }
+    Island.configure({ autoHide: s.autoHide });
+    Island.render();
+  });
 
   API.on('update:ready', ({ version }) => {
     Notice.show({ text: t('updateReady'), detail: t('updateReadySub', { v: version }), actionLabel: t('restartNow'), run: () => API.call('update:apply') }, 20000);

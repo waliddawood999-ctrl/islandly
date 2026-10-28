@@ -15,7 +15,7 @@ const repoRoot = path.join(__dirname, '..');
 
 // A fake "remote repository" with a newer version.
 const files = {
-  'package.json': JSON.stringify({ name: 'islandly', version: '9.9.9', islandlyBase: 1 }),
+  'package.json': JSON.stringify({ name: 'islandly', version: '9.9.9', islandlyBase: require('../package.json').islandlyBase }),
   'src/main/main.js': "console.log('FIXTURE MAIN RUNNING from ' + __dirname.split(require('path').sep).slice(-4, -2).join('/')); require('electron').app.exit(0);",
   'assets/note.txt': 'hello',
   'README.md': 'not part of an update',
@@ -68,7 +68,15 @@ app.whenReady().then(() => {
       r = await new Updater(() => {}).check();
       assert.strictEqual(r.status, 'ready');
 
-      // 4. the bootstrap now runs the staged update instead of the packaged code (the fixture main exits the app)
+      // 4. a release that needs newer native modules than this install has is not hot-installed
+      const good = files['package.json'];
+      files['package.json'] = JSON.stringify({ name: 'islandly', version: '10.0.0', islandlyBase: require('../package.json').islandlyBase + 1 });
+      r = await new Updater(() => {}).check();
+      assert.strictEqual(r.status, 'needs-full-download');
+      files['package.json'] = good;
+      console.log('UPDATE newer base asks for a full download: ok');
+
+      // 5. the bootstrap now runs the staged update instead of the packaged code (the fixture main exits the app)
       require('../src/main/bootstrap.js');
       assert.strictEqual(global.__ISLANDLY.version, '9.9.9');
       console.log('UPDATE bootstrap picked up the update: ok');

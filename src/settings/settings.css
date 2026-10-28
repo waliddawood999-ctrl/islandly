@@ -5,10 +5,16 @@ h2 { font-size: 13px; letter-spacing: .3px; color: #9aa0b5; margin: 0 0 10px; fo
 section { background: #1d1f2a; border-radius: 18px; padding: 16px 18px; margin-bottom: 14px; }
 label { display: block; margin-bottom: 12px; font-weight: 600; }
 label.check { display: flex; align-items: center; gap: 10px; font-weight: 500; }
-select, input[type='url'] { display: block; width: 100%; margin-top: 6px; padding: 9px 12px; border-radius: 12px; border: 1px solid #2f3242; background: #14151c; color: inherit; font: inherit; }
+select, input[type='url'], input[type='number'], input[type='text'], input[type='password'], textarea { display: block; width: 100%; margin-top: 6px; padding: 9px 12px; border-radius: 12px; border: 1px solid #2f3242; background: #14151c; color: inherit; font: inherit; }
 input[type='checkbox'] { width: 18px; height: 18px; accent-color: #a78bfa; }
 button { padding: 9px 18px; border: 0; border-radius: 18px; background: #a78bfa; color: #14151c; font: inherit; font-weight: 700; cursor: pointer; }
 button:hover { filter: brightness(1.1); }
 .row { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
 .hint { color: #8a90a6; font-size: 12.5px; line-height: 1.6; margin: 6px 0 0; }
 button.danger { background: #f87171; }
+textarea { resize: vertical; min-height: 84px; line-height: 1.6; }
+.row input { margin-top: 0; flex: 1; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.grid2 .span2 { grid-column: span 2; }
+[hidden] { display: none !important; }
+.ok { color: #34d399; }

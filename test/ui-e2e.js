@@ -147,6 +147,10 @@ app.whenReady().then(() =>
     await sleep(300);
 
     await step('panels never overlap the tab dots and fit inside the island', async () => {
+      // data for the panels that only appear with data
+      win.webContents.send('usage:update', { total: 5400, apps: [{ name: 'Chrome', seconds: 3000 }, { name: 'VS Code', seconds: 1800 }, { name: 'WhatsApp', seconds: 600 }] });
+      win.webContents.send('github:update', { status: 'ok', items: [{ id: '1', title: 'Fix the build on Windows', type: 'PullRequest', repo: 'me/islandly', url: 'https://github.com/me/islandly/pull/1' }, { id: '2', title: 'Crash when the clipboard is empty', type: 'Issue', repo: 'me/islandly', url: 'https://github.com/me/islandly/issues/2' }] });
+      await sleep(400);
       const shotDir = process.env.ISLANDLY_SHOTS;
       if (shotDir) {
         fs.mkdirSync(shotDir, { recursive: true });
@@ -165,7 +169,7 @@ app.whenReady().then(() =>
       (async () => {
         const out = [];
         const feed = (ch, payload) => window.__feed(ch, payload);
-        for (const id of ['today', 'music', 'timer', 'calendar', 'clipboard', 'shelf', 'notes', 'battery', 'system']) {
+        for (const id of ['today', 'music', 'timer', 'calendar', 'clipboard', 'shelf', 'notes', 'battery', 'system', 'usage', 'github']) {
           Island.open(id);
           await new Promise((r) => setTimeout(r, 700));
           const isl = document.getElementById('island').getBoundingClientRect();
@@ -189,6 +193,41 @@ app.whenReady().then(() =>
       await sleep(900);
       const fit = await windowFitsIsland();
       assert(fit.ok, 'window not trimmed after closing: ' + JSON.stringify(fit));
+    });
+
+    await step('typing in the to-do field adds a task with the real keyboard', async () => {
+      await js('Island.open("notes"); 0');
+      await sleep(900);
+      const [x, y] = await screenPoint('.nt-input');
+      xmouse('move', x, y);
+      await sleep(500);
+      xmouse('click');
+      await sleep(600);
+      xmouse('type', 'buy milk');
+      xmouse('key', 'Return');
+      await waitFor('task added', async () => (await js(`[...document.querySelectorAll('.nt-text')].map((e) => e.textContent).join('|')`)).includes('buy milk'), 4000);
+      // leaving the field gives focus back, so the island never keeps keyboard focus
+      await js('document.querySelector(".nt-input").blur(); 0');
+      await sleep(300);
+      // after typing the island must not stay stuck open
+      await js('Island.togglePin(); 0');
+      xmouse('move', 5, 400);
+      await waitFor('island collapsed after typing', async () => !(await js('Island.isExpanded()')), 6000);
+      assert.strictEqual(win.isFocusable(), false, 'window still accepts focus after the to-do panel closed');
+    });
+
+    await step('mic/camera indicator stays visible while in use and the window fits it', async () => {
+      win.webContents.send('privacy:update', { mic: ['Zoom'], cam: ['Zoom'] });
+      await sleep(4500); // after the announcement (peek) it settles into the compact indicator
+      await sleep(5600); // longer than the auto-hide delay: it must not shrink to the thin line
+      const view = await js(`document.querySelector('#content > .view') && document.querySelector('#content > .view').className`);
+      assert(/privacy-compact/.test(view), 'indicator not shown: ' + view);
+      if (process.env.ISLANDLY_SHOTS) fs.writeFileSync(path.join(process.env.ISLANDLY_SHOTS, '20-privacy.png'), (await win.webContents.capturePage()).toPNG());
+      await sleep(500);
+      const fit = await windowFitsIsland();
+      assert(fit.ok, 'window does not fit the indicator: ' + JSON.stringify(fit));
+      win.webContents.send('privacy:update', { mic: [], cam: [] });
+      await waitFor('indicator gone', async () => !/privacy-compact/.test(await js(`(document.querySelector('#content > .view') || {}).className || ''`)), 4000);
     });
 
     await step('pushing the cursor against the top screen edge opens the island and keeps it open', async () => {

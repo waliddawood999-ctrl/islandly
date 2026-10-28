@@ -11,19 +11,36 @@ Island.register({
     this.memFill = h('i');
     this.memText = h('div', { class: 'm-artist', dir: 'ltr' });
     this.uptime = h('div', { class: 'm-artist' });
+    // quick controls: volume keys and laptop screen brightness
+    const vol = (action, icon, label) => h('button', { class: 'qc-btn', title: label, 'data-interactive': '1', onclick: () => API.send('controls:volume', action) }, html(icon));
+    this.bright = h('input', { class: 'qc-range', type: 'range', min: '0', max: '100', step: '5', dir: 'ltr', 'data-interactive': '1' });
+    this.bright.addEventListener('change', () => API.call('controls:brightness', Number(this.bright.value)));
+    this.brightRow = h('div', { class: 'qc-bright' }, h('span', { class: 'qc-ic' }, html(ICONS.sun)), this.bright);
+    this.brightRow.style.display = 'none';
+    this.controls = h(
+      'div',
+      { class: 'qc' },
+      h('div', { class: 'qc-vol', dir: 'ltr' }, vol('voldown', ICONS.volDown, t('volDown')), vol('mute', ICONS.mute, t('mute')), vol('volup', ICONS.volUp, t('volUp'))),
+      this.brightRow
+    );
     this.expandedEl = h(
       'div',
-      { class: 'view auto system-expanded' },
-      h('div', { class: 'ring-wrap s' }, this.cpuRing.el, this.cpuText),
+      { class: 'view auto system-wrap' },
       h(
         'div',
-        { class: 'sys-side' },
-        h('div', { class: 'p-title' }, t('cpu')),
-        h('div', { class: 'sys-label' }, t('memory')),
-        h('div', { class: 'meter', dir: 'ltr' }, this.memFill),
-        this.memText,
-        this.uptime
-      )
+        { class: 'system-expanded' },
+        h('div', { class: 'ring-wrap s' }, this.cpuRing.el, this.cpuText),
+        h(
+          'div',
+          { class: 'sys-side' },
+          h('div', { class: 'p-title' }, t('cpu')),
+          h('div', { class: 'sys-label' }, t('memory')),
+          h('div', { class: 'meter', dir: 'ltr' }, this.memFill),
+          this.memText,
+          this.uptime
+        )
+      ),
+      this.controls
     );
     API.on('system:sample', (d) => this.set(d));
   },
@@ -48,6 +65,15 @@ Island.register({
     if (open !== this.watching) {
       this.watching = open;
       API.send('system:watch', open);
+      // read the brightness once per opening; the row stays hidden on desktops without a built-in display
+      if (open) {
+        API.call('controls:brightness').then((level) => {
+          if (Number.isFinite(level)) {
+            this.bright.value = String(level);
+            this.brightRow.style.display = '';
+          }
+        });
+      }
     }
   },
 

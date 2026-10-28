@@ -15,6 +15,12 @@ const { Weather } = require('./services/weather');
 const { SysInfo } = require('./services/sysinfo');
 const { Breaks } = require('./services/breaks');
 const { jsonStore } = require('./services/store');
+const { Tracker } = require('./services/tracker');
+const { PrivacyWatcher } = require('./services/privacy');
+const { GitHubWatcher } = require('./services/github');
+const { Palette } = require('./palette');
+const win32 = require('./win32');
+const cities = require('./cities');
 
 const isDev = process.argv.includes('--dev');
 const info = global.__ISLANDLY || {
@@ -36,6 +42,7 @@ let envelope = { w: 160, h: 60 }; // the size the island needs right now, in CSS
 let fullscreenActive = false;
 let foregroundApp = { app: '', title: '' };
 let media, clipboardHistory, shelf, calendar, bluetooth, updater, fsWatcher, weather, sysinfo, breaks, midnightTimer;
+let palette, tracker, privacy, github;
 const notesStore = jsonStore('notes.json', { todos: [] });
 
 function todayState() {
@@ -167,6 +174,7 @@ function trayMenuTemplate() {
           radio('autoHide', 'never', 'دائماً ظاهرة'),
         ],
       },
+      { label: 'لوحة الأوامر   Ctrl+Alt+Space', click: () => palette.toggle() },
       { label: 'الإعدادات…', click: openSettings },
       { label: 'فتح مجلد السجلات والبيانات', click: () => shell.openPath(app.getPath('userData')) },
       { type: 'separator' },
@@ -235,11 +243,18 @@ function registerIpc() {
     positionWindow();
   });
   ipcMain.on('system:watch', (_e, on) => sysinfo.watch(!!on));
+  // The island only accepts keyboard focus while the to-do panel is on screen; it must never steal focus otherwise.
+  ipcMain.on('island:focusable', (_e, on) => {
+    if (!win || win.isDestroyed()) return;
+    if (!on && win.isFocused()) win.blur();
+    win.setFocusable(!!on);
+  });
   ipcMain.on('island:focus', (_e, on) => {
     if (!win || win.isDestroyed()) return;
-    // Only while a text field is used: the island must never steal focus otherwise.
-    win.setFocusable(!!on);
-    if (on) win.focus();
+    if (on) {
+      win.setFocusable(true);
+      win.focus();
+    }
   });
   ipcMain.on('log:error', (_e, text) => logError('renderer', String(text).slice(0, 2000)));
   ipcMain.on('media:control', (_e, action, value) => media.control(action, value));
@@ -284,6 +299,22 @@ function registerIpc() {
     app.quit();
   });
   ipcMain.handle('settings:set', (_e, patch) => settings.set(patch));
+  ipcMain.on('settings:cities', (e) => (e.returnValue = Object.entries(cities).map(([key, c]) => ({ key, ar: c.ar, en: c.en }))));
+  ipcMain.handle('settings:secret', (_e, name, value) => {
+    settings.setSecret(String(name), String(value || '').trim());
+    if (name === 'githubToken') github.start();
+  });
+  ipcMain.handle('shelf:image', (_e, id, op) => shelf.imageOp(id, op));
+  ipcMain.handle('usage:get', () => tracker.today());
+  ipcMain.handle('github:get', () => github.last || { status: 'off', items: [] });
+  ipcMain.handle('privacy:get', () => privacy.state || { mic: [], cam: [] });
+  ipcMain.on('controls:volume', (_e, action) => ['volup', 'voldown', 'mute'].includes(action) && win32.mediaKey(action));
+  ipcMain.handle('controls:brightness', async (_e, level) => {
+    const args = Number.isFinite(level) ? [Math.max(0, Math.min(100, Math.round(level)))] : [];
+    const out = await runOnce('brightness.ps1', 10000, args);
+    const n = parseInt(out, 10);
+    return Number.isFinite(n) ? n : null;
+  });
   ipcMain.handle('app:info', () => ({ version: info.version }));
 }
 
@@ -333,6 +364,33 @@ app.whenReady().then(() => {
   breaks = new Breaks(() => push('break:due', {}));
   breaks.configure(settings.get().breakEvery);
 
+  tracker = new Tracker((today) => push('usage:update', today));
+  if (settings.get().timeTracking) tracker.start();
+
+  privacy = new PrivacyWatcher((state) => {
+    privacy.state = state;
+    push('privacy:update', state);
+  });
+  if (settings.get().micCamIndicator) privacy.start();
+
+  github = new GitHubWatcher(
+    () => settings.getSecret('githubToken'),
+    (state) => {
+      github.last = state;
+      push('github:update', state);
+    }
+  );
+  github.start();
+
+  palette = new Palette({
+    root: info.root,
+    settings,
+    onTimer: (minutes) => push('shortcut', 'timer:' + minutes),
+    openSettings,
+  });
+
+  if (process.env.ISLANDLY_TEST) global.__islandly = { palette, shelf, tracker, openSettings };
+
   fsWatcher = watchForeground({
     onFullscreen: (active) => {
       fullscreenActive = active;
@@ -340,6 +398,7 @@ app.whenReady().then(() => {
     },
     onApp: (fg) => {
       foregroundApp = fg;
+      tracker.setApp(fg);
       push('foreground', fg);
     },
   });
@@ -348,6 +407,7 @@ app.whenReady().then(() => {
   globalShortcut.register('Control+Alt+I', () => send('toggle'));
   globalShortcut.register('Control+Alt+P', () => send('pomodoro'));
   globalShortcut.register('Control+Alt+S', stashFromExplorer);
+  if (!globalShortcut.register('Control+Alt+Space', () => palette.toggle())) logError('shortcut Ctrl+Alt+Space is taken by another app');
 
   settings.onChange((now, prev) => {
     if (now.position !== prev.position) positionWindow();
@@ -364,6 +424,15 @@ app.whenReady().then(() => {
       push('today:update', todayState());
     }
     if (now.breakEvery !== prev.breakEvery) breaks.configure(now.breakEvery);
+    if (now.timeTracking !== prev.timeTracking) now.timeTracking ? tracker.start() : tracker.stop();
+    if (now.micCamIndicator !== prev.micCamIndicator) {
+      if (now.micCamIndicator) privacy.start();
+      else {
+        privacy.stop();
+        privacy.state = { mic: [], cam: [] };
+        push('privacy:update', privacy.state);
+      }
+    }
     push('settings:update', now);
     if (now.lang !== prev.lang && win) win.webContents.reload();
     buildTrayMenu();
@@ -376,7 +445,7 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-  [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks].forEach((m) => m && m.stop && m.stop());
+  [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks, tracker, privacy, github, palette].forEach((m) => m && m.stop && m.stop());
   clearTimeout(midnightTimer);
 });
 

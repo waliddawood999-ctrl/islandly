@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { app, nativeImage } = require('electron');
 
+const IMAGE = /\.(png|jpe?g|bmp)$/i;
+
 /** A temporary holding area for files. Only paths are stored; the files themselves are never copied or moved. */
 class Shelf {
   constructor(onChange) {
@@ -39,7 +41,7 @@ class Shelf {
     } catch (_) {
       /* missing */
     }
-    return { id: this.seq++, path: p, name: path.basename(p) || p, isDir, icon: null };
+    return { id: this.seq++, path: p, name: path.basename(p) || p, isDir, isImage: !isDir && IMAGE.test(p), icon: null };
   }
 
   async loadIcon(item) {
@@ -53,7 +55,7 @@ class Shelf {
   }
 
   list() {
-    return this.items.map(({ id, path: p, name, isDir, icon }) => ({ id, path: p, name, isDir, icon }));
+    return this.items.map(({ id, path: p, name, isDir, isImage, icon }) => ({ id, path: p, name, isDir, isImage, icon }));
   }
 
   emit() {
@@ -91,6 +93,38 @@ class Shelf {
 
   pathsFor(ids) {
     return this.items.filter((i) => ids.includes(i.id)).map((i) => i.path);
+  }
+
+  /**
+   * Image quick actions: 'png' / 'jpg' convert, 'half' halves the size. The result is written next to the original
+   * (or to Downloads if that folder is read-only) and added to the shelf. Returns the new path or null.
+   */
+  imageOp(id, op) {
+    const item = this.items.find((i) => i.id === id);
+    if (!item || !item.isImage || !['png', 'jpg', 'half'].includes(op)) return null;
+    let img = nativeImage.createFromPath(item.path);
+    if (img.isEmpty()) return null;
+    const ext = path.extname(item.path);
+    const base = path.basename(item.path, ext);
+    let outExt = op === 'jpg' ? '.jpg' : op === 'png' ? '.png' : /\.jpe?g$/i.test(ext) ? '.jpg' : '.png';
+    if (op === 'half') {
+      const { width, height } = img.getSize();
+      img = img.resize({ width: Math.max(1, Math.round(width / 2)), height: Math.max(1, Math.round(height / 2)), quality: 'best' });
+    }
+    const data = outExt === '.jpg' ? img.toJPEG(90) : img.toPNG();
+    const name = op === 'half' ? `${base}-50%${outExt}` : `${base}${outExt}`;
+    for (const dir of [path.dirname(item.path), app.getPath('downloads')]) {
+      let target = path.join(dir, name);
+      for (let n = 2; fs.existsSync(target); n++) target = path.join(dir, name.replace(outExt, ` (${n})${outExt}`));
+      try {
+        fs.writeFileSync(target, data);
+        this.add([target]);
+        return target;
+      } catch (_) {
+        /* try the next folder */
+      }
+    }
+    return null;
   }
 
   iconFor(p) {

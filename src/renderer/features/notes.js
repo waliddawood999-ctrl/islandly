@@ -32,6 +32,17 @@ Island.register({
     this.paint();
   },
 
+  // While this panel is on screen the window accepts focus, so a click on the field activates it the normal way
+  // (asking the OS for focus afterwards can be refused). Everywhere else the island never takes focus.
+  sync() {
+    const visible = Island.isExpanded() && Island.selectedId() === 'notes';
+    if (visible !== this.focusable) {
+      this.focusable = visible;
+      API.send('island:focusable', visible);
+      if (!visible && this.focused) this.input.blur();
+    }
+  },
+
   focusIn() {
     if (this.focused) return;
     this.focused = true;

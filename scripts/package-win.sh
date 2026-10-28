@@ -12,14 +12,25 @@ electron_version="$(node -p "require('$root/package.json').devDependencies.elect
 git -C "$root" archive HEAD --prefix=app/ | tar -x -C "$work"
 cd "$work/app"
 npm install --os=win32 --cpu=x64 --omit=dev --no-audit --no-fund >/dev/null
+# remember the production packages (top-level folder names) before build tooling is added
+keep="$(npm ls --omit=dev --all --parseable 2>/dev/null | sed -n 's#.*/node_modules/\(@[^/]*\)/.*#\1#p; s#.*/node_modules/\([^@/][^/]*\)$#\1#p' | sort -u)"
 # The packager only needs electron to exist to read its version; the Windows binary is downloaded separately.
 npm install --no-save --ignore-scripts --no-audit --no-fund "electron@$electron_version" >/dev/null
 npx --yes @electron/packager . Islandly --platform=win32 --arch=x64 --out="$work/out" --overwrite --asar=false \
   --ignore="^/dev$" --ignore="^/test$" --ignore="^/scripts$" --ignore="^/\.git" >/dev/null
 
 app="$work/out/Islandly-win32-x64/resources/app"
-# keep only the native media module; everything else in node_modules is build tooling
-find "$app/node_modules" -mindepth 1 -maxdepth 1 ! -name '@coooookies' -exec rm -rf {} +
+# keep only production packages; anything else in node_modules is build tooling
+for d in "$app/node_modules"/*; do
+  name="$(basename "$d")"
+  grep -qxF "$name" <<<"$keep" || rm -rf "$d"
+done
+# koffi ships native builds for every OS; Windows x64 needs only its own
+find "$app/node_modules/koffi/build/koffi" -mindepth 1 -maxdepth 1 ! -name 'win32_x64' -exec rm -rf {} +
+rm -rf "$app/node_modules/koffi/doc" "$app/node_modules/koffi/src"
+for m in @coooookies koffi adhan @anthropic-ai; do
+  [ -d "$app/node_modules/$m" ] || { echo "missing $m in the package" >&2; exit 1; }
+done
 
 cat > "$work/out/Islandly-win32-x64/اقرأني.txt" <<'TXT'
 Islandly - الجزيرة الديناميكية لويندوز

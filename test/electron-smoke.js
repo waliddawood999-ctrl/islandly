@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 const { app, BrowserWindow, clipboard } = require('electron');
 
+process.env.ISLANDLY_TEST = '1';
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'islandly-smoke-'));
 app.setPath('userData', userData);
 require('../src/main/main.js');
@@ -30,12 +31,15 @@ app.whenReady().then(() => {
     const result = await win.webContents.executeJavaScript(`(async () => {
       const out = {};
       out.island = typeof Island;
-      out.features = ['clock', 'music', 'timer', 'battery', 'clipboard', 'shelf', 'calendar', 'notice'].filter((id) => Island.feature(id));
+      out.features = ['clock', 'today', 'music', 'timer', 'calendar', 'clipboard', 'shelf', 'notes', 'battery', 'system', 'usage', 'github', 'privacy', 'notice'].filter((id) => Island.feature(id));
       out.api = Object.keys(window.islandAPI).sort();
       out.settings = window.islandAPI.settings;
       out.shelf = await islandAPI.call('shelf:list');
       out.clipboard = (await islandAPI.call('clipboard:list')).map((i) => i.type + ':' + i.text);
       out.calendar = await islandAPI.call('calendar:get');
+      out.usage = await islandAPI.call('usage:get');
+      out.github = await islandAPI.call('github:get');
+      out.privacy = await islandAPI.call('privacy:get');
       out.blocked = await islandAPI.call('not:allowed').then(() => 'NOT BLOCKED', (e) => 'blocked');
       Island.open('clipboard');
       await new Promise((r) => setTimeout(r, 700));
@@ -43,8 +47,61 @@ app.whenReady().then(() => {
       return out;
     })()`);
     console.log('SMOKE ' + JSON.stringify(result));
+
+    // shelf image action: halve a generated 40x20 PNG
+    const { nativeImage } = require('electron');
+    const png = path.join(userData, 'pic.png');
+    fs.writeFileSync(png, nativeImage.createFromBuffer(Buffer.alloc(40 * 20 * 4, 200), { width: 40, height: 20 }).toPNG());
+    const t = global.__islandly;
+    t.shelf.add([png]);
+    const item = t.shelf.list().find((i) => i.path === png);
+    const out = t.shelf.imageOp(item.id, 'half');
+    const jpg = t.shelf.imageOp(item.id, 'jpg');
+    console.log('SMOKE image ' + JSON.stringify({ isImage: item.isImage, half: out && path.basename(out), size: out && nativeImage.createFromPath(out).getSize(), jpg: jpg && path.basename(jpg), onShelf: t.shelf.list().length }));
+
+    // command palette: open, type, Enter copies the result and closes it
+    t.palette.toggle();
+    await new Promise((r) => setTimeout(r, 1500));
+    const pw = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('palette'));
+    const typed = await pw.webContents.executeJavaScript(`(async () => {
+      const q = document.getElementById('q');
+      q.value = '12*12';
+      q.dispatchEvent(new Event('input'));
+      await new Promise((r) => setTimeout(r, 400));
+      return { focused: document.activeElement === q, rows: [...document.querySelectorAll('.row .t1')].map((e) => e.textContent), dir: document.documentElement.dir };
+    })()`);
+    pw.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+    pw.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+    await new Promise((r) => setTimeout(r, 600));
+    const copied = await clipboard.readText();
+    console.log('SMOKE palette ' + JSON.stringify({ visibleBefore: true, typed, copied, visibleAfter: pw.isVisible() }));
+    t.palette.toggle();
+    await new Promise((r) => setTimeout(r, 800));
+    const empty = await pw.webContents.executeJavaScript(`[...document.querySelectorAll('.row .t1')].map((e) => e.textContent)`);
+    console.log('SMOKE palette-empty ' + JSON.stringify(empty));
+    fs.writeFileSync(path.join(os.tmpdir(), 'islandly-palette.png'), (await pw.webContents.capturePage()).toPNG());
+
+    // settings window: new fields load, a key is stored encrypted and never shown back
+    t.openSettings();
+    await new Promise((r) => setTimeout(r, 1500));
+    const sw = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('settings'));
+    const form = await sw.webContents.executeJavaScript(`(async () => {
+      const $ = (id) => document.getElementById(id);
+      $('aiKey').value = 'sk-smoke-123';
+      $('aiKeySave').click();
+      await new Promise((r) => setTimeout(r, 400));
+      $('city').value = 'custom';
+      $('city').dispatchEvent(new Event('change'));
+      return { cities: $('city').options.length, customShown: !$('customBox').hidden, keyField: $('aiKey').value, keyState: $('aiKeyState').textContent, breakEvery: $('breakEvery').value };
+    })()`);
+    const st = require('../src/main/settings');
+    const raw = fs.readFileSync(path.join(userData, 'settings.json'), 'utf8');
+    console.log('SMOKE settings ' + JSON.stringify({ ...form, stored: st.getSecret('aiKey') === 'sk-smoke-123', plainInFile: raw.includes('sk-smoke-123'), hasAiKey: st.get().hasAiKey, city: st.get().city, secretInGet: 'secrets' in st.get() }));
+    sw.webContents.capturePage().then((img) => fs.writeFileSync(path.join(os.tmpdir(), 'islandly-settings.png'), img.toPNG()));
+    await new Promise((r) => setTimeout(r, 300));
     fs.writeFileSync(path.join(os.tmpdir(), 'islandly-smoke.png'), (await win.webContents.capturePage()).toPNG());
     } catch (e) { console.log('SMOKE ERROR ' + e.stack); }
+    console.log('SMOKE DONE');
     app.exit(0);
   }, 3500);
 });

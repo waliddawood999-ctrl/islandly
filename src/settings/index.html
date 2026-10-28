@@ -43,6 +43,73 @@
   </section>
 
   <section>
+    <h2>اليوم: الصلاة والطقس</h2>
+    <label>المدينة
+      <select id="city"></select>
+    </label>
+    <div id="customBox" class="grid2" hidden>
+      <label>خط العرض<input id="lat" type="number" step="0.0001" dir="ltr"></label>
+      <label>خط الطول<input id="lng" type="number" step="0.0001" dir="ltr"></label>
+      <label class="span2">اسم المكان<input id="cityName" type="text"></label>
+    </div>
+    <label>طريقة حساب المواقيت
+      <select id="prayerMethod">
+        <option value="auto">تلقائي حسب المدينة</option>
+        <option value="UmmAlQura">أم القرى</option>
+        <option value="MuslimWorldLeague">رابطة العالم الإسلامي</option>
+        <option value="Egyptian">الهيئة المصرية</option>
+        <option value="Kuwait">الكويت</option>
+        <option value="Qatar">قطر</option>
+        <option value="Dubai">دبي</option>
+        <option value="Karachi">كراتشي</option>
+        <option value="NorthAmerica">أمريكا الشمالية (ISNA)</option>
+        <option value="Turkey">تركيا</option>
+      </select>
+    </label>
+    <label>المذهب (لوقت العصر)
+      <select id="madhab">
+        <option value="shafi">الجمهور (شافعي، مالكي، حنبلي)</option>
+        <option value="hanafi">حنفي</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="prayerAlerts"> تنبيه قبل الصلاة بـ ١٠ دقائق وعند الأذان</label>
+    <label class="check"><input type="checkbox" id="weather"> عرض الطقس (من Open-Meteo، بدون حساب)</label>
+  </section>
+
+  <section>
+    <h2>الصحة والإنتاجية</h2>
+    <label>تذكير بالاستراحة كل
+      <select id="breakEvery">
+        <option value="0">إيقاف</option>
+        <option value="30">٣٠ دقيقة</option>
+        <option value="45">٤٥ دقيقة</option>
+        <option value="60">ساعة</option>
+        <option value="90">ساعة ونصف</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="timeTracking"> تتبّع وقت استخدام التطبيقات (يُحفظ على جهازك فقط)</label>
+    <label class="check"><input type="checkbox" id="micCamIndicator"> إظهار مؤشر عند استخدام الميكروفون أو الكاميرا</label>
+  </section>
+
+  <section>
+    <h2>مساحات العمل ولوحة الأوامر</h2>
+    <p class="hint">افتح لوحة الأوامر بـ Ctrl + Alt + Space. كل سطر مساحة عمل: الاسم ثم نقطتان ثم العناصر مفصولة بـ |</p>
+    <textarea id="workspaces" rows="4" dir="auto" placeholder="الدراسة: https://classroom.google.com | C:\Users\me\Documents\Uni | Word"></textarea>
+  </section>
+
+  <section>
+    <h2>المفاتيح (تُشفَّر على جهازك)</h2>
+    <label>مفتاح Anthropic API (للأسئلة بالذكاء الاصطناعي في لوحة الأوامر)
+      <div class="row"><input id="aiKey" type="password" dir="ltr" autocomplete="off"><button id="aiKeySave" type="button">حفظ</button></div>
+    </label>
+    <p class="hint" id="aiKeyState"></p>
+    <label>رمز GitHub (لإشعارات GitHub في الجزيرة)
+      <div class="row"><input id="githubToken" type="password" dir="ltr" autocomplete="off"><button id="ghSave" type="button">حفظ</button></div>
+    </label>
+    <p class="hint" id="ghState">أنشئ رمزاً من GitHub ← Settings ← Developer settings ← Personal access tokens (classic) بصلاحية notifications فقط.</p>
+  </section>
+
+  <section>
     <h2>التقويم والاجتماعات</h2>
     <label>رابط التقويم (iCal / ICS)
       <input id="icsUrl" type="url" dir="ltr" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics">

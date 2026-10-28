@@ -6,5 +6,7 @@ contextBridge.exposeInMainWorld('settingsAPI', {
   info: () => ipcRenderer.invoke('app:info'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   quit: () => ipcRenderer.send('app:quit'),
+  cities: () => ipcRenderer.sendSync('settings:cities'),
+  setSecret: (name, value) => ipcRenderer.invoke('settings:secret', name, value),
   applyUpdate: () => ipcRenderer.invoke('update:apply'),
 });

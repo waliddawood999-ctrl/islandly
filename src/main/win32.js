@@ -123,8 +123,8 @@ function foreground() {
   }
 }
 
-const VK = { playpause: 0xb3, next: 0xb0, prev: 0xb1 };
-/** Press a system media key (fallback when the media session API is unavailable). */
+const VK = { playpause: 0xb3, next: 0xb0, prev: 0xb1, volup: 0xaf, voldown: 0xae, mute: 0xad };
+/** Press a system media/volume key (media keys are the fallback when the media session API is unavailable). */
 function mediaKey(action) {
   const a = load();
   const vk = VK[action];

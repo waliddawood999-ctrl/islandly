@@ -81,11 +81,26 @@ Island.register({
           },
           h('div', { class: 'sh-icon' }, icon),
           h('div', { class: 'sh-name' }, item.name),
+          item.isImage
+            ? h(
+                'div',
+                { class: 'sh-acts' },
+                ...[['png', 'PNG'], ['jpg', 'JPG'], ['half', '½']].map(([op, label]) =>
+                  h('button', { class: 'sh-act', 'data-interactive': '1', title: t('img_' + op), onclick: (e) => { e.stopPropagation(); this.imageOp(item, op); } }, label)
+                )
+              )
+            : null,
           h('button', { class: 'x', 'data-interactive': '1', onclick: (e) => { e.stopPropagation(); API.call('shelf:remove', [item.id]); } }, html(ICONS.close))
         );
         return el;
       })
     );
+  },
+
+  async imageOp(item, op) {
+    const out = await API.call('shelf:image', item.id, op);
+    this.peekText.textContent = out ? t('imgDone') : t('imgFailed');
+    Island.peek('shelf', 2400);
   },
 
   priority: () => 0,

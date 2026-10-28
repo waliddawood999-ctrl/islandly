@@ -1,16 +1,16 @@
 const { clipboard } = require('electron');
+const { evaluate } = require('./services/calc');
 
 const MAX_ITEMS = 30;
 const MAX_LENGTH = 5000;
 
+// Only text that looks like arithmetic (an operator between two numbers) is evaluated,
+// so dates like 2026-10-28 or ranges like 1-5 are not mistaken for sums.
 function safeMath(expr) {
-  if (!/^[\d\s+\-*/().]+$/.test(expr) || !/[+\-*/]/.test(expr)) return null;
-  try {
-    const value = Function(`"use strict"; return (${expr})`)();
-    return Number.isFinite(value) ? Math.round(value * 1e8) / 1e8 : null;
-  } catch (_) {
-    return null;
-  }
+  const t = expr.trim();
+  if (!/^[\d\s+\-*/().×÷%^]+$/.test(t) || !/\d\s*[+\-*/×÷^]\s*[\d(]/.test(t)) return null;
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(t) || /^\d+-\d+$/.test(t)) return null;
+  return evaluate(t);
 }
 
 function hexToRgb(hex) {
@@ -26,6 +26,7 @@ function classify(text) {
   if (/^https?:\/\/\S+$/i.test(t)) return { type: 'url' };
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return { type: 'email' };
   if (/^#([0-9a-f]{6}|[0-9a-f]{3})$/i.test(t)) return { type: 'color', color: t, rgb: hexToRgb(t) };
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(t) || /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(t)) return { type: 'text' }; // a date
   if (/^\+?[\d\s\-()]{7,20}$/.test(t) && t.replace(/\D/g, '').length >= 8) return { type: 'phone', digits: t.replace(/[^\d+]/g, '') };
   const result = safeMath(t);
   if (result !== null) return { type: 'math', result };
