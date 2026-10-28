@@ -40,9 +40,9 @@ function operation(files, op, width) {
     const worker = new Worker(path.join(repo, "src/main/file-worker.js"), {
       workerData: { baseRoot: repo, files, op, width, output: tmp },
     });
-    worker.on("message", (r) => {
+    worker.on("message", async (r) => {
       if (r.progress !== undefined) return;
-      worker.terminate();
+      await worker.terminate();
       r.ok ? resolve(r) : reject(new Error(r.error));
     });
     worker.on("error", reject);
@@ -132,11 +132,40 @@ function operation(files, op, width) {
   ];
   await history.poll();
   assert.equal(history.list().length, 0);
+  // A password-manager foreground switch while a clipboard payload is resolving must not store it.
+  let deliver;
+  snapshot = [
+    {
+      types: ["text/plain"],
+      getType: () =>
+        new Promise((resolve) => {
+          deliver = resolve;
+        }),
+    },
+  ];
+  history.last = "old";
+  const pendingRead = history.poll();
+  await new Promise((resolve) => setImmediate(resolve));
+  foreground = "bitwarden";
+  deliver(new Blob(["must not enter history"], { type: "text/plain" }));
+  await pendingRead;
+  assert.equal(history.list().length, 0);
+  foreground = "notepad";
+  history.last = "old";
+  const staleRead = history.poll();
+  await new Promise((resolve) => setImmediate(resolve));
+  history.stop();
+  history.start();
+  deliver(new Blob(["stale secret"], { type: "text/plain" }));
+  await staleRead;
+  assert.equal(history.list().length, 0, "old reads cannot cross stop/restart");
+  history.stop();
   for (let i = 0; i < 30; i++) history.add("item " + i);
   assert.equal(history.list().length, 20);
   assert.equal(classify("SA0380000000608010167519").type, "iban");
   history.timer = null;
   const sharp = require("sharp");
+  sharp.cache(false);
   const image = path.join(tmp, "input.png");
   await sharp({
     create: { width: 80, height: 40, channels: 3, background: "#ff5733" },
@@ -170,4 +199,11 @@ function operation(files, op, width) {
     console.error(e);
     process.exitCode = 1;
   })
-  .finally(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  .finally(() =>
+    fs.rmSync(tmp, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    }),
+  );

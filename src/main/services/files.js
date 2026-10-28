@@ -55,12 +55,12 @@ class FileActions {
     this.workers.add(worker);
     return new Promise((resolve) => {
       let ended = false;
-      const finish = (r) => {
+      const finish = async (r) => {
         if (ended) return;
         ended = true;
         clearTimeout(timeout);
+        await worker.terminate().catch(() => {});
         this.workers.delete(worker);
-        worker.terminate();
         this.onResult(r);
         resolve(r);
       };

@@ -5,6 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { Worker } = require("node:worker_threads");
 const sharp = require("sharp");
+sharp.cache(false);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "islandly-ocr-test-"));
 (async () => {
   const input = path.join(tmp, "sample.png");
@@ -32,7 +33,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "islandly-ocr-test-"));
       worker.terminate();
       reject(new Error("OCR timeout"));
     }, 120000);
-    worker.on("message", (r) => {
+    worker.on("message", async (r) => {
       if (r.progress !== undefined) return;
       clearTimeout(timeout);
       worker.terminate();
@@ -53,4 +54,11 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "islandly-ocr-test-"));
     console.error(e);
     process.exitCode = 1;
   })
-  .finally(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  .finally(() =>
+    fs.rmSync(tmp, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    }),
+  );

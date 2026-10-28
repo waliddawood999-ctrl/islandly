@@ -68,15 +68,18 @@ class ClipboardHistory {
     this.timer = null;
     this.busy = false;
     this.seq = 1;
+    this.generation = 0;
   }
 
   start() {
     if (this.timer) return;
+    this.generation++;
     this.last = null;
     this.timer = setInterval(() => this.poll(), 800);
   }
 
   stop() {
+    this.generation++;
     clearInterval(this.timer);
     this.timer = null;
   }
@@ -85,6 +88,15 @@ class ClipboardHistory {
   async poll() {
     if (this.busy) return;
     this.busy = true;
+    const generation = this.generation;
+    const canCapture = () => {
+      if (generation !== this.generation || !this.timer) return false;
+      if (PRIVATE_APPS.test(win32.foreground().app)) {
+        this.last = null;
+        return false;
+      }
+      return true;
+    };
     try {
       // Foreground exclusion and standardized clipboard markers are complementary; neither is a password detector.
       const before = win32.foreground().app;
@@ -112,6 +124,7 @@ class ClipboardHistory {
         const blob = await imageItem.getType("image/png");
         if (blob.size > MAX_IMAGE) return;
         const data = Buffer.from(await blob.arrayBuffer());
+        if (!canCapture()) return;
         const fingerprint =
           "image:" + crypto.createHash("sha256").update(data).digest("hex");
         const first = this.last === null;
@@ -120,8 +133,12 @@ class ClipboardHistory {
         if (!first) this.addImage(data, fingerprint);
         return;
       }
-      const text = await clipboard.readText();
-      if (typeof text !== "string") return;
+      const textItem = batch?.find((item) => item.types.includes("text/plain"));
+      if (batch && !textItem) return;
+      const text = textItem
+        ? await (await textItem.getType("text/plain")).text()
+        : await clipboard.readText();
+      if (!canCapture() || typeof text !== "string") return;
       const first = this.last === null;
       if (text === this.last) return;
       this.last = text;

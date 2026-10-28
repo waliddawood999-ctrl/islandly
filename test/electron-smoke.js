@@ -181,6 +181,23 @@ app.whenReady().then(() => {
       assert.equal(st.getSecret("aiKey"), "sk-smoke-123");
       assert.equal(raw.includes("sk-smoke-123"), false);
       assert.equal("secrets" in st.get(), false);
+      // A foreign main frame cannot mutate privileged settings even if it can send raw Electron IPC.
+      const foreign = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          nodeIntegration: true,
+          contextIsolation: false,
+          sandbox: false,
+        },
+      });
+      await foreign.loadURL("data:text/html,<title>IPC isolation test</title>");
+      const denied = await foreign.webContents.executeJavaScript(
+        `require('electron').ipcRenderer.invoke('settings:set', {scale: 1.5}).then(() => false, () => true)`,
+      );
+      assert.equal(denied, true, "foreign sender must be rejected");
+      assert.equal(st.get().scale, 0.8);
+      foreign.destroy();
+
       sw.webContents
         .capturePage()
         .then((img) =>
