@@ -152,7 +152,7 @@
 | `fontPairing` | `'plex'` \| `'manrope'` \| `'jakarta'` (مخفي في الإعدادات) | `'plex'` | T8 |
 | `motion` | `'full'` \| `'reduced'` \| `'off'` | `'full'` | T14 |
 | `ecoMode` | boolean | `false` | T9/T14 |
-| `surfaceMode` | `'overlay'` \| `'appbar'` | `'overlay'` | T6/T7 |
+| `islandMode` | `'overlay'` \| `'appbar'` | `'overlay'` | T6/T7 |
 | `material` | `'glass'` \| `'acrylic'` | `'glass'` | T6 |
 | `shortcuts` | string (أسماء تطبيقات مفصولة بفاصلة) | `'Edge, File Explorer, Calculator, Notepad'` | T6 |
 | `prayerActivity` | boolean (نشاط الصلاة الحي في الجزيرة) | `true` | T12 |
@@ -168,7 +168,7 @@
 
 **ملاحظات:**
 - **ترحيل `lang` القديم:** لو `uiLang` غير موجود و `lang` موجود، `uiLang = lang` (`'ar'`/`'en'`/`'auto'`). بعدها الواجهة تقرأ `uiLang` فقط. المستخدمون الحاليون يبقون على العربي.
-- **اسم مفتاح وضع الجزيرة:** اسمه في الكود منذ T6 `surfaceMode`، وهو اللي سمّاه وليد `islandMode`. نبقيه `surfaceMode` لأنه منفّذ ومختبر (`test/surface.test.js`)، ما لم يطلب وليد غير ذلك.
+- **اسم مفتاح وضع الجزيرة:** `islandMode` (قرار وليد، كان `surfaceMode` في أول نسخة من T6 ثم أُعيدت تسميته في PR #3). لا ترحيل لازم: الاسم القديم ما انشحن للمستخدمين.
 - **التحقق في `settings.set`:** الحالي يقارن `typeof` فقط. المفاتيح ذات القيم المحددة (enum) والمدى و `prayerIqamaMinutes` (كائن) تحتاج تحققاً لكل مفتاح.
 
 ### 2. القنوات
@@ -295,6 +295,7 @@
 
 ### سجل تغييرات العقد
 - 2026-10-28: النسخة الأولى (Claude).
+- 2026-10-28: `surfaceMode` صار `islandMode` (قرار وليد). نفس القيم والقيمة الافتراضية.
 - 2026-10-28: §2.11 المادة (أكريليك افتراضي مع رجوع تلقائي)، و `material:get`، و `material:changed`، و `island:shape`. قرار وليد بعد تجربة Acrylic.
 
 ### مواصفة T15 (Codex): أكريليك بشكل الحبة
@@ -353,3 +354,10 @@
 - لا طلبات جديدة. `fontPairing` موجود أصلاً في عقد v0.5 (القيمة الافتراضية `'plex'`).
 - الحزمة تشحن `assets/fonts/` تلقائياً، و `dev/` مستثنى في `package-win.sh`.
 - التحديث التلقائي ينزّل `assets/` (حوالي 270KB إضافية مرة وحدة)، وما يحتاج bump لـ `islandlyBase`.
+
+---
+
+## 2026-10-28 · Claude · T8 (قرار الخط)
+
+**المعتمد: IBM Plex Sans Arabic + IBM Plex Sans** (`fontPairing: 'plex'`، الافتراضي والوحيد المشحون). القرار فوّضه وليد لي بناءً على `compare-sheet.png` و `compare-zoom.png`.
+**السبب:** الخطان من عائلة واحدة صممتها IBM معاً (نفس سماكة الخط وارتفاع الحروف والإيقاع)، فالسطر اللي يخلط عربي وإنجليزي يبان كخط واحد. وهو الأوضح عربياً في الأحجام الصغيرة (12–15px) بدون ما يعرض النص: Alexandria أعرض وقصّ العنوان في المشغل الصغير، و Readex Pro أنعم وأقل حدّة بجانب اللاتيني.

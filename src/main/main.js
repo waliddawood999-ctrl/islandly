@@ -469,7 +469,7 @@ app.whenReady().then(() => {
   });
   // the reserved strip: the resting island (32 px) and its 8 px gap, scaled by the UI zoom
   surface.setBarHeight((8 + 32 + 4) * zoom());
-  surface.setMode(settings.get().surfaceMode);
+  surface.setMode(settings.get().islandMode);
   applyMaterial();
 
   if (process.env.ISLANDLY_TEST) global.__islandly = { palette, shelf, tracker, openSettings };
@@ -517,7 +517,7 @@ app.whenReady().then(() => {
       }
     }
     push('settings:update', now);
-    if (now.surfaceMode !== prev.surfaceMode) surface.setMode(now.surfaceMode);
+    if (now.islandMode !== prev.islandMode) surface.setMode(now.islandMode);
     if (now.scale !== prev.scale) surface.setBarHeight((8 + 32 + 4) * zoom());
     if (now.material !== prev.material) applyMaterial();
     if (now.shortcuts !== prev.shortcuts) shortcutList().then((list) => push('shortcuts:update', list));
