@@ -101,7 +101,10 @@ async function island(lang) {
     'shelf:list': S.shelf.map((name, i) => ({ id: i + 1, name, path: 'C:\\Users\\me\\' + name, isImage: name.endsWith('.png'), isDir: !name.includes('.') })),
     'notes:get': { todos: S.todos.map((text, i) => ({ id: i + 1, text, done: i === 1 })) },
     'usage:get': { total: 5 * 3600 + 22 * 60, apps: S.apps.map((name, i) => ({ name, seconds: [9000, 5400, 2700, 1220][i] })) },
-    'github:get': { status: 'ok', items: S.gh.map((title, i) => ({ type: i ? 'Issue' : 'PullRequest', title, repo: 'waliddawood999-ctrl/islandly', url: 'https://github.com' })) },
+    'github:get': {
+      status: 'ok',
+      items: S.gh.map((title, i) => ({ type: i ? 'Issue' : 'PullRequest', title, repo: 'waliddawood999-ctrl/islandly', url: 'https://github.com' })),
+    },
     'shortcuts:list': ['Edge', 'File Explorer', 'Calculator', 'Notepad'].map((name) => ({ name })),
     'media:caps': { ok: true, next: true, prev: true, seek: true, toggle: true },
     'privacy:get': { mic: [], cam: [] },
@@ -133,7 +136,14 @@ async function island(lang) {
     await page.evaluate(prep);
     await page.waitForTimeout(900);
     const file = path.join(out, `island-${name}-${lang}.png`);
-    const bottom = await page.evaluate(() => Math.max(...['#island', '#below'].map((s) => document.querySelector(s)).filter(Boolean).map((e) => e.getBoundingClientRect().bottom)));
+    const bottom = await page.evaluate(() =>
+      Math.max(
+        ...['#island', '#below']
+          .map((s) => document.querySelector(s))
+          .filter(Boolean)
+          .map((e) => e.getBoundingClientRect().bottom)
+      )
+    );
     await page.screenshot({ path: file, clip: { x: 0, y: 0, width: 600, height: Math.min(330, Math.ceil(bottom) + 18) } });
     shots.push({ group: 'island', name, lang, file: path.basename(file) });
   };
@@ -170,7 +180,14 @@ async function island(lang) {
   await shot('github', () => Island.open('github'));
   await shot('github-peek', () => {
     const g = Island.feature('github');
-    g.set({ ...g.state, fresh: [{ title: 'a', repo: 'waliddawood999-ctrl/islandly' }, { title: 'b', repo: 'waliddawood999-ctrl/islandly' }, { title: 'c', repo: 'openjs/electron' }] });
+    g.set({
+      ...g.state,
+      fresh: [
+        { title: 'a', repo: 'waliddawood999-ctrl/islandly' },
+        { title: 'b', repo: 'waliddawood999-ctrl/islandly' },
+        { title: 'c', repo: 'openjs/electron' },
+      ],
+    });
   });
   await shot('privacy', () => {
     window.__emit('privacy:update', { mic: ['Zoom', 'Teams'], cam: ['Zoom'] });
@@ -186,7 +203,29 @@ async function settings(lang) {
   await page.addInitScript(
     ({ lang, list }) => {
       window.settingsAPI = {
-        get: () => ({ uiLang: lang, lang, digits: 'latn', position: 'center', autoHide: 'auto', islandMode: 'overlay', material: 'acrylic', scale: 0.8, city: 'riyadh', prayerMethod: 'auto', madhab: 'shafi', breakEvery: 60, hideFullscreen: true, prayerAlerts: true, weather: true, timeTracking: true, micCamIndicator: true, clipboard: true, updates: true, hasAiKey: true, shortcuts: 'Edge, File Explorer, Calculator, Notepad' }),
+        get: () => ({
+          uiLang: lang,
+          lang,
+          digits: 'latn',
+          position: 'center',
+          autoHide: 'auto',
+          islandMode: 'overlay',
+          material: 'acrylic',
+          scale: 0.8,
+          city: 'riyadh',
+          prayerMethod: 'auto',
+          madhab: 'shafi',
+          breakEvery: 60,
+          hideFullscreen: true,
+          prayerAlerts: true,
+          weather: true,
+          timeTracking: true,
+          micCamIndicator: true,
+          clipboard: true,
+          updates: true,
+          hasAiKey: true,
+          shortcuts: 'Edge, File Explorer, Calculator, Notepad',
+        }),
         set: () => Promise.resolve(),
         info: () => Promise.resolve({ version: '0.5.0' }),
         cities: () => list,

@@ -77,7 +77,12 @@ const I18N = (() => {
   }
 
   // numbers follow the language and digit setting; {pct: 0.8} is a percentage
-  const fmt = (v) => (typeof v === 'number' ? nf.format(v) : v && typeof v === 'object' && 'pct' in v ? formatter(Intl.NumberFormat, { style: 'percent', maximumFractionDigits: 0 }).format(v.pct) : v);
+  const fmt = (v) =>
+    typeof v === 'number'
+      ? nf.format(v)
+      : v && typeof v === 'object' && 'pct' in v
+        ? formatter(Intl.NumberFormat, { style: 'percent', maximumFractionDigits: 0 }).format(v.pct)
+        : v;
 
   // --- elements whose text follows the language: built once, re-translated on a switch
   const tracked = new Set();
