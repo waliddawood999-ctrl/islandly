@@ -285,7 +285,8 @@
 **الأدلة**
 - `npm test` (Linux، Node 22): exit 0. التسعة سكربتات: ics، updater، palette 72، ai، reliability 7، features، renderer DOM، media lifecycle، safety defaults.
 - `electron-smoke`: SMOKE DONE. رفض `settings:set` من مرسل غريب متعمد، حسب ملاحظة Codex.
-- CI على هذا الـ PR: يُضاف أدناه بعد التشغيل.
+- PR: https://github.com/waliddawood999-ctrl/islandly/pull/11
+- CI: https://github.com/waliddawood999-ctrl/islandly/actions/runs/40788276859 على الكوميت `4dfd95d`. verify (Windows: npm test، update flow، smoke) ✅، package ✅، **ui-e2e على Ubuntu/xvfb ✅**. الاختبار يخرج بكود غير صفر لو فشلت أي خطوة، فالنجاح يعني كل الخطوات. ما قدرت أقرأ نص السجل لأن مضيف السجلات محجوب في بيئتي.
 
 **لم يُختبر:**
 - ويندوز حقيقي: hover باليد، و click-through الدائري، وهو مقفول افتراضياً، ومع وضعه الـ hover على مستوى النافذة يشمل الزوايا الشفافة. لو انفتح لاحقاً يحتاج اختبار.
