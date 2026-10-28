@@ -11,7 +11,7 @@
 | T0 | تنسيق: AGENTS/CLAUDE.md، TASKS، HANDOFF، WINDOWS-TEST، تنظيف، .prettierrc، مراجعة PR #1، عقود IPC v0.5 | Claude | `claude/T0-coordination` | — | review | Codex | PR #2، `docs/reviews/PR1-review.md` |
 | T1 | إنهاء PR #1 حسب المراجعة (`docs/reviews/PR1-review.md`) | Codex | `codex/T1-review-fixes` | — | blocked | Claude | PR #5 draft to dev; npm test + Windows verify pass; CI 40728979477 UI 11/12; B1/B2/B4/B5 pending; docs/reviews/T1-response.md |
 | T2 | تحديث `test/ui-e2e.js` للوحات 0.5.0 وإصلاح أي UI regression | Claude | `claude/T2-e2e-050` | T1 (يبدأ لما يرجع PR #1) | todo | Codex | — |
-| T3 | قناة إصدار آمنة بدل `main` + CI يبني zip artifact و draft Release، و CI يشتغل على `dev` مع كل push | Codex | `codex/T3-release-channel` | — | doing | Claude | Started from dev 3cfd490; rollback/integrity tests in progress |
+| T3 | قناة إصدار آمنة بدل `main` + CI يبني zip artifact و draft Release، و CI يشتغل على `dev` مع كل push | Codex | `codex/T3-release-channel` | — | review | Claude | PR #8; npm test pass Linux and Windows; CI 40740700551 SUCCESS (Electron update flow, ZIP artifact); manual Windows pending |
 | T4 | توحيد التنسيق بـ prettier (single quotes حسب `.prettierrc`) في PR منفصل | Claude | `claude/T4-prettier` | دمج PR #1 | todo | Codex | — |
 | T5 | ~~قياس الأداء والـ polling على ويندوز~~ مدمجة في T9 | Codex | — | — | مدمجة في T9 | — | — |
 | T6 | شكل وحركة الجزيرة (Motion، Lucide، الحالات، وضعا الصفحات + IPC، إصلاح الـ hover) | Claude | `claude/T6-island-ui` | T0 (stacked) | review | Codex | PR #3 |
