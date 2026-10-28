@@ -16,9 +16,9 @@ function h(tag, props, ...kids) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
     if (v === false || v == null) continue;
-    if (k === "class") el.className = v;
-    else if (k === "style") el.style.cssText = v;
-    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    if (k === 'class') el.className = v;
+    else if (k === 'style') el.style.cssText = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else el.setAttribute(k, v);
   }
   for (const kid of kids.flat()) {
@@ -30,7 +30,7 @@ function h(tag, props, ...kids) {
 
 /** Build an element from an SVG/HTML string. */
 function html(markup) {
-  const tpl = document.createElement("template");
+  const tpl = document.createElement('template');
   tpl.innerHTML = markup.trim();
   return tpl.content.firstChild;
 }
@@ -67,8 +67,7 @@ const ICONS = {
   calendar:
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>',
   star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z"/></svg>',
-  close:
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 3.5h6.5L18.500 8.500V19a1.500 1.500 0 0 1-1.500 1.500H7A1.500 1.500 0 0 1 5.500 19V5A1.500 1.500 0 0 1 7 3.500z"/><path d="M13.500 3.500v5h5"/></svg>',
   headphones:
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4.500" height="6.500" rx="2"/><rect x="16.500" y="14" width="4.500" height="6.500" rx="2"/></svg>',
@@ -80,35 +79,34 @@ const ICONS = {
 };
 
 /** Circular progress ring. set(fraction 0..1) updates the arc without rebuilding. */
-function ring(size, stroke, color, track = "rgba(255,255,255,.14)") {
+function ring(size, stroke, color, track = 'rgba(255,255,255,.14)') {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const el = html(
     `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
       `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${track}" stroke-width="${stroke}"/>` +
       `<circle class="arc" cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" ` +
-      `stroke-linecap="round" transform="rotate(-90 ${size / 2} ${size / 2})" stroke-dasharray="${c}" stroke-dashoffset="${c}"/></svg>`,
+      `stroke-linecap="round" transform="rotate(-90 ${size / 2} ${size / 2})" stroke-dasharray="${c}" stroke-dashoffset="${c}"/></svg>`
   );
-  const arc = $(".arc", el);
+  const arc = $('.arc', el);
   return {
     el,
     set(fraction) {
       arc.style.strokeDashoffset = c * (1 - Math.max(0, Math.min(1, fraction)));
     },
     color(value) {
-      arc.setAttribute("stroke", value);
+      arc.setAttribute('stroke', value);
     },
   };
 }
 
 function pad2(n) {
-  return String(n).padStart(2, "0");
+  return String(n).padStart(2, '0');
 }
 
 function clock(seconds) {
   const s = Math.max(0, Math.round(seconds));
-  if (s >= 3600)
-    return `${Math.floor(s / 3600)}:${pad2(Math.floor((s % 3600) / 60))}:${pad2(s % 60)}`;
+  if (s >= 3600) return `${Math.floor(s / 3600)}:${pad2(Math.floor((s % 3600) / 60))}:${pad2(s % 60)}`;
   return `${Math.floor(s / 60)}:${pad2(s % 60)}`;
 }
 
@@ -120,14 +118,8 @@ function beep() {
       const gain = ctx.createGain();
       osc.frequency.value = freq;
       gain.gain.setValueAtTime(0.0001, ctx.currentTime + i * 0.18);
-      gain.gain.exponentialRampToValueAtTime(
-        0.25,
-        ctx.currentTime + i * 0.18 + 0.02,
-      );
-      gain.gain.exponentialRampToValueAtTime(
-        0.0001,
-        ctx.currentTime + i * 0.18 + 0.16,
-      );
+      gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + i * 0.18 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i * 0.18 + 0.16);
       osc.connect(gain).connect(ctx.destination);
       osc.start(ctx.currentTime + i * 0.18);
       osc.stop(ctx.currentTime + i * 0.18 + 0.18);

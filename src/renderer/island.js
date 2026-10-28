@@ -13,17 +13,15 @@
  * The animation loop only runs while the size is actually changing, so an idle island costs no CPU.
  */
 const Island = (() => {
-  const el = $("#island");
-  const stage = $("#content");
+  const el = $('#island');
+  const stage = $('#content');
   const features = [];
 
   const FOOTER = 22; // room for the tab dots below the panel's content
   const TOP = 8; // gap above the island
   const AUTO_HIDE_MS = 5000;
   const HOVER_DWELL_MS = 280; // pointer must rest on the island before it opens (avoids accidental opens)
-  const reducedMotion =
-    window.matchMedia &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const STIFFNESS = reducedMotion ? 900 : 320;
   const DAMPING = reducedMotion ? 60 : 26; // ~0.73 damping ratio: a touch of overshoot, settles fast
 
@@ -40,43 +38,42 @@ const Island = (() => {
   let selected = 0;
   let peekState = null;
   let current = null;
-  let autoHide =
-    (window.islandAPI && window.islandAPI.settings.autoHide) || "auto";
+  let autoHide = (window.islandAPI && window.islandAPI.settings.autoHide) || 'auto';
   let compactKey = null;
   let compactSince = 0;
   let swapTimer = 0;
   let hoverTimer = 0;
   let pinTimer = 0;
 
-  const dots = h("div", { class: "dots" });
+  const dots = h('div', { class: 'dots' });
   // Off-screen box used to measure a panel's natural height before it is shown.
-  const meter = h("div", { id: "measure" });
+  const meter = h('div', { id: 'measure' });
   document.body.appendChild(meter);
-  const sliverEl = h("div", { class: "view sliver" });
+  const sliverEl = h('div', { class: 'view sliver' });
 
   // The window is only as big as the island (plus room for its shadow), so it never covers anything else.
   // Before an animation it grows to fit both the old and new size; once the spring settles it is trimmed.
   const GUTTER = 18;
   const OVERSHOOT = 1.08;
-  let lastEnvelope = "";
+  let lastEnvelope = '';
   function sendEnvelope(w, hgt, y) {
     const env = {
       w: Math.ceil(w + 2 * GUTTER),
       h: Math.ceil(y + hgt + GUTTER),
     };
-    const key = env.w + "x" + env.h;
+    const key = env.w + 'x' + env.h;
     if (key === lastEnvelope) return;
     lastEnvelope = key;
-    API.send("island:envelope", env);
+    API.send('island:envelope', env);
   }
 
   function apply() {
-    el.style.width = S.w.x + "px";
-    el.style.height = S.h.x + "px";
-    el.style.top = S.y.x + "px";
-    el.style.borderRadius = Math.min(S.h.x / 2, 34) + "px";
+    el.style.width = S.w.x + 'px';
+    el.style.height = S.h.x + 'px';
+    el.style.top = S.y.x + 'px';
+    el.style.borderRadius = Math.min(S.h.x / 2, 34) + 'px';
     const r = el.getBoundingClientRect();
-    API.send("island:hitbox", {
+    API.send('island:hitbox', {
       x: r.x,
       y: r.y,
       width: r.width,
@@ -89,7 +86,7 @@ const Island = (() => {
   function heightOf(v) {
     if (!v.auto) return v.h;
     if (v.el.parentNode !== stage) {
-      meter.style.width = v.w + "px";
+      meter.style.width = v.w + 'px';
       meter.appendChild(v.el);
     }
     return Math.ceil(v.el.offsetHeight);
@@ -117,11 +114,7 @@ const Island = (() => {
   }
 
   function setTarget(w, hgt, y) {
-    sendEnvelope(
-      Math.max(S.w.x, w) * OVERSHOOT,
-      Math.max(S.h.x, hgt) * OVERSHOOT,
-      Math.max(S.y.x, y),
-    );
+    sendEnvelope(Math.max(S.w.x, w) * OVERSHOOT, Math.max(S.h.x, hgt) * OVERSHOOT, Math.max(S.y.x, y));
     S.w.t = w;
     S.h.t = hgt;
     S.y.t = y;
@@ -132,11 +125,10 @@ const Island = (() => {
   }
 
   const enabled = (f) =>
-    !String(API.settings.disabledFeatures || "")
-      .split(",")
+    !String(API.settings.disabledFeatures || '')
+      .split(',')
       .includes(f.id);
-  const expandable = () =>
-    features.filter((f) => enabled(f) && f.view("expanded"));
+  const expandable = () => features.filter((f) => enabled(f) && f.view('expanded'));
 
   function bestCompact(includeIdle) {
     let best = null;
@@ -145,7 +137,7 @@ const Island = (() => {
       if (!enabled(f)) continue;
       if (f.idle && !includeIdle) continue;
       const p = f.priority();
-      if (p > bestPriority && f.view("compact")) {
+      if (p > bestPriority && f.view('compact')) {
         best = f;
         bestPriority = p;
       }
@@ -160,9 +152,9 @@ const Island = (() => {
       if (!list.length) return null;
       selected = Math.min(selected, list.length - 1);
       const f = list[selected];
-      const v = f.view("expanded");
+      const v = f.view('expanded');
       return {
-        key: "x:" + f.id,
+        key: 'x:' + f.id,
         el: v.el,
         w: v.w,
         h: heightOf(v) + (list.length > 1 ? FOOTER : 0),
@@ -174,10 +166,10 @@ const Island = (() => {
     if (peekState && Date.now() < peekState.until) {
       compactKey = null;
       const f = peekState.feature;
-      const v = f.view("peek") || f.view("expanded");
+      const v = f.view('peek') || f.view('expanded');
       if (v)
         return {
-          key: "p:" + f.id,
+          key: 'p:' + f.id,
           el: v.el,
           w: v.w,
           h: heightOf(v),
@@ -186,28 +178,23 @@ const Island = (() => {
         };
     }
 
-    const f = bestCompact(autoHide === "never");
-    sliverEl.classList.toggle("active", !!bestCompact(false));
+    const f = bestCompact(autoHide === 'never');
+    sliverEl.classList.toggle('active', !!bestCompact(false));
     // a "sticky" compact view (microphone/camera in use) stays visible whatever the auto-hide setting
-    const sticky =
-      f && (f.sticky || (f.id === "today" && API.settings.prayerAlways));
-    if (f && (autoHide !== "always" || sticky)) {
-      const key = "c:" + f.id;
+    const sticky = f && (f.sticky || (f.id === 'today' && API.settings.prayerAlways));
+    if (f && (autoHide !== 'always' || sticky)) {
+      const key = 'c:' + f.id;
       if (key !== compactKey) {
         compactKey = key;
         compactSince = Date.now();
-        if (autoHide === "auto") setTimeout(render, AUTO_HIDE_MS + 40);
+        if (autoHide === 'auto') setTimeout(render, AUTO_HIDE_MS + 40);
       }
-      if (
-        autoHide === "never" ||
-        sticky ||
-        Date.now() - compactSince < AUTO_HIDE_MS
-      ) {
-        const v = f.view("compact");
+      if (autoHide === 'never' || sticky || Date.now() - compactSince < AUTO_HIDE_MS) {
+        const v = f.view('compact');
         return { key, el: v.el, w: v.w, h: v.h, y: TOP };
       }
     }
-    return { key: "sliver", el: sliverEl, w: 84, h: 5, y: 0, sliver: true };
+    return { key: 'sliver', el: sliverEl, w: 84, h: 5, y: 0, sliver: true };
   }
 
   function renderDots() {
@@ -215,13 +202,13 @@ const Island = (() => {
     const active = list[selected];
     dots.replaceChildren(
       ...list.map((f, i) =>
-        h("button", {
-          class: "dot" + (f === active ? " on" : ""),
+        h('button', {
+          class: 'dot' + (f === active ? ' on' : ''),
           title: t(f.id),
-          "data-interactive": "1",
+          'data-interactive': '1',
           onclick: () => select(i),
-        }),
-      ),
+        })
+      )
     );
   }
 
@@ -239,32 +226,29 @@ const Island = (() => {
   function mount(v) {
     resizer.disconnect();
     if (v.auto) resizer.observe(v.el);
-    stage.style.width = v.w + "px";
-    stage.style.height = v.h + "px";
+    stage.style.width = v.w + 'px';
+    stage.style.height = v.h + 'px';
     const kids = [v.el];
     if (v.withDots) {
       renderDots();
       kids.push(dots);
     }
     stage.replaceChildren(...kids);
-    el.classList.toggle("sliver", !!v.sliver);
+    el.classList.toggle('sliver', !!v.sliver);
     // replay the entrance animation (fade + scale + staggered children)
-    v.el.classList.remove("enter");
+    v.el.classList.remove('enter');
     void v.el.offsetWidth;
-    v.el.classList.add("enter");
+    v.el.classList.add('enter');
   }
 
   let lastFocusable = null;
   function render() {
     renderNow();
     for (const f of features) if (f.sync) f.sync();
-    const focusable =
-      (hovered || pinned) &&
-      current &&
-      ["x:notes", "x:assistant"].includes(current.key);
+    const focusable = (hovered || pinned) && current && ['x:notes', 'x:assistant'].includes(current.key);
     if (focusable !== lastFocusable) {
       lastFocusable = focusable;
-      API.send("island:focusable", !!focusable);
+      API.send('island:focusable', !!focusable);
     }
   }
 
@@ -274,11 +258,10 @@ const Island = (() => {
     if (current && current.key === v.key) {
       if (current.w !== v.w || current.h !== v.h) {
         setTarget(v.w, v.h, v.y);
-        stage.style.width = v.w + "px";
-        stage.style.height = v.h + "px";
+        stage.style.width = v.w + 'px';
+        stage.style.height = v.h + 'px';
       }
-      const dotsChanged =
-        v.withDots && dots.childElementCount !== expandable().length;
+      const dotsChanged = v.withDots && dots.childElementCount !== expandable().length;
       current = v;
       if (dotsChanged) renderDots();
       return;
@@ -290,11 +273,11 @@ const Island = (() => {
       mount(v);
       return;
     }
-    stage.classList.add("out");
+    stage.classList.add('out');
     clearTimeout(swapTimer);
     swapTimer = setTimeout(() => {
       mount(current);
-      stage.classList.remove("out");
+      stage.classList.remove('out');
     }, 110);
   }
 
@@ -364,13 +347,13 @@ const Island = (() => {
     pointer = value;
     clearTimeout(hoverTimer);
     // immediate feedback: the island swells slightly while it waits to open
-    el.classList.toggle("hint", value && !(hovered || pinned));
+    el.classList.toggle('hint', value && !(hovered || pinned));
     if (value) {
       clearTimeout(pinTimer);
       hoverTimer = setTimeout(() => {
         if (!hovered && !pinned) pickDefault();
         hovered = true;
-        el.classList.remove("hint");
+        el.classList.remove('hint');
         render();
       }, HOVER_DWELL_MS);
     } else {
@@ -417,32 +400,27 @@ const Island = (() => {
   // Wheel over the island switches between panels (unless the wheel is over a scrollable strip).
   let wheelLock = 0;
   el.addEventListener(
-    "wheel",
+    'wheel',
     (e) => {
       if (e.altKey) {
-        API.send("display:cycle", e.deltaY);
+        API.send('display:cycle', e.deltaY);
         return;
       }
-      if (e.shiftKey || (e.ctrlKey && Island.selectedId() === "music")) {
-        API.send("controls:volume", e.deltaY > 0 ? "voldown" : "volup");
+      if (e.shiftKey || (e.ctrlKey && Island.selectedId() === 'music')) {
+        API.send('controls:volume', e.deltaY > 0 ? 'voldown' : 'volup');
         return;
       }
-      if (
-        !(hovered || pinned) ||
-        Date.now() < wheelLock ||
-        e.target.closest(".scroll")
-      )
-        return;
+      if (!(hovered || pinned) || Date.now() < wheelLock || e.target.closest('.scroll')) return;
       const n = expandable().length;
       if (n < 2) return;
       wheelLock = Date.now() + 260;
       select((selected + (e.deltaY > 0 ? 1 : n - 1)) % n);
     },
-    { passive: true },
+    { passive: true }
   );
 
-  el.addEventListener("click", (e) => {
-    if (e.target.closest("button, [data-interactive], input")) return;
+  el.addEventListener('click', (e) => {
+    if (e.target.closest('button, [data-interactive], input')) return;
     togglePin();
   });
 
@@ -464,9 +442,7 @@ const Island = (() => {
     hold,
     selectedId: () => {
       const list = expandable();
-      return list[Math.min(selected, list.length - 1)]
-        ? list[Math.min(selected, list.length - 1)].id
-        : null;
+      return list[Math.min(selected, list.length - 1)] ? list[Math.min(selected, list.length - 1)].id : null;
     },
     isSliver: () => !!(current && current.sliver),
     feature: (id) => features.find((f) => f.id === id),
