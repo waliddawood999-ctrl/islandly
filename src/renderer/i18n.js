@@ -1,5 +1,13 @@
 const STRINGS = {
   ar: {
+    clock: 'الساعة',
+    settings: 'الإعدادات',
+    timerTab: 'مؤقت',
+    quickTimer: 'مؤقت سريع',
+    stopwatch: 'ساعة إيقاف',
+    custom: 'مخصص',
+    timerDone: 'انتهى المؤقت',
+    again: 'مرة ثانية',
     usage: 'وقتي اليوم',
     usageEmpty: 'سيظهر هنا وقت استخدامك للتطبيقات',
     minutesShort: '{m} د',
@@ -120,6 +128,14 @@ const STRINGS = {
     seekUnsupported: 'هذا المقطع لا يدعم التقديم',
   },
   en: {
+    clock: 'Clock',
+    settings: 'Settings',
+    timerTab: 'Timer',
+    quickTimer: 'Quick timer',
+    stopwatch: 'Stopwatch',
+    custom: 'Custom',
+    timerDone: "Time's up",
+    again: 'Again',
     usage: 'My time today',
     usageEmpty: 'Your app usage today will appear here',
     minutesShort: '{m}m',
@@ -245,6 +261,8 @@ const LANG = (() => {
 
 document.documentElement.lang = LANG;
 document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
+// font pairing (hidden setting): plex (default), manrope, jakarta. See assets/fonts/typography.css.
+document.documentElement.dataset.fonts = (window.islandAPI && window.islandAPI.settings.fontPairing) || 'plex';
 
 const t = (key, vars) => {
   let s = STRINGS[LANG][key] || STRINGS.ar[key] || key;

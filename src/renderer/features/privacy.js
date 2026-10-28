@@ -49,7 +49,7 @@ Island.register({
   },
 
   view(mode) {
-    if (mode === 'compact') return this.active() ? { el: this.compact, w: 220, h: 38 } : null;
+    if (mode === 'compact') return this.active() ? { el: this.compact, w: 176, h: 32 } : null;
     if (mode === 'peek') return { el: this.peekEl, w: 330, h: 64 };
     return null;
   },

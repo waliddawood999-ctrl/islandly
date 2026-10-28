@@ -6,3 +6,8 @@ out/
 dev/shots/
 *.zip
 *.mp4
+test/__pycache__/
+__pycache__/
+dev/states/*.webm
+dev/fonts/compare/*-*-*.png
+dev/fonts/compare/shots.json
