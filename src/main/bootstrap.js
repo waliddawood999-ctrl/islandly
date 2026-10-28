@@ -40,5 +40,8 @@ try {
   /* no update staged */
 }
 
+// An update contains only the app's own code; its dependencies (koffi, adhan, ...) live in the packaged app.
+require('module').globalPaths.push(path.join(baseRoot, 'node_modules'));
+
 global.__ISLANDLY = { root, baseRoot, version, baseVersion: basePkg.version, currentFile };
 require(path.join(root, 'src', 'main', 'main.js'));

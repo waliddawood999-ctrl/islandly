@@ -1,5 +1,31 @@
 const STRINGS = {
   ar: {
+    today: 'اليوم',
+    system: 'النظام',
+    notes: 'مهامي',
+    p_fajr: 'الفجر',
+    p_sunrise: 'الشروق',
+    p_dhuhr: 'الظهر',
+    p_asr: 'العصر',
+    p_maghrib: 'المغرب',
+    p_isha: 'العشاء',
+    prayerSoon: '{p} بعد ١٠ دقائق',
+    prayerNow: 'حان الآن وقت أذان {p}',
+    wx_clear: 'صافٍ',
+    wx_partly: 'غائم جزئياً',
+    wx_cloudy: 'غائم',
+    wx_fog: 'ضباب',
+    wx_rain: 'مطر',
+    wx_snow: 'ثلج',
+    wx_showers: 'زخات مطر',
+    wx_storm: 'عاصفة رعدية',
+    cpu: 'المعالج',
+    memory: 'الذاكرة',
+    uptime: 'يعمل منذ {h} س {m} د',
+    notesPlaceholder: 'أضف مهمة واضغط Enter',
+    notesEmpty: 'لا توجد مهام',
+    breakTitle: 'وقت استراحة قصيرة',
+    breakSub: 'قف، تحرّك، وانظر لشيء بعيد ٢٠ ثانية',
     music: 'الموسيقى',
     timer: 'المؤقت',
     battery: 'البطارية',
@@ -74,6 +100,32 @@ const STRINGS = {
     seekUnsupported: 'هذا المقطع لا يدعم التقديم',
   },
   en: {
+    today: 'Today',
+    system: 'System',
+    notes: 'To-do',
+    p_fajr: 'Fajr',
+    p_sunrise: 'Sunrise',
+    p_dhuhr: 'Dhuhr',
+    p_asr: 'Asr',
+    p_maghrib: 'Maghrib',
+    p_isha: 'Isha',
+    prayerSoon: '{p} in 10 minutes',
+    prayerNow: 'It is time for {p}',
+    wx_clear: 'Clear',
+    wx_partly: 'Partly cloudy',
+    wx_cloudy: 'Cloudy',
+    wx_fog: 'Fog',
+    wx_rain: 'Rain',
+    wx_snow: 'Snow',
+    wx_showers: 'Showers',
+    wx_storm: 'Thunderstorm',
+    cpu: 'CPU',
+    memory: 'Memory',
+    uptime: 'Up {h}h {m}m',
+    notesPlaceholder: 'Add a task and press Enter',
+    notesEmpty: 'Nothing to do',
+    breakTitle: 'Time for a short break',
+    breakSub: 'Stand up, move, look at something far for 20 seconds',
     music: 'Music',
     timer: 'Timer',
     battery: 'Battery',
@@ -155,7 +207,7 @@ document.documentElement.lang = LANG;
 document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
 
 const t = (key, vars) => {
-  let s = STRINGS[LANG][key] || key;
+  let s = STRINGS[LANG][key] || STRINGS.ar[key] || key;
   if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, v);
   return s;
 };

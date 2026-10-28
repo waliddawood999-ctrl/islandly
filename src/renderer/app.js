@@ -35,6 +35,10 @@
     Notice.show({ text: t('updateReady'), detail: t('updateReadySub', { v: version }), actionLabel: t('restartNow'), run: () => API.call('update:apply') }, 20000);
   });
 
+  API.on('break:due', () => {
+    Notice.show({ text: t('breakTitle'), detail: t('breakSub') }, 12000);
+  });
+
   API.on('toast', ({ key, version }) => {
     Notice.show({ text: t(key), detail: version ? 'v' + version : '' }, 4000);
   });

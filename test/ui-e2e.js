@@ -165,7 +165,7 @@ app.whenReady().then(() =>
       (async () => {
         const out = [];
         const feed = (ch, payload) => window.__feed(ch, payload);
-        for (const id of ['music', 'timer', 'battery', 'clipboard', 'shelf', 'calendar']) {
+        for (const id of ['today', 'music', 'timer', 'calendar', 'clipboard', 'shelf', 'notes', 'battery', 'system']) {
           Island.open(id);
           await new Promise((r) => setTimeout(r, 700));
           const isl = document.getElementById('island').getBoundingClientRect();

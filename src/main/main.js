@@ -10,6 +10,11 @@ const { watchForeground } = require('./fullscreen');
 const { Updater, markBootOk } = require('./updater');
 const { runOnce } = require('./ps');
 const { logError } = require('./log');
+const prayer = require('./services/prayer');
+const { Weather } = require('./services/weather');
+const { SysInfo } = require('./services/sysinfo');
+const { Breaks } = require('./services/breaks');
+const { jsonStore } = require('./services/store');
 
 const isDev = process.argv.includes('--dev');
 const info = global.__ISLANDLY || {
@@ -30,7 +35,23 @@ let userHidden = false;
 let envelope = { w: 160, h: 60 }; // the size the island needs right now, in CSS pixels (reported by the renderer)
 let fullscreenActive = false;
 let foregroundApp = { app: '', title: '' };
-let media, clipboardHistory, shelf, calendar, bluetooth, updater, fsWatcher;
+let media, clipboardHistory, shelf, calendar, bluetooth, updater, fsWatcher, weather, sysinfo, breaks, midnightTimer;
+const notesStore = jsonStore('notes.json', { todos: [] });
+
+function todayState() {
+  return { prayer: prayer.schedule(settings.get()), weather: weather ? weather.last : null };
+}
+
+// Recompute prayer times right after midnight, then every day.
+function scheduleMidnight() {
+  clearTimeout(midnightTimer);
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 1);
+  midnightTimer = setTimeout(() => {
+    push('today:update', todayState());
+    scheduleMidnight();
+  }, next - now);
+}
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -213,6 +234,13 @@ function registerIpc() {
     envelope = { w: Math.max(40, Math.min(1200, env.w)), h: Math.max(10, Math.min(800, env.h)) };
     positionWindow();
   });
+  ipcMain.on('system:watch', (_e, on) => sysinfo.watch(!!on));
+  ipcMain.on('island:focus', (_e, on) => {
+    if (!win || win.isDestroyed()) return;
+    // Only while a text field is used: the island must never steal focus otherwise.
+    win.setFocusable(!!on);
+    if (on) win.focus();
+  });
   ipcMain.on('log:error', (_e, text) => logError('renderer', String(text).slice(0, 2000)));
   ipcMain.on('media:control', (_e, action, value) => media.control(action, value));
   ipcMain.on('open:external', (_e, url) => openExternal(url));
@@ -242,6 +270,12 @@ function registerIpc() {
   ipcMain.handle('shelf:reveal', (_e, id) => {
     const [p] = shelf.pathsFor([id]);
     if (p) shell.showItemInFolder(p);
+  });
+  ipcMain.handle('today:get', () => todayState());
+  ipcMain.handle('notes:get', () => notesStore.read());
+  ipcMain.handle('notes:set', (_e, data) => {
+    const todos = Array.isArray(data && data.todos) ? data.todos.slice(0, 50).map((x) => ({ id: Number(x.id) || Date.now(), text: String(x.text || '').slice(0, 140), done: !!x.done })) : [];
+    notesStore.write({ todos });
   });
   ipcMain.handle('calendar:get', () => ({ status: calendar.status, events: calendar.last || [] }));
   ipcMain.handle('update:check', () => updater.check());
@@ -290,6 +324,15 @@ app.whenReady().then(() => {
   updater = new Updater((version) => push('update:ready', { version }));
   if (settings.get().updates) updater.start();
 
+  weather = new Weather(() => push('today:update', todayState()));
+  weather.configure(prayer.location(settings.get()), settings.get().weather);
+  scheduleMidnight();
+
+  sysinfo = new SysInfo((sample) => push('system:sample', sample));
+
+  breaks = new Breaks(() => push('break:due', {}));
+  breaks.configure(settings.get().breakEvery);
+
   fsWatcher = watchForeground({
     onFullscreen: (active) => {
       fullscreenActive = active;
@@ -315,6 +358,12 @@ app.whenReady().then(() => {
     if (now.icsUrl !== prev.icsUrl) calendar.configure(now.icsUrl);
     if (now.clipboard !== prev.clipboard) now.clipboard ? clipboardHistory.start() : clipboardHistory.stop();
     if (now.hideFullscreen !== prev.hideFullscreen) applyVisibility();
+    const locKeys = ['city', 'lat', 'lng', 'prayerMethod', 'madhab', 'weather'];
+    if (locKeys.some((k) => now[k] !== prev[k])) {
+      weather.configure(prayer.location(now), now.weather);
+      push('today:update', todayState());
+    }
+    if (now.breakEvery !== prev.breakEvery) breaks.configure(now.breakEvery);
     push('settings:update', now);
     if (now.lang !== prev.lang && win) win.webContents.reload();
     buildTrayMenu();
@@ -327,7 +376,8 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-  [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory].forEach((m) => m && m.stop && m.stop());
+  [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks].forEach((m) => m && m.stop && m.stop());
+  clearTimeout(midnightTimer);
 });
 
 // Having this listener stops Electron from quitting when the settings window closes; only the tray menu quits.

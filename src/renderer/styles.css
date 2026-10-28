@@ -246,3 +246,48 @@ button:disabled { opacity: 0.3; pointer-events: none; }
 .cal-time b { display: block; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .cal-time small { font-size: 11px; color: var(--muted); font-weight: 600; }
 .cal-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- today ---------- */
+.td-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.td-date { font-size: 16px; font-weight: 800; }
+.wx { text-align: end; flex: none; }
+.wx-row { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.wx-icon { font-size: 22px; line-height: 1; }
+.wx-temp { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.np { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-radius: 20px; background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(251, 191, 36, 0.06)); }
+.np-name { font-size: 16px; font-weight: 800; color: #fde68a; }
+.np-in { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; color: #fde68a; }
+.pr-row { display: flex; gap: 6px; }
+.pr { flex: 1; text-align: center; padding: 7px 2px; border-radius: 14px; background: var(--card); transition: background 0.2s; }
+.pr small { display: block; font-size: 11px; color: var(--muted); font-weight: 600; }
+.pr b { display: block; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pr.on { background: rgba(251, 191, 36, 0.25); box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.55); }
+.pr.on small { color: #fde68a; }
+.pr.past b { color: var(--muted); }
+.td-place { font-size: 11px; color: var(--muted); text-align: center; }
+.td-place:empty { display: none; }
+.prayer-compact { padding: 0 14px; gap: 9px; }
+.prayer-compact svg { width: 20px; height: 20px; flex: none; }
+.prayer-compact .tm { color: #fde68a; }
+.n-icon.gold { background: rgba(251, 191, 36, 0.2); }
+
+/* ---------- system ---------- */
+.system-expanded { padding: 16px 22px 0; gap: 20px; align-items: center; }
+.ring-wrap.s { width: 70px; height: 70px; }
+.ring-label.sm { font-size: 16px; }
+.sys-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.sys-label { font-size: 13px; font-weight: 700; color: #d5d8e8; margin-top: 4px; }
+.meter { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
+.meter i { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--green); transition: width 0.6s ease, background 0.3s; }
+
+/* ---------- notes ---------- */
+.nt-add { display: flex; gap: 8px; }
+.nt-input { flex: 1; min-width: 0; height: 34px; border-radius: 17px; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.06); color: #fff; padding: 0 14px; font: inherit; font-size: 13px; outline: none; user-select: text; -webkit-user-select: text; }
+.nt-input:focus { border-color: rgba(167, 139, 250, 0.7); background: rgba(255, 255, 255, 0.09); }
+.nt-list { display: flex; flex-direction: column; gap: 5px; max-height: 200px; overflow-y: auto; scrollbar-width: none; }
+.nt-list::-webkit-scrollbar { display: none; }
+.nt-row { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 4px 0 10px; border-radius: 17px; background: var(--card); }
+.nt-check { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.4); font-size: 11px; font-weight: 900; display: grid; place-items: center; color: #00110a; transition: background 0.15s, border-color 0.15s; }
+.nt-row.done .nt-check { background: var(--green); border-color: var(--green); }
+.nt-text { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-row.done .nt-text { color: var(--muted); text-decoration: line-through; }

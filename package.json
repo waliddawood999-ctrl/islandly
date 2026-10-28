@@ -1,6 +1,6 @@
 {
   "name": "islandly",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "A Dynamic Island for Windows: music, timers, battery and more in one floating pill.",
   "main": "src/main/bootstrap.js",
   "private": true,
@@ -17,8 +17,9 @@
   "optionalDependencies": {
     "@coooookies/windows-smtc-monitor": "^1.0.12"
   },
-  "islandlyBase": 1,
+  "islandlyBase": 2,
   "dependencies": {
+    "adhan": "^4.4.6",
     "koffi": "^2.16.3"
   }
 }

@@ -33,6 +33,8 @@ const Island = (() => {
   let hovered = false; // pointer has rested on the island long enough to open it
   let pointer = false; // pointer is over the island right now
   let pinned = false;
+  let held = false; // keep open regardless of the pointer (e.g. while typing)
+  let userChoseAt = 0; // when the user last picked a panel themselves
   let selected = 0;
   let peekState = null;
   let current = null;
@@ -135,13 +137,13 @@ const Island = (() => {
       selected = Math.min(selected, list.length - 1);
       const f = list[selected];
       const v = f.view('expanded');
-      return { key: 'x:' + f.id, el: v.el, w: v.w, h: heightOf(v) + (list.length > 1 ? FOOTER : 0), y: TOP, withDots: list.length > 1 };
+      return { key: 'x:' + f.id, el: v.el, w: v.w, h: heightOf(v) + (list.length > 1 ? FOOTER : 0), y: TOP, withDots: list.length > 1, auto: !!v.auto };
     }
     if (peekState && Date.now() < peekState.until) {
       compactKey = null;
       const f = peekState.feature;
       const v = f.view('peek') || f.view('expanded');
-      if (v) return { key: 'p:' + f.id, el: v.el, w: v.w, h: heightOf(v), y: TOP };
+      if (v) return { key: 'p:' + f.id, el: v.el, w: v.w, h: heightOf(v), y: TOP, auto: !!v.auto };
     }
 
     const f = bestCompact(autoHide === 'never');
@@ -176,7 +178,20 @@ const Island = (() => {
     );
   }
 
+  // A panel whose content changes size (new rows, data arriving) is re-measured automatically.
+  let resizeQueued = false;
+  const resizer = new ResizeObserver(() => {
+    if (resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => {
+      resizeQueued = false;
+      renderNow();
+    });
+  });
+
   function mount(v) {
+    resizer.disconnect();
+    if (v.auto) resizer.observe(v.el);
     stage.style.width = v.w + 'px';
     stage.style.height = v.h + 'px';
     const kids = [v.el];
@@ -228,6 +243,33 @@ const Island = (() => {
 
   function select(i) {
     selected = i;
+    userChoseAt = Date.now();
+    render();
+  }
+
+  // Context: open on what matters now (a meeting about to start, the running timer, the song playing...),
+  // unless the user picked a panel themselves in the last minute.
+  function pickDefault() {
+    if (Date.now() - userChoseAt < 60000) return;
+    const list = expandable();
+    let best = 0;
+    let bestP = 0;
+    list.forEach((f, i) => {
+      const p = f.priority();
+      if (p > bestP) {
+        best = i;
+        bestP = p;
+      }
+    });
+    selected = best;
+  }
+
+  function hold(value) {
+    held = value;
+    if (value) {
+      pinned = true;
+      clearTimeout(pinTimer);
+    } else armPinTimeout(4000);
     render();
   }
 
@@ -247,7 +289,7 @@ const Island = (() => {
   // A pinned island closes by itself some seconds after the pointer is gone (or was never there).
   function armPinTimeout(ms) {
     clearTimeout(pinTimer);
-    if (!pinned || pointer) return;
+    if (!pinned || pointer || held) return;
     pinTimer = setTimeout(() => {
       pinned = false;
       render();
@@ -262,12 +304,14 @@ const Island = (() => {
     if (value) {
       clearTimeout(pinTimer);
       hoverTimer = setTimeout(() => {
+        if (!hovered && !pinned) pickDefault();
         hovered = true;
         el.classList.remove('hint');
         render();
       }, HOVER_DWELL_MS);
     } else {
       hoverTimer = setTimeout(() => {
+        if (held) return;
         hovered = false;
         render();
       }, 240);
@@ -284,7 +328,10 @@ const Island = (() => {
 
   function selectFeature(id) {
     const i = expandable().findIndex((f) => f.id === id);
-    if (i >= 0) selected = i;
+    if (i >= 0) {
+      selected = i;
+      userChoseAt = Date.now();
+    }
   }
 
   /** Open a feature's panel right away (used for drag & drop and keyboard shortcuts). */
@@ -336,6 +383,11 @@ const Island = (() => {
     open,
     configure,
     isExpanded: () => hovered || pinned,
+    hold,
+    selectedId: () => {
+      const list = expandable();
+      return list[Math.min(selected, list.length - 1)] ? list[Math.min(selected, list.length - 1)].id : null;
+    },
     isSliver: () => !!(current && current.sliver),
     feature: (id) => features.find((f) => f.id === id),
   };
