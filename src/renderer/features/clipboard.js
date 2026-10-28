@@ -7,9 +7,9 @@ Island.register({
 
   init() {
     this.list = h('div', { class: 'cl-list stagger' });
-    this.title = h('div', { class: 'p-title' }, t('clipboard'));
-    this.clearBtn = h('button', { class: 'chip', onclick: () => API.call('clipboard:clear') }, t('clear'));
-    this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-title lg' }, t('clipEmpty')), h('div', { class: 'm-artist' }, t('clipEmptySub')));
+    this.title = h('div', { class: 'p-title' }, T('clipboard'));
+    this.clearBtn = h('button', { class: 'chip', onclick: () => API.call('clipboard:clear') }, T('clear'));
+    this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-title lg' }, T('clipEmpty')), h('div', { class: 'm-artist' }, T('clipEmptySub')));
     this.expandedEl = h('div', { class: 'view auto panel' }, h('div', { class: 'p-head' }, this.title, this.clearBtn), this.list, this.empty);
 
     API.on('clipboard:update', (items) => this.set(items));

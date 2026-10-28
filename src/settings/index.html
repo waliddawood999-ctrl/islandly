@@ -4,140 +4,172 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'">
   <title>Islandly</title>
+  <link rel="stylesheet" href="../../assets/fonts/typography.css">
   <link rel="stylesheet" href="settings.css">
 </head>
 <body>
-  <h1>إعدادات Islandly</h1>
+  <!-- Every text comes from src/renderer/locales/<lang>.json through data-i18n (T11). -->
+  <h1 data-i18n="settings.title"></h1>
 
   <section>
-    <h2>المظهر</h2>
-    <label>الموضع
+    <h2 data-i18n="settings.appearance"></h2>
+    <label><span data-i18n="settings.position"></span>
       <select id="position">
-        <option value="center">الوسط</option>
-        <option value="left">اليسار</option>
-        <option value="right">اليمين</option>
+        <option value="center" data-i18n="settings.pos.center"></option>
+        <option value="left" data-i18n="settings.pos.left"></option>
+        <option value="right" data-i18n="settings.pos.right"></option>
       </select>
     </label>
-    <label>الإخفاء التلقائي
+    <label><span data-i18n="settings.autoHide"></span>
       <select id="autoHide">
-        <option value="auto">تصغير بعد ٥ ثوانٍ (موصى به)</option>
-        <option value="always">خط رفيع حتى تمرّ عليه</option>
-        <option value="never">دائماً ظاهرة</option>
+        <option value="auto" data-i18n="settings.autoHide.auto" data-i18n-vars='{"n":5}'></option>
+        <option value="always" data-i18n="settings.autoHide.always"></option>
+        <option value="never" data-i18n="settings.autoHide.never"></option>
       </select>
     </label>
-    <label class="check"><input type="checkbox" id="hideFullscreen"> إخفاء الجزيرة عند ملء الشاشة (فيديو، ألعاب)</label>
-    <label>حجم الجزيرة
+    <label><span data-i18n="settings.islandMode"></span>
+      <select id="islandMode">
+        <option value="overlay" data-i18n="settings.islandMode.overlay"></option>
+        <option value="appbar" data-i18n="settings.islandMode.appbar"></option>
+      </select>
+    </label>
+    <p class="hint" data-i18n="settings.islandMode.hint"></p>
+    <label><span data-i18n="settings.material"></span>
+      <select id="material">
+        <option value="acrylic" data-i18n="settings.material.acrylic"></option>
+        <option value="glass" data-i18n="settings.material.glass"></option>
+      </select>
+    </label>
+    <p class="hint" id="materialHint" data-i18n="settings.material.unsupported" hidden></p>
+    <label class="check"><input type="checkbox" id="hideFullscreen"> <span data-i18n="settings.hideFullscreen"></span></label>
+    <label><span data-i18n="settings.scale"></span>
       <select id="scale">
-        <option value="0.7">صغير</option>
-        <option value="0.8">متوسط</option>
-        <option value="1">كبير</option>
+        <option value="0.7" data-i18n="settings.scale.small"></option>
+        <option value="0.8" data-i18n="settings.scale.medium"></option>
+        <option value="1" data-i18n="settings.scale.large"></option>
       </select>
     </label>
-    <label>اللغة
-      <select id="lang">
-        <option value="auto">تلقائي</option>
-        <option value="ar">العربية</option>
-        <option value="en">English</option>
+    <label><span data-i18n="settings.language"></span>
+      <select id="uiLang">
+        <option value="auto" data-i18n="settings.lang.auto"></option>
+        <!-- each language is named in itself, whatever the interface language -->
+        <option value="ar" lang="ar" dir="rtl" data-i18n="settings.lang.ar"></option>
+        <option value="en" lang="en" dir="ltr" data-i18n="settings.lang.en"></option>
       </select>
     </label>
+    <label><span data-i18n="settings.digits"></span>
+      <select id="digits">
+        <option value="latn" data-i18n="settings.digits.latn"></option>
+        <option value="arab" data-i18n="settings.digits.arab"></option>
+      </select>
+    </label>
+    <p class="hint" data-i18n="settings.digits.hint"></p>
   </section>
 
   <section>
-    <h2>اليوم: الصلاة والطقس</h2>
-    <label>المدينة
+    <h2 data-i18n="settings.today"></h2>
+    <label><span data-i18n="settings.city"></span>
       <select id="city"></select>
     </label>
     <div id="customBox" class="grid2" hidden>
-      <label>خط العرض<input id="lat" type="number" step="0.0001" dir="ltr"></label>
-      <label>خط الطول<input id="lng" type="number" step="0.0001" dir="ltr"></label>
-      <label class="span2">اسم المكان<input id="cityName" type="text"></label>
+      <label><span data-i18n="settings.lat"></span><input id="lat" type="number" step="0.0001" dir="ltr"></label>
+      <label><span data-i18n="settings.lng"></span><input id="lng" type="number" step="0.0001" dir="ltr"></label>
+      <label class="span2"><span data-i18n="settings.cityName"></span><input id="cityName" type="text" dir="auto"></label>
     </div>
-    <label>طريقة حساب المواقيت
+    <label><span data-i18n="settings.prayerMethod"></span>
       <select id="prayerMethod">
-        <option value="auto">تلقائي حسب المدينة</option>
-        <option value="UmmAlQura">أم القرى</option>
-        <option value="MuslimWorldLeague">رابطة العالم الإسلامي</option>
-        <option value="Egyptian">الهيئة المصرية</option>
-        <option value="Kuwait">الكويت</option>
-        <option value="Qatar">قطر</option>
-        <option value="Dubai">دبي</option>
-        <option value="Karachi">كراتشي</option>
-        <option value="NorthAmerica">أمريكا الشمالية (ISNA)</option>
-        <option value="Turkey">تركيا</option>
+        <option value="auto" data-i18n="settings.method.auto"></option>
+        <option value="UmmAlQura" data-i18n="settings.method.UmmAlQura"></option>
+        <option value="MuslimWorldLeague" data-i18n="settings.method.MuslimWorldLeague"></option>
+        <option value="Egyptian" data-i18n="settings.method.Egyptian"></option>
+        <option value="Kuwait" data-i18n="settings.method.Kuwait"></option>
+        <option value="Qatar" data-i18n="settings.method.Qatar"></option>
+        <option value="Dubai" data-i18n="settings.method.Dubai"></option>
+        <option value="Karachi" data-i18n="settings.method.Karachi"></option>
+        <option value="NorthAmerica" data-i18n="settings.method.NorthAmerica"></option>
+        <option value="Turkey" data-i18n="settings.method.Turkey"></option>
       </select>
     </label>
-    <label>المذهب (لوقت العصر)
+    <label><span data-i18n="settings.madhab"></span>
       <select id="madhab">
-        <option value="shafi">الجمهور (شافعي، مالكي، حنبلي)</option>
-        <option value="hanafi">حنفي</option>
+        <option value="shafi" data-i18n="settings.madhab.shafi"></option>
+        <option value="hanafi" data-i18n="settings.madhab.hanafi"></option>
       </select>
     </label>
-    <label class="check"><input type="checkbox" id="prayerAlerts"> تنبيه قبل الصلاة بـ ١٠ دقائق وعند الأذان</label>
-    <label class="check"><input type="checkbox" id="weather"> عرض الطقس (من Open-Meteo، بدون حساب)</label>
+    <label class="check"><input type="checkbox" id="prayerAlerts"> <span data-i18n="settings.prayerAlerts" data-i18n-vars='{"n":10}'></span></label>
+    <label class="check"><input type="checkbox" id="weather"> <span data-i18n="settings.weather"></span></label>
   </section>
 
   <section>
-    <h2>الصحة والإنتاجية</h2>
-    <label>تذكير بالاستراحة كل
+    <h2 data-i18n="settings.health"></h2>
+    <label><span data-i18n="settings.breakEvery"></span>
       <select id="breakEvery">
-        <option value="0">إيقاف</option>
-        <option value="30">٣٠ دقيقة</option>
-        <option value="45">٤٥ دقيقة</option>
-        <option value="60">ساعة</option>
-        <option value="90">ساعة ونصف</option>
+        <option value="0" data-i18n="settings.break.off"></option>
+        <option value="30" data-i18n="settings.break.30" data-i18n-vars='{"n":30}'></option>
+        <option value="45" data-i18n="settings.break.45" data-i18n-vars='{"n":45}'></option>
+        <option value="60" data-i18n="settings.break.60"></option>
+        <option value="90" data-i18n="settings.break.90"></option>
       </select>
     </label>
-    <label class="check"><input type="checkbox" id="timeTracking"> تتبّع وقت استخدام التطبيقات (يُحفظ على جهازك فقط)</label>
-    <label class="check"><input type="checkbox" id="micCamIndicator"> إظهار مؤشر عند استخدام الميكروفون أو الكاميرا</label>
+    <label class="check"><input type="checkbox" id="timeTracking"> <span data-i18n="settings.timeTracking"></span></label>
+    <label class="check"><input type="checkbox" id="micCamIndicator"> <span data-i18n="settings.micCamIndicator"></span></label>
   </section>
 
   <section>
-    <h2>مساحات العمل ولوحة الأوامر</h2>
-    <p class="hint">افتح لوحة الأوامر بـ Ctrl + Alt + Space. كل سطر مساحة عمل: الاسم ثم نقطتان ثم العناصر مفصولة بـ |</p>
-    <textarea id="workspaces" rows="4" dir="auto" placeholder="الدراسة: https://classroom.google.com | C:\Users\me\Documents\Uni | Word"></textarea>
+    <h2 data-i18n="settings.shortcutsTitle"></h2>
+    <label><span data-i18n="settings.shortcuts"></span>
+      <input id="shortcuts" type="text" dir="auto" data-i18n-placeholder="settings.shortcuts.placeholder">
+    </label>
   </section>
 
   <section>
-    <h2>المفاتيح (تُشفَّر على جهازك)</h2>
-    <label>مفتاح Anthropic API (للأسئلة بالذكاء الاصطناعي في لوحة الأوامر)
-      <div class="row"><input id="aiKey" type="password" dir="ltr" autocomplete="off"><button id="aiKeySave" type="button">حفظ</button></div>
+    <h2 data-i18n="settings.workspacesTitle"></h2>
+    <p class="hint" data-i18n="settings.workspaces.hint"></p>
+    <textarea id="workspaces" rows="4" dir="auto" data-i18n-placeholder="settings.workspaces.placeholder"></textarea>
+  </section>
+
+  <section>
+    <h2 data-i18n="settings.keys"></h2>
+    <label><span data-i18n="settings.aiKey"></span>
+      <div class="row"><input id="aiKey" type="password" dir="ltr" autocomplete="off"><button id="aiKeySave" type="button" data-i18n="settings.save"></button></div>
     </label>
     <p class="hint" id="aiKeyState"></p>
-    <label>رمز GitHub (لإشعارات GitHub في الجزيرة)
-      <div class="row"><input id="githubToken" type="password" dir="ltr" autocomplete="off"><button id="ghSave" type="button">حفظ</button></div>
+    <label><span data-i18n="settings.githubToken"></span>
+      <div class="row"><input id="githubToken" type="password" dir="ltr" autocomplete="off"><button id="ghSave" type="button" data-i18n="settings.save"></button></div>
     </label>
-    <p class="hint" id="ghState">أنشئ رمزاً من GitHub ← Settings ← Developer settings ← Personal access tokens (classic) بصلاحية notifications فقط.</p>
+    <p class="hint" id="ghState"></p>
   </section>
 
   <section>
-    <h2>التقويم والاجتماعات</h2>
-    <label>رابط التقويم (iCal / ICS)
-      <input id="icsUrl" type="url" dir="ltr" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics">
+    <h2 data-i18n="settings.calendarTitle"></h2>
+    <label><span data-i18n="settings.icsUrl"></span>
+      <input id="icsUrl" type="url" dir="ltr" data-i18n-placeholder="settings.ics.placeholder">
     </label>
-    <p class="hint">من Google Calendar: الإعدادات ← اختر التقويم ← «العنوان السري بتنسيق iCal». الرابط سري، لا تشاركه مع أحد. يُحفظ على جهازك فقط.</p>
+    <p class="hint" data-i18n="settings.ics.hint"></p>
   </section>
 
   <section>
-    <h2>الخصوصية</h2>
-    <label class="check"><input type="checkbox" id="clipboard"> تسجيل سجل الحافظة (النصوص فقط، في الذاكرة ولا يُحفظ على القرص)</label>
+    <h2 data-i18n="settings.privacy"></h2>
+    <label class="check"><input type="checkbox" id="clipboard"> <span data-i18n="settings.clipboard"></span></label>
   </section>
 
   <section>
-    <h2>التحديثات</h2>
-    <label class="check"><input type="checkbox" id="updates"> التحقق من التحديثات وتثبيتها تلقائياً</label>
+    <h2 data-i18n="settings.updates"></h2>
+    <label class="check"><input type="checkbox" id="updates"> <span data-i18n="settings.autoUpdate"></span></label>
     <div class="row">
-      <button id="check">التحقق الآن</button>
+      <button id="check" data-i18n="settings.checkNow"></button>
       <span id="status" class="hint"></span>
     </div>
     <p class="hint" id="version"></p>
   </section>
 
   <section>
-    <h2>التطبيق</h2>
-    <button id="quit" class="danger">إغلاق Islandly بالكامل</button>
-    <p class="hint">يغلق الجزيرة تماماً. للتشغيل مرة ثانية افتح Islandly.exe.</p>
+    <h2 data-i18n="settings.app"></h2>
+    <button id="quit" class="danger" data-i18n="settings.quit"></button>
+    <p class="hint" data-i18n="settings.quit.hint"></p>
   </section>
 
+  <script src="../renderer/i18n-core.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

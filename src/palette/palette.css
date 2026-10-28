@@ -1,7 +1,6 @@
 :root {
   --accent: #a78bfa;
   --muted: #9ba1b6;
-  --font: 'Segoe UI Variable Text', 'Segoe UI', Tahoma, system-ui, sans-serif;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { background: transparent; font-family: var(--font); color: #fff; overflow: hidden; }
@@ -59,3 +58,7 @@ kbd { font: inherit; font-size: 11px; color: var(--muted); border: 1px solid rgb
 #aText.err { color: #fca5a5; }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* User text (titles, names) is isolated with dir=auto but keeps the alignment of the interface around it. */
+html[dir='rtl'] [dir='auto']:not(input):not(textarea) { text-align: right; }
+html[dir='ltr'] [dir='auto']:not(input):not(textarea) { text-align: left; }
