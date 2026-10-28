@@ -21,6 +21,7 @@ const { GitHubWatcher } = require('./services/github');
 const { Palette } = require('./palette');
 const win32 = require('./win32');
 const cities = require('./cities');
+const { Surface } = require('./surface');
 
 const isDev = process.argv.includes('--dev');
 const info = global.__ISLANDLY || {
@@ -42,7 +43,7 @@ let envelope = { w: 160, h: 60 }; // the size the island needs right now, in CSS
 let fullscreenActive = false;
 let foregroundApp = { app: '', title: '' };
 let media, clipboardHistory, shelf, calendar, bluetooth, updater, fsWatcher, weather, sysinfo, breaks, midnightTimer;
-let palette, tracker, privacy, github;
+let palette, tracker, privacy, github, surface;
 const notesStore = jsonStore('notes.json', { todos: [] });
 
 function todayState() {
@@ -73,13 +74,15 @@ const zoom = () => Number(settings.get().scale) || 0.8;
 /** Size the window to the island's envelope and keep it anchored at the top of the primary display. */
 function positionWindow() {
   if (!win || win.isDestroyed()) return;
-  const { bounds } = screen.getPrimaryDisplay();
+  const display = screen.getAllDisplays().find(d => String(d.id) === settings.get().monitorId) || screen.getPrimaryDisplay();
+  const { bounds } = display;
   const z = zoom();
   const width = Math.min(bounds.width, Math.ceil(envelope.w * z));
   const height = Math.min(bounds.height, Math.ceil(envelope.h * z));
   const pos = settings.get().position;
   const x = pos === 'left' ? bounds.x + 16 : pos === 'right' ? bounds.x + bounds.width - width - 16 : Math.round(bounds.x + (bounds.width - width) / 2);
   win.setBounds({ x, y: bounds.y, width, height });
+  if (surface) surface.positionBar();
 }
 
 function applyVisibility() {
@@ -87,6 +90,7 @@ function applyVisibility() {
   const hide = userHidden || (settings.get().hideFullscreen && fullscreenActive);
   if (hide && win.isVisible()) win.hide();
   if (!hide && !win.isVisible()) win.showInactive();
+  if (surface) surface.setVisible(!hide);
   buildTrayMenu();
 }
 
@@ -117,11 +121,12 @@ function createWindow() {
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.loadFile(path.join(info.root, 'src', 'renderer', 'index.html'));
   win.once('ready-to-show', () => applyVisibility());
+  win.on('close', () => surface && surface.stop());
   win.webContents.on('did-finish-load', () => {
     markBootOk();
     win.webContents.setZoomFactor(zoom());
   });
-  win.webContents.on('render-process-gone', (_e, d) => logError('renderer gone', JSON.stringify(d)));
+  win.webContents.on('render-process-gone', (_e, d) => { surface?.stop(); logError('renderer gone', JSON.stringify(d)); });
   win.webContents.on('preload-error', (_e, p, err) => logError('preload', p, err));
   if (isDev) win.webContents.openDevTools({ mode: 'detach' });
 }
@@ -241,6 +246,9 @@ function registerIpc() {
     if (!env || !Number.isFinite(env.w) || !Number.isFinite(env.h)) return;
     envelope = { w: Math.max(40, Math.min(1200, env.w)), h: Math.max(10, Math.min(800, env.h)) };
     positionWindow();
+  });
+  ipcMain.on('surface:resting', (e, resting) => {
+    if (win && e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame && typeof resting === 'boolean') surface?.setResting(resting);
   });
   ipcMain.on('system:watch', (_e, on) => sysinfo.watch(!!on));
   // The island only accepts keyboard focus while the to-do panel is on screen; it must never steal focus otherwise.
@@ -389,6 +397,12 @@ app.whenReady().then(() => {
     openSettings,
   });
 
+  surface = new Surface({ win32, screen, getWindow: () => win, userData: app.getPath('userData'), onTint: rgb => push('surface:tint', rgb), log: logError });
+  surface.setBarHeight(44 * zoom());
+  surface.setMode(settings.get().islandMode);
+  surface.setSamplingEnabled(settings.get().surfaceTint);
+  applyVisibility();
+
   if (process.env.ISLANDLY_TEST) global.__islandly = { palette, shelf, tracker, openSettings };
 
   fsWatcher = watchForeground({
@@ -410,7 +424,10 @@ app.whenReady().then(() => {
   if (!globalShortcut.register('Control+Alt+Space', () => palette.toggle())) logError('shortcut Ctrl+Alt+Space is taken by another app');
 
   settings.onChange((now, prev) => {
-    if (now.position !== prev.position) positionWindow();
+    if (now.islandMode !== prev.islandMode) surface.setMode(now.islandMode);
+    if (now.surfaceTint !== prev.surfaceTint) surface.setSamplingEnabled(now.surfaceTint);
+    if (now.scale !== prev.scale) surface.setBarHeight(44 * zoom());
+    if (now.position !== prev.position || now.monitorId !== prev.monitorId) positionWindow();
     if (now.scale !== prev.scale && win) {
       win.webContents.setZoomFactor(zoom());
       positionWindow();
@@ -443,9 +460,12 @@ app.whenReady().then(() => {
   screen.on('display-removed', positionWindow);
 });
 
+process.on('exit', () => surface && surface.stop());
+process.on('uncaughtExceptionMonitor', () => surface && surface.stop());
+
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-  [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks, tracker, privacy, github, palette].forEach((m) => m && m.stop && m.stop());
+  [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks, tracker, privacy, github, palette, surface].forEach((m) => m && m.stop && m.stop());
   clearTimeout(midnightTimer);
 });
 

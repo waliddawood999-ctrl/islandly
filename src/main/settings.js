@@ -5,6 +5,9 @@ const { app } = require('electron');
 const DEFAULTS = {
   lang: 'ar', // 'auto' | 'ar' | 'en'
   autoHide: 'auto', // 'auto' (shrink after a few seconds) | 'never' | 'always' (thin line until hovered)
+  monitorId: '', // existing T1 monitor-selection contract; empty uses primary
+  islandMode: 'overlay', // T6 contract: overlay | appbar
+  surfaceTint: false, // explicit opt-in for native pixel sampling
   position: 'center', // 'center' | 'left' | 'right'
   scale: 0.8, // UI size: 0.7 small, 0.8 medium, 1 large
   hideFullscreen: true,
@@ -53,6 +56,7 @@ function set(patch) {
   const prev = data;
   data = { ...data }; // keeps data.secrets
   for (const key of Object.keys(DEFAULTS)) {
+    if (key === 'islandMode' && !['overlay', 'appbar'].includes(patch[key])) continue;
     if (key in patch && typeof patch[key] === typeof DEFAULTS[key]) data[key] = patch[key];
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
