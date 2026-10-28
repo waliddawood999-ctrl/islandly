@@ -19,6 +19,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Native notification and shared PowerShell protocol
+        run: node test/perf-native.js
       - name: Baseline and current metrics
         shell: pwsh
         run: |

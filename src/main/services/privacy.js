@@ -1,15 +1,7 @@
 // Microphone / camera in use: Windows records each app's last use in the ConsentStore registry keys.
 // An entry whose LastUsedTimeStop is 0 (and start is not) is using the device right now. Read with the built-in reg.exe.
-const { execFile } = require('child_process');
 const { prettyName } = require('./tracker');
-
-const BASE = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\';
-
-function query(device) {
-  return new Promise((resolve) => {
-    execFile('reg.exe', ['query', BASE + device, '/s'], { windowsHide: true, timeout: 4000 }, (err, out) => resolve(err ? '' : String(out)));
-  });
-}
+const native = require('../native-perf');
 
 /** Parse `reg query /s` output into the list of apps currently using the device. */
 function parseActive(text) {
@@ -39,32 +31,19 @@ function parseActive(text) {
 }
 
 class PrivacyWatcher {
-  constructor(onChange) {
-    this.onChange = onChange;
-    this.timer = null;
-    this.last = '';
-  }
-
+  constructor(onChange) { this.onChange = onChange; this.last = ''; this.cancel = null; this.generation = 0; }
   start() {
-    if (process.platform !== 'win32' || this.timer) return;
-    this.timer = setInterval(() => this.poll(), 3000);
+    if (this.cancel) return;
+    const generation = ++this.generation;
+    this.cancel = native.watchPrivacy(() => { if (generation === this.generation) this.poll(); });
     this.poll();
   }
-
-  stop() {
-    clearInterval(this.timer);
-    this.timer = null;
-  }
-
-  async poll() {
-    const [mic, cam] = await Promise.all([query('microphone'), query('webcam')]);
-    const state = { mic: parseActive(mic), cam: parseActive(cam) };
+  stop() { this.generation++; this.cancel?.(); this.cancel = null; }
+  poll() {
+    const names = values => [...new Set(values.map(leaf => leaf.includes('#') ? prettyName(leaf.split('#').pop()) : leaf.split('_')[0]))];
+    const raw = native.readPrivacy(), state = { mic: names(raw.mic), cam: names(raw.cam) };
     const key = JSON.stringify(state);
-    if (key !== this.last) {
-      this.last = key;
-      this.onChange(state);
-    }
+    if (key !== this.last) { this.last = key; this.onChange(state); }
   }
 }
-
 module.exports = { PrivacyWatcher, parseActive };

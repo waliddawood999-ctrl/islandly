@@ -32,11 +32,13 @@ class Updater {
   }
 
   start() {
-    setTimeout(() => this.check(), 20 * 1000);
+    this.stop();
+    this.initialTimer = setTimeout(() => this.check(), 20 * 1000);
     this.timer = setInterval(() => this.check(), CHECK_EVERY_MS);
   }
 
   stop() {
+    clearTimeout(this.initialTimer);
     clearInterval(this.timer);
   }
 

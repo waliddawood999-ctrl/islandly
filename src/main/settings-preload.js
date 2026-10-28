@@ -1,6 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('settingsAPI', {
+  perf: () => ipcRenderer.invoke('perf:get'),
+  call: channel => channel === 'perf:get' ? ipcRenderer.invoke(channel) : Promise.reject(Error('blocked')),
+  send: (channel, on) => { if (channel === 'perf:watch' && typeof on === 'boolean') ipcRenderer.send(channel, on); },
+  on: (channel, cb) => { if (['perf:update', 'eco:changed', 'settings:update'].includes(channel)) { const listener = (_e, value) => cb(value); ipcRenderer.on(channel, listener); return () => ipcRenderer.removeListener(channel, listener); } },
   get: () => ipcRenderer.sendSync('settings:get'),
   set: (patch) => ipcRenderer.invoke('settings:set', patch),
   info: () => ipcRenderer.invoke('app:info'),
