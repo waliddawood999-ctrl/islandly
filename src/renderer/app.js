@@ -23,6 +23,12 @@
   );
   document.addEventListener('mouseleave', () => setInside(false));
 
+  // Right-click the island: the same menu as the tray icon (position, auto-hide, settings, quit).
+  document.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (Island.el.contains(e.target)) API.send('menu:show');
+  });
+
   // Dropping files on the island puts them on the shelf. (Works while the island is open under the pointer.)
   document.addEventListener('dragenter', (e) => {
     if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) Island.open('shelf');

@@ -5,7 +5,7 @@ const CALL = new Set([
   'shelf:list', 'shelf:add', 'shelf:remove', 'shelf:clear', 'shelf:open', 'shelf:reveal',
   'calendar:get', 'update:check', 'update:apply',
 ]);
-const SEND = new Set(['island:interactive', 'media:control', 'open:external', 'settings:open', 'shelf:drag']);
+const SEND = new Set(['island:interactive', 'media:control', 'open:external', 'settings:open', 'shelf:drag', 'menu:show']);
 const ON = new Set([
   'media:update', 'clipboard:update', 'shelf:update', 'shelf:added', 'calendar:update', 'bluetooth:update',
   'update:ready', 'settings:update', 'shortcut', 'toast',

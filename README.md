@@ -32,7 +32,7 @@ After that the app **updates itself** from this repository.
 | Open / close the panel from the keyboard | `Ctrl+Alt+I` |
 | Start / pause the focus timer | `Ctrl+Alt+P` |
 | Put the files selected in Explorer on the shelf | `Ctrl+Alt+S` |
-| Settings, position, auto-hide, quit | Right-click the tray icon |
+| Settings, position, auto-hide, quit | Right-click the island, or click the purple tray icon (it may be under the ^ arrow) |
 
 The window is click-through everywhere except on the island itself, so it never blocks what is underneath.
 

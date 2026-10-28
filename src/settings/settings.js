@@ -43,3 +43,5 @@ $('check').addEventListener('click', async () => {
     $('status').after(b);
   }
 });
+
+$('quit').addEventListener('click', () => api.quit());

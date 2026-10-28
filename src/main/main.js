@@ -109,12 +109,10 @@ function openSettings() {
 
 // ---------------------------------------------------------------- tray
 
-function buildTrayMenu() {
-  if (!tray) return;
+function trayMenuTemplate() {
   const s = settings.get();
   const radio = (key, value, label) => ({ label, type: 'radio', checked: s[key] === value, click: () => settings.set({ [key]: value }) });
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
+  return [
       {
         label: win && win.isVisible() ? 'إخفاء الجزيرة' : 'إظهار الجزيرة',
         click: () => {
@@ -154,14 +152,19 @@ function buildTrayMenu() {
       { type: 'separator' },
       { label: `Islandly ${info.version}`, enabled: false },
       { label: 'خروج', click: () => app.quit() },
-    ])
-  );
+  ];
+}
+
+function buildTrayMenu() {
+  if (tray) tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate()));
 }
 
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(asset('tray.png')));
   tray.setToolTip('Islandly');
   buildTrayMenu();
+  tray.on('click', () => tray.popUpContextMenu());
+  tray.on('double-click', openSettings);
 }
 
 // ---------------------------------------------------------------- features
@@ -196,6 +199,8 @@ function registerIpc() {
   ipcMain.on('media:control', (_e, action, value) => media.control(action, value));
   ipcMain.on('open:external', (_e, url) => openExternal(url));
   ipcMain.on('settings:open', openSettings);
+  ipcMain.on('menu:show', () => Menu.buildFromTemplate(trayMenuTemplate()).popup({ window: win }));
+  ipcMain.on('app:quit', () => app.quit());
   ipcMain.on('shelf:drag', (e, ids) => {
     const paths = shelf.pathsFor(ids);
     if (!paths.length) return;
