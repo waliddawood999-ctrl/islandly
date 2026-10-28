@@ -7,12 +7,14 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "test": "node test/ics.test.js && node test/updater.test.js && node test/palette.test.js && node test/ai.test.js",
+    "test": "node test/ics.test.js && node test/updater.test.js && node test/palette.test.js && node test/ai.test.js && node test/surface.test.js",
     "test:smoke": "electron test/electron-smoke.js",
     "test:e2e": "electron test/ui-e2e.js"
   },
   "devDependencies": {
-    "electron": "^45.1.0"
+    "electron": "^45.1.0",
+    "lucide-static": "^1.63.0",
+    "motion": "^14.7.1"
   },
   "optionalDependencies": {
     "@coooookies/windows-smtc-monitor": "^1.0.12"
