@@ -1,0 +1,36 @@
+name: T9 RAM footprint diagnosis
+on:
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-footprint:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Compare current app, conservative memory policy and a blank Electron window
+        shell: pwsh
+        run: |
+          foreach ($variant in @('full-app','compact-v8','blank-window')) {
+            $env:ISLANDLY_FOOTPRINT_VARIANT = $variant
+            $env:ISLANDLY_FOOTPRINT_OUTPUT = "$pwd/footprint-$variant.json"
+            npx electron test/perf-footprint.js
+            if ($LASTEXITCODE -ne 0) { throw "Footprint probe failed: $variant" }
+            $result = Get-Content $env:ISLANDLY_FOOTPRINT_OUTPUT -Raw | ConvertFrom-Json
+            "$variant : mean $($result.averageMB) MB; minimum $($result.minMB) MB; peak $($result.peakMB) MB" >> $env:GITHUB_STEP_SUMMARY
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t9-footprint-diagnosis
+          path: footprint-*.json
+          if-no-files-found: error
+          retention-days: 14

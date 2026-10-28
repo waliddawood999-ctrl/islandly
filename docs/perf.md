@@ -64,3 +64,9 @@ Anthropic SDK was already lazy. ICS parsing is now required only when a calendar
 ## Remaining verification
 
 Measure the integrated build on a real Windows desktop with an actual SMTC player, after opening/closing helper-using panels, in fullscreen, hidden state and Eco. Confirm memory/CPU and motion latency over longer sessions and different GPUs/DPI. The current RAM failure stays visible in the task board/PR; passing functional CI does not mark the RAM target satisfied.
+
+## RAM continuation experiment (results pending)
+
+User rejected the 262.98 MB result and requested continuation on PR #10, stopping before a major architectural change. `test/perf-footprint.js` compares full T9, a diagnostic optimize-for-size/low-end memory policy, and a blank transparent Electron window on the same Windows runner. Each variant warms for 15 seconds and samples 60 seconds. It reports mean/minimum/peak, process types and main-process V8 heap separately. GPU/utility are included. It does not trim resident pages, consolidate processes, disable sandboxing, change production startup or edit protected UI files.
+
+Command: set ISLANDLY_FOOTPRINT_VARIANT to full-app, compact-v8 or blank-window, set ISLANDLY_FOOTPRINT_OUTPUT, then run `npx electron test/perf-footprint.js`. A blank-window result is diagnostic evidence only and cannot be reported as Islandly meeting its budget.
