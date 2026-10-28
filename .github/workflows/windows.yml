@@ -1,0 +1,43 @@
+name: Windows verification
+on:
+  pull_request:
+  push:
+    branches: [main, feat/reliability-and-productivity]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm test
+      - name: Electron update flow
+        run: npx electron test/update-flow.js
+      - name: Electron renderer and IPC smoke
+        run: npm run test:smoke
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish native notification bridge
+        run: dotnet publish native/NotificationBridge/NotificationBridge.csproj -c Release -r win-x64 -o bridge
+      - name: Package Windows application
+        run: npx --yes @electron/packager@18.3.6 . Islandly --platform=win32 --arch=x64 --out=out --overwrite --asar=false --ignore="^/(dev|test|scripts|docs|examples|native|out)$" --ignore="^/\.git"
+      - name: Copy terminal integration
+        shell: pwsh
+        run: Copy-Item scripts/islandly-run.ps1 out/Islandly-win32-x64/
+      - name: Package unsigned MSIX for validation
+        shell: pwsh
+        run: ./scripts/package-msix.ps1 -AppDirectory out/Islandly-win32-x64 -Output out/Islandly-unsigned.msix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: islandly-windows-review-build
+          path: out/
+          retention-days: 7

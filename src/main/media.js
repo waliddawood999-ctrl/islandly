@@ -1,14 +1,8 @@
-const path = require('path');
-const readline = require('readline');
-const { Worker } = require('worker_threads');
-const { spawnScript, isWindows } = require('./ps');
-const win32 = require('./win32');
-
-/**
- * "Now playing" comes from Windows (SMTC) through a worker thread.
- * Controls (play/pause, next, previous, seek) go through one long-lived PowerShell helper that talks to the
- * same SMTC session API, falling back to the system media keys when the app does not support a command.
- */
+const path = require("path");
+const readline = require("readline");
+const { Worker } = require("worker_threads");
+const { spawnScript, isWindows } = require("./ps");
+const win32 = require("./win32");
 class MediaBridge {
   constructor(onUpdate, baseRoot) {
     this.onUpdate = onUpdate;
@@ -17,88 +11,171 @@ class MediaBridge {
     this.ps = null;
     this.nextId = 1;
     this.pending = new Map();
-    this.ready = false; // true once the helper has answered once (PowerShell needs a moment to start)
+    this.ready = false;
+    this.stopped = true;
+    this.app = "";
+    this.preferred = "";
+    this.retry = null;
+    this.warmTimer = null;
+    this.commands = Promise.resolve();
   }
-
   start() {
+    if (!this.stopped) return;
+    this.stopped = false;
     if (!isWindows) {
-      this.onUpdate({ type: 'unavailable', reason: 'not-windows' });
+      this.onUpdate({ type: "unavailable", reason: "not-windows" });
       return;
     }
-    this.worker = new Worker(path.join(__dirname, 'media-worker.js'), { workerData: { baseRoot: this.baseRoot } });
-    this.worker.on('message', (m) => this.onUpdate(m));
-    this.worker.on('error', (err) => this.onUpdate({ type: 'unavailable', reason: String(err) }));
-    setTimeout(() => this.warmUp(), 4000);
+    this.startWorker();
+    this.warmTimer = setTimeout(() => this.warmUp(), 1000);
   }
-
+  startWorker() {
+    if (this.stopped) return;
+    const w = new Worker(path.join(__dirname, "media-worker.js"), {
+      workerData: { baseRoot: this.baseRoot },
+    });
+    this.worker = w;
+    w.on("message", (m) => {
+      this.app = m.app || "";
+      this.onUpdate(m);
+    });
+    w.on("error", (err) =>
+      this.onUpdate({ type: "unavailable", reason: String(err) }),
+    );
+    w.on("exit", () => {
+      if (this.worker !== w) return;
+      this.worker = null;
+      if (!this.stopped)
+        this.retry = setTimeout(() => this.startWorker(), 30000);
+    });
+    w.postMessage({ select: this.preferred });
+  }
+  select(app) {
+    this.preferred = String(app || "");
+    this.worker?.postMessage({ select: this.preferred });
+  }
   stop() {
-    if (this.worker) this.worker.terminate();
-    if (this.ps) this.ps.kill();
+    this.stopped = true;
+    clearTimeout(this.retry);
+    clearTimeout(this.warmTimer);
+    const w = this.worker;
+    this.worker = null;
+    w?.terminate();
+    this.ps?.kill();
+    this.ps = null;
+    this.clearPending();
+    this.ready = false;
   }
-
+  clearPending() {
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer);
+      p.resolve({ ok: false });
+    }
+    this.pending.clear();
+  }
   helper() {
+    if (this.stopped) return null;
     if (this.ps) return this.ps;
-    this.ps = spawnScript('media-ctl.ps1');
-    if (!this.ps) return null;
-    this.ps.on('exit', () => {
+    const ps = spawnScript("media-ctl.ps1");
+    if (!ps) return null;
+    this.ps = ps;
+    const clear = () => {
+      if (this.ps !== ps) return;
       this.ps = null;
       this.ready = false;
-      for (const resolve of this.pending.values()) resolve({ ok: false });
-      this.pending.clear();
-    });
-    readline.createInterface({ input: this.ps.stdout }).on('line', (line) => {
+      this.clearPending();
+    };
+    ps.on("error", clear);
+    ps.on("exit", clear);
+    ps.stdin.on("error", clear);
+    readline.createInterface({ input: ps.stdout }).on("line", (line) => {
       try {
         const msg = JSON.parse(line);
         this.ready = true;
-        const resolve = this.pending.get(msg.id);
-        if (resolve) {
+        const p = this.pending.get(msg.id);
+        if (p) {
+          clearTimeout(p.timer);
           this.pending.delete(msg.id);
-          resolve(msg);
+          p.resolve(msg);
         }
-      } catch (_) {
-        /* ignore noise */
-      }
+      } catch (_) {}
     });
-    return this.ps;
+    return ps;
   }
-
-  send(command) {
-    const ps = this.helper();
-    // Until the helper is up (or if it cannot start), play/pause/next/previous go straight to the media keys,
-    // so the very first click works instantly and a slow helper can never cause a double toggle.
-    const isKey = ['playpause', 'next', 'prev'].includes(command);
-    if (!ps || (!this.ready && isKey)) {
-      return Promise.resolve({ ok: isKey && win32.mediaKey(command), fallback: true });
-    }
-    return this.ask(ps, command);
-  }
-
   ask(ps, command) {
     const id = this.nextId++;
     return new Promise((resolve) => {
-      this.pending.set(id, resolve);
-      ps.stdin.write(`${id} ${command}\n`);
-      setTimeout(() => {
-        if (this.pending.delete(id)) resolve({ ok: false });
+      const timer = setTimeout(() => {
+        if (this.pending.has(id)) {
+          ps.kill();
+          this.clearPending();
+          if (this.ps === ps) this.ps = null;
+          this.ready = false;
+        }
       }, 6000);
+      this.pending.set(id, { resolve, timer });
+      try {
+        ps.stdin.write(`${id} ${command}\n`);
+      } catch (_) {
+        ps.kill();
+        this.clearPending();
+      }
     });
   }
-
-  /** Start the helper early so it is ready by the time the user clicks something. */
   warmUp() {
     const ps = this.helper();
-    if (ps) this.ask(ps, 'caps');
+    if (ps) this.ask(ps, "caps");
   }
-
-  control(action, value) {
-    if (action === 'seek') return this.send(`seek ${Number(value).toFixed(3)}`);
-    if (['playpause', 'next', 'prev'].includes(action)) return this.send(action);
-    return Promise.resolve({ ok: false });
+  async target(ps, app) {
+    return this.ask(
+      ps,
+      "select " + Buffer.from(String(app || ""), "utf8").toString("base64"),
+    );
   }
-
+  serialize(fn) {
+    const result = this.commands.then(fn, fn);
+    this.commands = result.catch(() => {});
+    return result;
+  }
+  control(action, value, expectedApp) {
+    return this.serialize(() =>
+      this.performControl(action, value, expectedApp),
+    );
+  }
+  async performControl(action, value, expectedApp) {
+    if (
+      !["playpause", "next", "prev", "seek"].includes(action) ||
+      (expectedApp && expectedApp !== this.app)
+    )
+      return { ok: false };
+    if (action === "seek" && (!Number.isFinite(value) || value < 0))
+      return { ok: false };
+    const ps = this.helper();
+    if (!ps)
+      return {
+        ok: !expectedApp && action !== "seek" && win32.mediaKey(action),
+        fallback: true,
+      };
+    if (expectedApp) {
+      const selected = await this.target(ps, expectedApp);
+      if (!selected.ok) return { ok: false };
+    }
+    return this.ask(
+      ps,
+      action === "seek" ? `seek ${value.toFixed(3)}` : action,
+    );
+  }
   capabilities() {
-    return this.send('caps');
+    return this.serialize(() => this.readCapabilities());
+  }
+  async readCapabilities() {
+    const ps = this.helper();
+    if (!ps) return { ok: false };
+    if (this.app) {
+      const selected = await this.target(ps, this.app);
+      if (!selected.ok) return { ok: false };
+    }
+    return this.ask(ps, "caps");
   }
 }
-
 module.exports = { MediaBridge };

@@ -1,9 +1,9 @@
 // Focus / break timer (Pomodoro) and quick countdowns.
 Island.register({
-  id: 'timer',
+  id: "timer",
   icon: ICONS.timer,
 
-  mode: 'focus', // 'focus' | 'rest'
+  mode: "focus", // 'focus' | 'rest'
   total: 25 * 60, // seconds for the current round
   remaining: 25 * 60,
   running: false,
@@ -13,49 +13,101 @@ Island.register({
 
   init() {
     // compact: [ring] mm:ss
-    this.cRing = ring(24, 3.5, '#a78bfa');
-    this.cLabel = h('span', { class: 'tm', dir: 'ltr' });
-    this.compact = h('div', { class: 'view timer-compact' }, this.cRing.el, this.cLabel);
+    this.cRing = ring(24, 3.5, "#a78bfa");
+    this.cLabel = h("span", { class: "tm", dir: "ltr" });
+    this.compact = h(
+      "div",
+      { class: "view timer-compact" },
+      this.cRing.el,
+      this.cLabel,
+    );
 
     // expanded
-    this.xRing = ring(92, 8, '#a78bfa');
-    this.xLabel = h('div', { class: 'ring-label', dir: 'ltr' });
-    this.xTitle = h('div', { class: 't-title' });
-    this.mainBtn = h('button', { class: 'pill primary', onclick: () => this.toggle() });
-    this.chips = h('div', { class: 'chips' });
-    this.modeTabs = h('div', { class: 'chips modes' });
+    this.xRing = ring(92, 8, "#a78bfa");
+    this.xLabel = h("div", { class: "ring-label", dir: "ltr" });
+    this.xTitle = h("div", { class: "t-title" });
+    this.mainBtn = h("button", {
+      class: "pill primary",
+      onclick: () => this.toggle(),
+    });
+    this.chips = h("div", { class: "chips" });
+    this.modeTabs = h("div", { class: "chips modes" });
     this.expandedEl = h(
-      'div',
-      { class: 'view auto timer-expanded' },
-      h('div', { class: 'ring-wrap' }, this.xRing.el, this.xLabel),
+      "div",
+      { class: "view auto timer-expanded" },
+      h("div", { class: "ring-wrap" }, this.xRing.el, this.xLabel),
       h(
-        'div',
-        { class: 't-side' },
+        "div",
+        { class: "t-side" },
         this.xTitle,
         h(
-          'div',
-          { class: 't-actions' },
+          "div",
+          { class: "t-actions" },
           this.mainBtn,
-          h('button', { class: 'pill', title: t('reset'), onclick: () => this.reset() }, html(ICONS.reset))
+          h(
+            "button",
+            { class: "pill", title: t("reset"), onclick: () => this.reset() },
+            html(ICONS.reset),
+          ),
         ),
         this.modeTabs,
-        this.chips
-      )
+        this.chips,
+      ),
     );
 
     // peek: shown when a round finishes
-    this.peekTitle = h('div', { class: 'm-title' });
-    this.peekSub = h('div', { class: 'm-artist' });
-    this.peekAction = h('button', { class: 'pill primary sm', onclick: () => this.startNext() });
+    this.peekTitle = h("div", { class: "m-title" });
+    this.peekSub = h("div", { class: "m-artist" });
+    this.peekAction = h("button", {
+      class: "pill primary sm",
+      onclick: () => this.startNext(),
+    });
     this.peekEl = h(
-      'div',
-      { class: 'view timer-peek' },
-      h('div', { class: 'done-badge' }, '✓'),
-      h('div', { class: 'm-text' }, this.peekTitle, this.peekSub),
-      this.peekAction
+      "div",
+      { class: "view timer-peek" },
+      h("div", { class: "done-badge" }, "✓"),
+      h("div", { class: "m-text" }, this.peekTitle, this.peekSub),
+      this.peekAction,
     );
 
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem("islandly-timer") || "null",
+      );
+      if (
+        saved &&
+        ["focus", "rest"].includes(saved.mode) &&
+        saved.total > 0 &&
+        saved.total <= 36000
+      ) {
+        Object.assign(this, {
+          mode: saved.mode,
+          total: saved.total,
+          remaining: saved.remaining,
+          endAt: saved.endAt,
+          running: !!saved.running,
+        });
+        if (this.running) {
+          this.ticker = setInterval(() => this.tick(), 250);
+          this.tick();
+        }
+      }
+    } catch (_) {}
+    if (this.running) API.send("focus:set", this.mode === "focus");
     this.paint();
+  },
+
+  persist() {
+    localStorage.setItem(
+      "islandly-timer",
+      JSON.stringify({
+        mode: this.mode,
+        total: this.total,
+        remaining: this.remaining,
+        running: this.running,
+        endAt: this.endAt,
+      }),
+    );
   },
 
   setMode(mode, minutes) {
@@ -83,6 +135,7 @@ Island.register({
   start() {
     if (this.remaining <= 0) this.remaining = this.total;
     this.running = true;
+    API.send("focus:set", this.mode === "focus");
     this.endAt = Date.now() + this.remaining * 1000;
     clearInterval(this.ticker);
     this.ticker = setInterval(() => this.tick(), 250);
@@ -99,6 +152,7 @@ Island.register({
 
   stop() {
     this.running = false;
+    API.send("focus:set", false);
     clearInterval(this.ticker);
     this.ticker = 0;
   },
@@ -118,17 +172,21 @@ Island.register({
 
   finish() {
     this.stop();
-    const wasFocus = this.mode === 'focus';
+    const wasFocus = this.mode === "focus";
     beep();
+    API.send("activity:notify", {
+      source: "timer",
+      title: LANG === "ar" ? "انتهت الجلسة" : "Session complete",
+    });
     // Queue up the next round (not auto-started) and let the user decide.
-    this.mode = wasFocus ? 'rest' : 'focus';
+    this.mode = wasFocus ? "rest" : "focus";
     this.total = this.presets[this.mode][0] * 60;
     this.remaining = this.total;
-    this.peekTitle.textContent = t(wasFocus ? 'sessionDone' : 'restDone');
-    this.peekSub.textContent = t(wasFocus ? 'timeForRest' : 'timeToFocus');
-    this.peekAction.textContent = t('start') + ' · ' + t(this.mode);
+    this.peekTitle.textContent = t(wasFocus ? "sessionDone" : "restDone");
+    this.peekSub.textContent = t(wasFocus ? "timeForRest" : "timeToFocus");
+    this.peekAction.textContent = t("start") + " · " + t(this.mode);
     this.paint();
-    Island.peek('timer', 9000);
+    Island.peek("timer", 9000);
   },
 
   startNext() {
@@ -146,23 +204,45 @@ Island.register({
   },
 
   paint() {
-    const color = this.mode === 'focus' ? '#a78bfa' : '#34d399';
+    this.persist();
+    const color = this.mode === "focus" ? "#a78bfa" : "#34d399";
     this.cRing.color(color);
     this.xRing.color(color);
-    this.compact.classList.toggle('paused', !this.running);
-    this.xTitle.textContent = t(this.mode === 'focus' ? 'focusSession' : 'restSession');
-    this.mainBtn.textContent = this.running ? t('pause') : this.remaining < this.total ? t('resume') : t('start');
+    this.compact.classList.toggle("paused", !this.running);
+    this.xTitle.textContent = t(
+      this.mode === "focus" ? "focusSession" : "restSession",
+    );
+    this.mainBtn.textContent = this.running
+      ? t("pause")
+      : this.remaining < this.total
+        ? t("resume")
+        : t("start");
 
     this.modeTabs.replaceChildren(
-      ...['focus', 'rest'].map((m) =>
-        h('button', { class: 'chip' + (this.mode === m ? ' on' : ''), onclick: () => this.setMode(m) }, t(m))
-      )
+      ...["focus", "rest"].map((m) =>
+        h(
+          "button",
+          {
+            class: "chip" + (this.mode === m ? " on" : ""),
+            onclick: () => this.setMode(m),
+          },
+          t(m),
+        ),
+      ),
     );
     const minutes = Math.round(this.total / 60);
     this.chips.replaceChildren(
       ...this.presets[this.mode].map((mins) =>
-        h('button', { class: 'chip' + (mins === minutes ? ' on' : ''), dir: 'ltr', onclick: () => this.setMinutes(mins) }, `${mins}${t('min')}`)
-      )
+        h(
+          "button",
+          {
+            class: "chip" + (mins === minutes ? " on" : ""),
+            dir: "ltr",
+            onclick: () => this.setMinutes(mins),
+          },
+          `${mins}${t("min")}`,
+        ),
+      ),
     );
     this.paintTime();
   },
@@ -173,9 +253,10 @@ Island.register({
   },
 
   view(mode) {
-    if (mode === 'compact') return this.priority() ? { el: this.compact, w: 132, h: 40 } : null;
-    if (mode === 'peek') return { el: this.peekEl, w: 400, h: 76 };
-    if (mode === 'expanded') return { el: this.expandedEl, w: 420, auto: true };
+    if (mode === "compact")
+      return this.priority() ? { el: this.compact, w: 132, h: 40 } : null;
+    if (mode === "peek") return { el: this.peekEl, w: 400, h: 76 };
+    if (mode === "expanded") return { el: this.expandedEl, w: 420, auto: true };
     return null;
   },
 });
