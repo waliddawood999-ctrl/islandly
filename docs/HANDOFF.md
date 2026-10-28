@@ -123,3 +123,159 @@
 
 **أسئلة لوليد**
 - بعد اختبار القسم 9: هل Acrylic يستاهل نكمّله (البند 4 من مواصفة T7) أو نكتفي بالزجاج الداكن؟
+
+---
+
+## 2026-10-28 · Claude · T0 (إضافة): عقود IPC v0.5
+
+**ما تم:** سجّلت مهام 0.5 (T8–T14) والـ Backlog في `docs/TASKS.md`، وأضفت قسم «قسمة الملفات» في `AGENTS.md` و `CLAUDE.md`، وكتبت العقد تحت.
+
+## عقود IPC v0.5
+
+**القاعدة:** Codex ينفّذ هذا العقد حرفياً في `src/main/**` وملفات preload. أي تغيير (اسم، شكل، قيمة افتراضية) يحتاج موافقة Claude، ويُسجَّل في «سجل تغييرات العقد» آخر القسم. الواجهة (Claude) تعتمد عليه كما هو.
+
+### 0. اصطلاحات
+- **invoke:** من الواجهة إلى main عبر `ipcRenderer.invoke`، ويرجع Promise.
+- **send:** من الواجهة إلى main بدون رد.
+- **event:** من main إلى الواجهة عبر `webContents.send`.
+- **الأوقات:** epoch بالميلي ثانية (number).
+- **القيمة غير المعروفة:** `null`، لا `undefined`.
+- **الدخل:** main يتحقق من كل دخل. القيمة غير الصالحة تُتجاهل، أو تُرفض بخطأ نصّه قصير بالإنجليزي (مثل `offline` أو `invalid`).
+- **قوائم السماح:** كل قناة تُضاف لقائمة السماح في الـ preload المذكور في الجدول (§3). الـ preloads الثلاثة: الجزيرة `preload.js`، الإعدادات `settings-preload.js`، لوحة الأوامر `palette-preload.js`.
+
+### 1. مفاتيح الإعدادات (القيم الافتراضية في store/settings)
+
+| المفتاح | النوع والقيم | الافتراضي | المهمة |
+|---|---|---|---|
+| `uiLang` | `'auto'` \| `'ar'` \| `'en'` | `'auto'` | T11 |
+| `digits` | `'latn'` \| `'arab'` | `'latn'` | T11 |
+| `fontPairing` | `'plex'` \| `'manrope'` \| `'jakarta'` (مخفي في الإعدادات) | `'plex'` | T8 |
+| `motion` | `'full'` \| `'reduced'` \| `'off'` | `'full'` | T14 |
+| `ecoMode` | boolean | `false` | T9/T14 |
+| `surfaceMode` | `'overlay'` \| `'appbar'` | `'overlay'` | T6/T7 |
+| `material` | `'glass'` \| `'acrylic'` | `'glass'` | T6 |
+| `shortcuts` | string (أسماء تطبيقات مفصولة بفاصلة) | `'Edge, File Explorer, Calculator, Notepad'` | T6 |
+| `prayerActivity` | boolean (نشاط الصلاة الحي في الجزيرة) | `true` | T12 |
+| `prayerPreMinutes` | integer 0–60 (0 = بدون مرحلة pre) | `10` | T10/T12 |
+| `prayerIqamaMinutes` | `{fajr, dhuhr, asr, maghrib, isha}` كل قيمة integer 0–60 | `{fajr:25, dhuhr:20, asr:20, maghrib:10, isha:20}` | T10/T12 |
+| `prayerAutoPause` | boolean (إيقاف الموسيقى عند الأذان) | `true` | T10/T12 |
+| `ramadanMode` | `'auto'` \| `'on'` \| `'off'` | `'auto'` | T10/T12 |
+| `hijriOccasions` | boolean | `true` | T10/T12 |
+| `quranEnabled` | boolean | `true` | T12 |
+| `quranReciter` | integer \| null | `null` | T12 |
+| `quranMoshaf` | integer \| null | `null` | T12 |
+| `quranVolume` | number 0–1 | `0.8` | T12 |
+
+**ملاحظات:**
+- **ترحيل `lang` القديم:** لو `uiLang` غير موجود و `lang` موجود، `uiLang = lang` (`'ar'`/`'en'`/`'auto'`). بعدها الواجهة تقرأ `uiLang` فقط. المستخدمون الحاليون يبقون على العربي.
+- **اسم مفتاح وضع الجزيرة:** اسمه في الكود منذ T6 `surfaceMode`، وهو اللي سمّاه وليد `islandMode`. نبقيه `surfaceMode` لأنه منفّذ ومختبر (`test/surface.test.js`)، ما لم يطلب وليد غير ذلك.
+- **التحقق في `settings.set`:** الحالي يقارن `typeof` فقط. المفاتيح ذات القيم المحددة (enum) والمدى و `prayerIqamaMinutes` (كائن) تحتاج تحققاً لكل مفتاح.
+
+### 2. القنوات
+
+**2.1 `settings:update`:** event إلى **كل** النوافذ (الجزيرة، الإعدادات، لوحة الأوامر).
+- الحمولة: الإعدادات كاملة بدون الأسرار، بعد أي تغيير.
+- `settings-preload.js` و `palette-preload.js` يعرضان `on('settings:update', cb)`.
+- **لا إعادة تحميل للنوافذ عند تغيير `uiLang`.** احذف السطر الحالي `if (now.lang !== prev.lang) win.webContents.reload()`. التبديل الفوري تتكفل به الواجهة (T11).
+
+**2.2 `app:locale`:** invoke، في الثلاثة preloads.
+- يرجع `{ system: string, preferred: string[] }` من `app.getSystemLocale()` و `app.getPreferredSystemLanguages()`.
+- تستخدمه الواجهة لـ `uiLang: 'auto'`.
+
+**2.3 `perf:get`:** invoke، في الإعدادات.
+- يرجع: `{ totalMB, processes:[{type, pid, mb, cpu, label}], powershellCount, uptimeSec }`.
+- `type`: `'browser'` \| `'renderer'` \| `'gpu'` \| `'utility'` \| `'powershell'` \| `'other'`.
+- `label` اختياري للـ renderer: `'island'` \| `'settings'` \| `'palette'`، وإلا `null`.
+- `mb`: من `workingSetSize` (KB في `app.getAppMetrics()`) ÷ 1024، بخانة عشرية واحدة.
+- `cpu`: `percentCPUUsage`.
+- عمليات PowerShell الأبناء تُعدّ في `powershellCount`، وتظهر في `processes` بنوع `'powershell'` لو أمكن قياسها.
+- `totalMB`: مجموع `mb`. `uptimeSec`: ثواني منذ التشغيل.
+
+**2.4 `perf:watch`:** send، في الإعدادات، قيمته `true` أو `false`.
+- `perf:update`: event إلى نافذة الإعدادات فقط، بنفس شكل `perf:get`، كل 5 ثوانٍ، **فقط** والاشتراك مفعّل.
+- يتوقف تلقائياً عند إغلاق نافذة الإعدادات.
+
+**2.5 `eco:changed`:** event إلى الجزيرة والإعدادات.
+- الحمولة: `{ eco: boolean }`.
+- يُرسل عند تغيّر `ecoMode`، ومرة بعد تحميل كل نافذة (`did-finish-load`)، حتى تبدأ الواجهة بالقيمة الفعلية.
+
+**2.6 `prayer:get` (invoke، الجزيرة والإعدادات) و `prayer:state` (event، الجزيرة):** نفس الشكل:
+```
+{
+  next:    { name, time },            // name: 'fajr'|'dhuhr'|'asr'|'maghrib'|'isha' (بدون الشروق)
+  current: { name, time } | null,     // الصلاة الحالية في مرحلتي adhan و iqama، وإلا null
+  phase: 'idle' | 'pre' | 'adhan' | 'iqama',
+  phaseEndsAt: number | null,
+  ramadan: boolean,
+  imsak: number | null,               // اليوم أو الغد، قبل الفجر بـ 10 دقائق، وفقط إذا ramadan
+  iftar: number | null,               // مغرب اليوم، وفقط إذا ramadan
+  pausedByAdhan: boolean
+}
+```
+- **المراحل:**
+  - `pre`: من (الأذان − `prayerPreMinutes`) إلى الأذان.
+  - `adhan`: من الأذان لمدة **3 دقائق**.
+  - `iqama`: من نهاية `adhan` إلى (الأذان + `prayerIqamaMinutes[name]`). لو القيمة ≤ 3، ما في مرحلة iqama.
+  - `idle`: غير ذلك.
+- `phaseEndsAt`: نهاية المرحلة الحالية، و `null` في `idle`.
+- **الإرسال:** فقط عند تغيّر المرحلة، وعند منتصف الليل، وعند تغيير أي مفتاح صلاة أو موقع، وعند تغيّر `pausedByAdhan`. **ليس كل ثانية**: العد التنازلي تحسبه الواجهة.
+- `ramadan`: حسب `ramadanMode`. `'auto'` يعني الشهر الهجري 9 (أم القرى).
+- `prayerAutoPause`: عند بداية `adhan`، لو تُشغَّل وسائط، main يوقفها و `pausedByAdhan = true`. يرجع `false` عند `media:resume`، أو عند تشغيل المستخدم بنفسه، أو بنهاية `iqama`.
+
+**2.7 `media:resume`:** invoke، في الجزيرة.
+- يرجع `{ ok: boolean }`.
+- يعمل فقط إذا `pausedByAdhan`. يستأنف ويصفّر `pausedByAdhan`، ويرسل `prayer:state`.
+
+**2.8 `hijri:get`:** invoke، في الجزيرة والإعدادات.
+- يرجع: `{ day, month, year, monthNameAr, monthNameEn, occasion: { id, ar, en } | null }` لليوم المحلي (أم القرى).
+- `month` من 1 إلى 12.
+- **قيم `id` المعتمدة:**
+
+  | id | المناسبة | النوع |
+  |---|---|---|
+  | `ramadan` | رمضان | هجري |
+  | `eid-fitr` | 1–3 شوال | هجري |
+  | `arafah` | 9 ذو الحجة | هجري |
+  | `eid-adha` | 10–13 ذو الحجة | هجري |
+  | `hijri-new-year` | 1 محرم | هجري |
+  | `ashura` | 10 محرم | هجري |
+  | `founding-day` | 22 فبراير | ميلادي |
+  | `national-day` | 23 سبتمبر | ميلادي |
+
+- `hijriOccasions: false` يعني `occasion: null` دائماً.
+- الواجهة تعيد الطلب عند منتصف الليل المحلي.
+
+**2.9 `quran:reciters` و `quran:url`:** invoke، في الجزيرة.
+- `quran:reciters()` يرجع `[{ id, nameAr, nameEn, moshaf: [{ id, name, server, surahList: number[] }] }]`.
+  - المصدر mp3quran API v3. `surahList` يُحوّل من النص المفصول بفواصل إلى أرقام.
+  - كاش في `userData` لمدة 7 أيام.
+  - **لا طلب شبكة إلا عند استدعاء القناة** (المستخدم فتح مشغل القرآن).
+- `quran:url(reciterId, moshafId, sura)` يرجع string: `server + pad3(sura) + '.mp3'`.
+  - main يتحقق: `https:`، والمضيف ينتهي بـ `.mp3quran.net`، و `sura` من 1 إلى 114 وموجودة في `surahList`.
+  - غير ذلك يرفض بخطأ `invalid`.
+  - بدون شبكة ولا كاش: خطأ `offline`.
+- (الواجهة تضيف `media-src https://*.mp3quran.net` في CSP صفحة الجزيرة. هذا ملف Claude.)
+
+**2.10 قنوات موجودة من T6 (للعلم، بلا تغيير):** `island:pointer-inside` (invoke)، `island:hover-state` (send)، `island:pointer-left` (event)، `surface:resting` (send)، `surface:tint` (event `{r,g,b}` \| `null`)، `shortcuts:list` (invoke)، `shortcuts:open` (send)، `shortcuts:update` (event)، `lyrics:update` (event `{status, lines:[{at, text}], text}`).
+
+### 3. قوائم السماح المطلوبة
+
+| القناة | النوع | الجزيرة `preload.js` | الإعدادات | لوحة الأوامر |
+|---|---|---|---|---|
+| `settings:update` | event | ✓ (موجود) | ✓ | ✓ |
+| `app:locale` | invoke | ✓ | ✓ | ✓ |
+| `perf:get` | invoke | | ✓ | |
+| `perf:watch` | send | | ✓ | |
+| `perf:update` | event | | ✓ | |
+| `eco:changed` | event | ✓ | ✓ | |
+| `prayer:get` | invoke | ✓ | ✓ | |
+| `prayer:state` | event | ✓ | | |
+| `media:resume` | invoke | ✓ | | |
+| `hijri:get` | invoke | ✓ | ✓ | |
+| `quran:reciters`، `quran:url` | invoke | ✓ | | |
+
+### 4. أدوات للاختبار (اختياري، T13)
+- `ISLANDLY_FAKE_NOW` (env، epoch ms): يثبّت الوقت لخدمات الصلاة والهجري، حتى تُختبر المراحل والمناسبات بدون انتظار.
+
+### سجل تغييرات العقد
+- 2026-10-28: النسخة الأولى (Claude).
