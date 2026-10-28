@@ -1,0 +1,89 @@
+name: Release channel verification
+on:
+  pull_request:
+    branches: [dev]
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      draft_tag:
+        description: Existing stable tag to package as a draft only (empty builds artifacts)
+        required: false
+        default: ''
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.draft_tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Validate requested draft tag
+        if: inputs.draft_tag != ''
+        env:
+          DRAFT_TAG: ${{ inputs.draft_tag }}
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if ($env:DRAFT_TAG -cne "v$version" -or $env:DRAFT_TAG -notmatch '^v\d+\.\d+\.\d+$') {
+            throw 'Draft tag must be an existing stable tag matching package.version'
+          }
+      - run: npm ci
+      - run: npm test
+      - name: Real Electron release download and bootstrap
+        run: npx electron test/update-flow.js
+      - name: Package Windows portable application
+        run: npx --yes @electron/packager@18.3.6 . Islandly --platform=win32 --arch=x64 --out=out --overwrite --asar=false --ignore="^/(dev|test|scripts|docs|work|out|dist)$" --ignore="^/\.git"
+      - name: Verify native modules and create ZIP
+        shell: pwsh
+        run: |
+          $app = 'out/Islandly-win32-x64/resources/app'
+          $builds = "$app/node_modules/koffi/build/koffi"
+          if (!(Test-Path "$builds/win32_x64/koffi.node")) { throw 'Missing Koffi Windows binary' }
+          Get-ChildItem $builds -Directory | Where-Object Name -ne 'win32_x64' | Remove-Item -Recurse -Force
+          if (!(Test-Path "$app/node_modules/@coooookies/windows-smtc-monitor")) { throw 'Missing Windows media module' }
+          Compress-Archive out/Islandly-win32-x64 out/Islandly-win64.zip
+          $hash = (Get-FileHash out/Islandly-win64.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  Islandly-win64.zip" | Set-Content out/SHA256SUMS.txt
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          @{ sha = (git rev-parse HEAD); version = $version } | ConvertTo-Json | Set-Content out/build-info.json
+          "Islandly-win64.zip: $((Get-Item out/Islandly-win64.zip).Length) bytes" >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: islandly-release-channel
+          path: |
+            out/Islandly-win64.zip
+            out/SHA256SUMS.txt
+            out/build-info.json
+          if-no-files-found: error
+          retention-days: 14
+  draft:
+    if: github.event_name == 'workflow_dispatch' && inputs.draft_tag != ''
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: islandly-release-channel
+          path: dist
+      - name: Create draft only, never publish or modify an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DRAFT_TAG: ${{ inputs.draft_tag }}
+        run: |
+          set -euo pipefail
+          version=$(jq -r .version dist/build-info.json)
+          built_sha=$(jq -r .sha dist/build-info.json)
+          test "$DRAFT_TAG" = "v$version"
+          tag_sha=$(gh api "repos/$GH_REPO/commits/$DRAFT_TAG" --jq .sha)
+          test "$tag_sha" = "$built_sha"
+          gh release create "$DRAFT_TAG" dist/Islandly-win64.zip dist/SHA256SUMS.txt dist/build-info.json --verify-tag --draft --title "Islandly $DRAFT_TAG review" --notes 'Review build. Manual publication belongs to the maintainer.'

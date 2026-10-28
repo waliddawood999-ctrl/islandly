@@ -1,47 +1,30 @@
-// Entry point. Runs the newest downloaded update if there is one, otherwise the code shipped in the package.
-// Keep this file tiny and stable: it is the one part that updates cannot replace.
-const fs = require('fs');
+// Packaged entry point: downloaded code can never replace this bootstrap.
 const path = require('path');
+const Module = require('module');
 const { app } = require('electron');
-
+const { readJson, selectBoot } = require('./update-state');
 const baseRoot = path.join(__dirname, '..', '..');
-const basePkg = JSON.parse(fs.readFileSync(path.join(baseRoot, 'package.json'), 'utf8'));
 
-function cmp(a, b) {
-  const pa = String(a).split('.').map(Number);
-  const pb = String(b).split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    const d = (pa[i] || 0) - (pb[i] || 0);
-    if (d) return d;
+// Obtain the process lock BEFORE touching booting state; a second launch is not a crash.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  let selected;
+  try { selected = selectBoot(baseRoot, app.getPath('userData')); } catch (_) {
+    const pkg = readJson(path.join(baseRoot, 'package.json'));
+    selected = { root: baseRoot, baseRoot, version: pkg.version, baseVersion: pkg.version };
   }
-  return 0;
-}
-
-let root = baseRoot;
-let version = basePkg.version;
-const currentFile = path.join(app.getPath('userData'), 'updates', 'current.json');
-
-try {
-  const cur = JSON.parse(fs.readFileSync(currentFile, 'utf8'));
-  const usable =
-    cur.base === basePkg.islandlyBase &&
-    cmp(cur.version, basePkg.version) > 0 &&
-    fs.existsSync(path.join(cur.dir, 'src', 'main', 'main.js'));
-  if (usable && cur.booting) {
-    // The previous start with this update never finished loading: drop it, remember it as bad, use the packaged code.
-    fs.rmSync(currentFile, { force: true });
-    fs.writeFileSync(path.join(path.dirname(currentFile), 'failed.txt'), cur.version);
-  } else if (usable) {
-    fs.writeFileSync(currentFile, JSON.stringify({ ...cur, booting: true }));
-    root = cur.dir;
-    version = cur.version;
+  // Downloaded code lives outside resources/app; resolve native/runtime modules from the install.
+  const deps = path.join(baseRoot, 'node_modules');
+  process.env.NODE_PATH = [deps, process.env.NODE_PATH].filter(Boolean).join(path.delimiter);
+  Module._initPaths(); // Tested with Electron 45 / Node 24; globalPaths.push does not affect resolution.
+  global.__ISLANDLY = selected;
+  selected.instanceLock = true;
+  if (selected.root !== baseRoot) {
+    const watchdog = setTimeout(() => {
+      if (readJson(selected.currentFile)?.booting) app.exit(1);
+    }, 30000);
+    watchdog.unref();
   }
-} catch (_) {
-  /* no update staged */
+  require(path.join(selected.root, 'src', 'main', 'main.js'));
 }
-
-// An update contains only the app's own code; its dependencies (koffi, adhan, ...) live in the packaged app.
-require('module').globalPaths.push(path.join(baseRoot, 'node_modules'));
-
-global.__ISLANDLY = { root, baseRoot, version, baseVersion: basePkg.version, currentFile };
-require(path.join(root, 'src', 'main', 'main.js'));
