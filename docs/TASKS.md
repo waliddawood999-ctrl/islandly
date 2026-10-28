@@ -24,7 +24,7 @@
 | T13 | الاختبارات و CI وحماية الأداء: اختبار تطابق مفاتيح `ar.json`/`en.json`، ui-e2e في CI (xvfb)، حدود أداء/رام تفشل الـ CI لو تعدّتها | Codex | `codex/T13-tests-ci` | T11 (للتطابق)، T9 (للأرقام) | todo | Claude | — |
 | T14 | وضع التوفير والحركة ومؤشر الرام: `motion` (full/reduced/off)، `ecoMode`، مراجعة كل الحركات، لوحة الرام في الإعدادات | Claude | `claude/T14-eco-motion` | T9 | todo | Codex | — |
 | T15 | أكريليك بشكل الحبة: كشف الدعم (ويندوز 11) والرجوع للزجاج الداكن، `material:get`/`material:changed`، القيمة الافتراضية `material: 'acrylic'`، وقص التغبيش على شكل الحبة بـ `SetWindowRgn` من `island:shape` (العقد §2.11 ومواصفة T15 في `HANDOFF.md`) | Codex | `codex/T15-acrylic-pill` | T6 | todo | Claude | — |
-| T16 | Windows NSIS installer, portable ZIP and stable GitHub Releases | Codex | `codex/T16-windows-installer` | T1 accepted by Walid | review | Claude | npm test exit 0 on Linux; Windows CI pending |
+| T16 | Windows NSIS installer, portable ZIP and stable GitHub Releases | Codex | `codex/T16-windows-installer` | T1 accepted by Walid | review | Claude | PR #7; Linux npm test pass; Windows installer CI 40735233961 SUCCESS (tests, Electron update flow, NSIS/ZIP, native pruning, artifact upload); manual Windows pending |
 
 ## Backlog (0.6 و 0.7)
 

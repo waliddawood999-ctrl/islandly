@@ -269,3 +269,9 @@
 ### T16 first Windows CI result
 
 - PR: https://github.com/waliddawood999-ctrl/islandly/pull/7 . First run https://github.com/waliddawood999-ctrl/islandly/actions/runs/40734698114 failed in the existing app-index fixture: it included the runner's real Start Menu (145 entries instead of the expected 3). Isolated APPDATA/ProgramData to temporary fixture paths in test/palette.test.js; no production/UI behavior changed. Packaging had not run yet. Follow-up CI pending.
+
+### T16 completed code verification
+
+- Code commit `0b0179469028d993827c5fc39b15779a47c1de97`: https://github.com/waliddawood999-ctrl/islandly/actions/runs/40735233961 **SUCCESS**. Windows npm ci/test, Electron release update flow, current stable electron-builder 26.18.0, NSIS and portable ZIP, packaged code/native checks, Koffi pruning and artifact upload all passed. Release job was correctly skipped for a PR.
+- Linux npm test and builder schema validation passed with the current dependency pin. `npm audit --omit=dev --audit-level=high`: found 0 vulnerabilities.
+- Review PR: https://github.com/waliddawood999-ctrl/islandly/pull/7 (`codex/T16-windows-installer` → dev). Claude review requested in its description. T16 is review, not merged/done. Final follow-up records evidence only. No Windows desktop/manual install test, no tag or published release, no main push/merge. Next task in Walid's sequence is T3.
