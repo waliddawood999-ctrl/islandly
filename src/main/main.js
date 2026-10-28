@@ -9,6 +9,7 @@ const { BluetoothWatcher } = require('./bluetooth');
 const { watchFullscreen } = require('./fullscreen');
 const { Updater, markBootOk } = require('./updater');
 const { runOnce } = require('./ps');
+const { logError } = require('./log');
 
 const WIN_W = 640;
 const WIN_H = 320;
@@ -21,20 +22,16 @@ const info = global.__ISLANDLY || {
 const asset = (name) => path.join(info.root, 'assets', name);
 
 // A background widget should not pop up a modal crash dialog: keep running and write the error to a log file.
-process.on('uncaughtException', (err) => {
-  try {
-    const dir = app.getPath('userData');
-    require('fs').mkdirSync(dir, { recursive: true });
-    require('fs').appendFileSync(path.join(dir, 'error.log'), `${new Date().toISOString()} ${err && err.stack ? err.stack : err}\n`);
-  } catch (_) {
-    /* logging is best effort */
-  }
-});
+process.on('uncaughtException', (err) => logError('main', err));
+process.on('unhandledRejection', (err) => logError('main (promise)', err));
 
 let win = null;
 let tray = null;
 let settingsWin = null;
 let userHidden = false;
+let islandRect = null; // island bounds in CSS pixels, reported by the renderer
+let pointerInside = false;
+let pointerTimer = null;
 let fullscreenActive = false;
 let media, clipboardHistory, shelf, calendar, bluetooth, updater, fsWatcher;
 
@@ -60,6 +57,30 @@ function applyVisibility() {
   if (hide && win.isVisible()) win.hide();
   if (!hide && !win.isVisible()) win.showInactive();
   buildTrayMenu();
+}
+
+const zoom = () => Number(settings.get().scale) || 0.85;
+
+/**
+ * Hover detection lives here, not in the page: every 40 ms the cursor position is compared with the island's
+ * rectangle. While the cursor is over it the window accepts clicks; everywhere else clicks fall through to the
+ * app underneath. This does not depend on Windows forwarding mouse messages to a click-through window.
+ */
+function watchPointer() {
+  pointerTimer = setInterval(() => {
+    if (!win || win.isDestroyed() || !win.isVisible() || !islandRect) return;
+    const p = screen.getCursorScreenPoint();
+    const b = win.getBounds();
+    const z = zoom();
+    const lx = p.x - b.x;
+    const ly = p.y - b.y;
+    const r = islandRect;
+    const inside = lx >= (r.x - r.padX) * z && lx <= (r.x + r.w + r.padX) * z && ly >= (r.y - r.padY) * z && ly <= (r.y + r.h + r.padY) * z;
+    if (inside === pointerInside) return;
+    pointerInside = inside;
+    win.setIgnoreMouseEvents(!inside, { forward: true });
+    push('pointer:inside', inside);
+  }, 40);
 }
 
 function createWindow() {
@@ -91,7 +112,12 @@ function createWindow() {
   win.setIgnoreMouseEvents(true, { forward: true });
   win.loadFile(path.join(info.root, 'src', 'renderer', 'index.html'));
   win.once('ready-to-show', () => applyVisibility());
-  win.webContents.on('did-finish-load', markBootOk);
+  win.webContents.on('did-finish-load', () => {
+    markBootOk();
+    win.webContents.setZoomFactor(zoom());
+  });
+  win.webContents.on('render-process-gone', (_e, d) => logError('renderer gone', JSON.stringify(d)));
+  win.webContents.on('preload-error', (_e, p, err) => logError('preload', p, err));
   if (isDev) win.webContents.openDevTools({ mode: 'detach' });
 }
 
@@ -144,6 +170,7 @@ function trayMenuTemplate() {
         ],
       },
       { label: 'الإعدادات…', click: openSettings },
+      { label: 'فتح مجلد السجلات والبيانات', click: () => shell.openPath(app.getPath('userData')) },
       { type: 'separator' },
       {
         label: 'التحقق من التحديثات',
@@ -204,9 +231,10 @@ async function stashFromExplorer() {
 
 function registerIpc() {
   ipcMain.on('settings:get', (e) => (e.returnValue = settings.get()));
-  ipcMain.on('island:interactive', (_e, interactive) => {
-    if (win) win.setIgnoreMouseEvents(!interactive, { forward: true });
+  ipcMain.on('island:rect', (_e, rect) => {
+    if (rect && [rect.x, rect.y, rect.w, rect.h].every(Number.isFinite)) islandRect = { padX: 6, padY: 6, ...rect };
   });
+  ipcMain.on('log:error', (_e, text) => logError('renderer', String(text).slice(0, 2000)));
   ipcMain.on('media:control', (_e, action, value) => media.control(action, value));
   ipcMain.on('open:external', (_e, url) => openExternal(url));
   ipcMain.on('settings:open', openSettings);
@@ -258,8 +286,12 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   registerIpc();
+  watchPointer();
 
-  media = new MediaBridge((payload) => push('media:update', payload), info.baseRoot);
+  media = new MediaBridge((payload) => {
+    if (payload && payload.type === 'unavailable') logError('media unavailable:', payload.reason);
+    push('media:update', payload);
+  }, info.baseRoot);
   media.start();
 
   clipboardHistory = new ClipboardHistory((list) => push('clipboard:update', list));
@@ -292,6 +324,7 @@ app.whenReady().then(() => {
 
   settings.onChange((now, prev) => {
     if (now.position !== prev.position) positionWindow();
+    if (now.scale !== prev.scale && win) win.webContents.setZoomFactor(zoom());
     if (now.icsUrl !== prev.icsUrl) calendar.configure(now.icsUrl);
     if (now.clipboard !== prev.clipboard) now.clipboard ? clipboardHistory.start() : clipboardHistory.stop();
     if (now.hideFullscreen !== prev.hideFullscreen) applyVisibility();
@@ -308,6 +341,7 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory].forEach((m) => m && m.stop && m.stop());
+  clearInterval(pointerTimer);
 });
 
 // Having this listener stops Electron from quitting when the settings window closes; only the tray menu quits.

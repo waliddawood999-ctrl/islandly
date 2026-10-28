@@ -12,6 +12,7 @@ public class FgWatch {
   [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr h, uint f);
   [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr m, ref MONITORINFO mi);
+  [DllImport("user32.dll", EntryPoint = "GetWindowLong")] static extern int GetWindowLong(IntPtr h, int index);
   [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
   public static bool IsFullscreen() {
     IntPtr h = GetForegroundWindow();
@@ -20,6 +21,8 @@ public class FgWatch {
     GetClassName(h, cls, 256);
     string c = cls.ToString();
     if (c == "Progman" || c == "WorkerW" || c == "Shell_TrayWnd") return false;
+    // A maximized window (title bar present) can cover the whole monitor when the taskbar auto-hides; that is not fullscreen.
+    if ((GetWindowLong(h, -16) & 0xC00000) == 0xC00000) return false;
     RECT r; if (!GetWindowRect(h, out r)) return false;
     MONITORINFO mi = new MONITORINFO(); mi.cb = Marshal.SizeOf(typeof(MONITORINFO));
     if (!GetMonitorInfo(MonitorFromWindow(h, 2), ref mi)) return false;

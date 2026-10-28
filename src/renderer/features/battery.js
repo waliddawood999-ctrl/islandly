@@ -17,7 +17,7 @@ Island.register({
     this.devs = h('div', { class: 'devs' });
     this.expandedEl = h(
       'div',
-      { class: 'view battery-expanded' },
+      { class: 'view auto battery-expanded' },
       h('div', { class: 'ring-wrap b' }, this.xRing.el, this.xBolt),
       h('div', { class: 'b-text' }, h('div', { class: 'b-row' }, this.pct, this.state), this.eta, this.tip, this.devs)
     );
@@ -127,9 +127,7 @@ Island.register({
     if (mode === 'compact') return this.priority() ? { el: this.compact, w: 128, h: 42 } : null;
     if (mode === 'peek') return { el: this.peekEl, w: 330, h: 80 };
     if (mode === 'expanded') {
-      const tip = this.tip.style.display !== 'none';
-      const dev = this.devices.length > 0;
-      return { el: this.expandedEl, w: 420, h: 124 + (tip ? 22 : 0) + (dev ? 34 : 0) };
+      return { el: this.expandedEl, w: 420, auto: true };
     }
     return null;
   },

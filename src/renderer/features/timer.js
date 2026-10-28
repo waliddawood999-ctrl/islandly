@@ -26,7 +26,7 @@ Island.register({
     this.modeTabs = h('div', { class: 'chips modes' });
     this.expandedEl = h(
       'div',
-      { class: 'view timer-expanded' },
+      { class: 'view auto timer-expanded' },
       h('div', { class: 'ring-wrap' }, this.xRing.el, this.xLabel),
       h(
         'div',
@@ -175,7 +175,7 @@ Island.register({
   view(mode) {
     if (mode === 'compact') return this.priority() ? { el: this.compact, w: 132, h: 40 } : null;
     if (mode === 'peek') return { el: this.peekEl, w: 400, h: 76 };
-    if (mode === 'expanded') return { el: this.expandedEl, w: 420, h: 138 };
+    if (mode === 'expanded') return { el: this.expandedEl, w: 420, auto: true };
     return null;
   },
 });

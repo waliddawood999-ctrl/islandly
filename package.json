@@ -1,6 +1,6 @@
 {
   "name": "islandly",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "A Dynamic Island for Windows: music, timers, battery and more in one floating pill.",
   "main": "src/main/bootstrap.js",
   "private": true,
@@ -8,7 +8,8 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "test": "node test/ics.test.js && node test/updater.test.js",
-    "test:smoke": "electron test/electron-smoke.js"
+    "test:smoke": "electron test/electron-smoke.js",
+    "test:e2e": "electron test/ui-e2e.js"
   },
   "devDependencies": {
     "electron": "^45.1.0"

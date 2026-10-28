@@ -23,7 +23,7 @@ Island.register({
     // expanded
     this.rows = h('div', { class: 'cal-list' });
     this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-title lg' }), h('div', { class: 'm-artist' }), h('button', { class: 'chip', onclick: () => API.send('settings:open') }, t('openSettings')));
-    this.expandedEl = h('div', { class: 'view panel' }, h('div', { class: 'p-head' }, h('div', { class: 'p-title' }, t('calendar'))), this.rows, this.empty);
+    this.expandedEl = h('div', { class: 'view auto panel' }, h('div', { class: 'p-head' }, h('div', { class: 'p-title' }, t('calendar'))), this.rows, this.empty);
 
     API.on('calendar:update', (s) => this.set(s));
     API.call('calendar:get').then((s) => s && this.set(s));
@@ -133,8 +133,7 @@ Island.register({
     if (mode === 'compact') return this.priority() ? { el: this.compact, w: 270, h: 42 } : null;
     if (mode === 'peek') return this.next() ? { el: this.peekEl, w: 420, h: 84 } : null;
     if (mode === 'expanded') {
-      const shown = this.upcoming().slice(0, 3).length;
-      return { el: this.expandedEl, w: 480, h: this.status === 'ok' && shown ? 54 + shown * 54 : 112 };
+      return { el: this.expandedEl, w: 480, auto: true };
     }
     return null;
   },

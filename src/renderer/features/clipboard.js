@@ -10,7 +10,7 @@ Island.register({
     this.title = h('div', { class: 'p-title' }, t('clipboard'));
     this.clearBtn = h('button', { class: 'chip', onclick: () => API.call('clipboard:clear') }, t('clear'));
     this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-title lg' }, t('clipEmpty')), h('div', { class: 'm-artist' }, t('clipEmptySub')));
-    this.expandedEl = h('div', { class: 'view panel' }, h('div', { class: 'p-head' }, this.title, this.clearBtn), this.list, this.empty);
+    this.expandedEl = h('div', { class: 'view auto panel' }, h('div', { class: 'p-head' }, this.title, this.clearBtn), this.list, this.empty);
 
     API.on('clipboard:update', (items) => this.set(items));
     API.call('clipboard:list').then((items) => items && this.set(items));
@@ -84,7 +84,6 @@ Island.register({
 
   view(mode) {
     if (mode !== 'expanded') return null;
-    const rows = Math.min(4, this.items.length);
-    return { el: this.expandedEl, w: 480, h: rows ? 56 + rows * 46 : 104 };
+    return { el: this.expandedEl, w: 480, auto: true };
   },
 });

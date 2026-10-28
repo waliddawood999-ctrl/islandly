@@ -13,7 +13,7 @@ Island.register({
     this.clearBtn = h('button', { class: 'chip', onclick: () => this.clear() }, t('clearAll'));
     this.strip = h('div', { class: 'sh-strip scroll' });
     this.empty = h('div', { class: 'sh-empty' }, h('div', { class: 'm-title lg' }, t('shelfEmpty')), h('div', { class: 'm-artist' }, t('shelfEmptySub')));
-    this.expandedEl = h('div', { class: 'view panel shelf' }, h('div', { class: 'p-head' }, h('div', { class: 'p-title-wrap' }, this.title, this.count), this.clearBtn), this.strip, this.empty);
+    this.expandedEl = h('div', { class: 'view auto panel shelf' }, h('div', { class: 'p-head' }, h('div', { class: 'p-title-wrap' }, this.title, this.count), this.clearBtn), this.strip, this.empty);
 
     this.peekText = h('div', { class: 'm-title' });
     this.peekEl = h('div', { class: 'view notice-view' }, h('span', { class: 'n-icon' }, html(ICONS.shelf)), h('div', { class: 'm-text' }, this.peekText));
@@ -92,7 +92,7 @@ Island.register({
 
   view(mode) {
     if (mode === 'peek') return { el: this.peekEl, w: 330, h: 64 };
-    if (mode === 'expanded') return { el: this.expandedEl, w: 500, h: this.items.length ? 158 : 112 };
+    if (mode === 'expanded') return { el: this.expandedEl, w: 500, auto: true };
     return null;
   },
 });

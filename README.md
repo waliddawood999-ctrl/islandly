@@ -51,6 +51,7 @@ npm start            # run the app
 npm test             # unit tests (calendar parser, update helpers)
 npm run test:smoke   # boots the real app and checks the IPC bridge
 node test/update-flow.js   # update flow against a local fake of GitHub (run with electron)
+xvfb-run -a npx electron test/ui-e2e.js --no-sandbox   # real pointer on a virtual display: hover, clicks, seek, layout (needs python-xlib)
 node dev/preview.mjs       # screenshots of every panel in headless Chromium
 scripts/package-win.sh     # builds Islandly-win64.zip (works from Linux/macOS)
 ```

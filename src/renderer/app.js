@@ -1,27 +1,11 @@
 // Wiring: pointer handling, drag & drop, shortcuts, settings, updates.
 (() => {
-  let inside = false;
+  // Hover is decided in the main process (it watches the cursor) and arrives here.
+  API.on('pointer:inside', (inside) => Island.setHover(inside));
 
-  function setInside(value) {
-    if (value === inside) return;
-    inside = value;
-    // The window is click-through; it only becomes interactive while the pointer is over the island.
-    API.send('island:interactive', value);
-    Island.setHover(value);
-  }
-
-  document.addEventListener(
-    'mousemove',
-    (e) => {
-      const r = Island.el.getBoundingClientRect();
-      // The thin auto-hide line is hard to hit, so give it a more generous target.
-      const padX = Island.isSliver() ? 10 : 6;
-      const padY = Island.isSliver() ? 6 : 6;
-      setInside(e.clientX >= r.left - padX && e.clientX <= r.right + padX && e.clientY >= r.top - padY && e.clientY <= r.bottom + padY);
-    },
-    { passive: true }
-  );
-  document.addEventListener('mouseleave', () => setInside(false));
+  // Report script errors to the log file so problems can be diagnosed.
+  window.addEventListener('error', (e) => API.send('log:error', `${e.message} (${e.filename}:${e.lineno})`));
+  window.addEventListener('unhandledrejection', (e) => API.send('log:error', 'promise: ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason)));
 
   // Right-click the island: the same menu as the tray icon (position, auto-hide, settings, quit).
   document.addEventListener('contextmenu', (e) => {

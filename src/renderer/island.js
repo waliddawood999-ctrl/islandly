@@ -17,7 +17,7 @@ const Island = (() => {
   const stage = $('#content');
   const features = [];
 
-  const FOOTER = 26; // room for the tab dots in expanded mode
+  const FOOTER = 22; // room for the tab dots below the panel's content
   const TOP = 8; // gap above the island
   const AUTO_HIDE_MS = 5000;
   const HOVER_DWELL_MS = 280; // pointer must rest on the island before it opens (avoids accidental opens)
@@ -43,13 +43,41 @@ const Island = (() => {
   let pinTimer = 0;
 
   const dots = h('div', { class: 'dots' });
+  // Off-screen box used to measure a panel's natural height before it is shown.
+  const meter = h('div', { id: 'measure' });
+  document.body.appendChild(meter);
   const sliverEl = h('div', { class: 'view sliver' });
+
+  // Tell the main process where the island is, so it can decide when the window should accept clicks.
+  let lastRect = '';
+  function reportRect() {
+    const r = el.getBoundingClientRect();
+    const thin = !!(current && current.sliver);
+    // The hit area starts at the very top edge, so a cursor pushed against the screen edge still counts as "on the island".
+    const rect = { x: Math.round(r.left), y: 0, w: Math.round(r.width), h: Math.round(r.bottom), padX: thin ? 14 : 6, padY: thin ? 8 : 6 };
+    const key = JSON.stringify(rect);
+    if (key !== lastRect) {
+      lastRect = key;
+      API.send('island:rect', rect);
+    }
+  }
 
   function apply() {
     el.style.width = S.w.x + 'px';
     el.style.height = S.h.x + 'px';
     el.style.top = S.y.x + 'px';
     el.style.borderRadius = Math.min(S.h.x / 2, 34) + 'px';
+    reportRect();
+  }
+
+  /** Natural height of a view: panels (v.auto) are measured, small pills use their fixed height. */
+  function heightOf(v) {
+    if (!v.auto) return v.h;
+    if (v.el.parentNode !== stage) {
+      meter.style.width = v.w + 'px';
+      meter.appendChild(v.el);
+    }
+    return Math.ceil(v.el.offsetHeight);
   }
 
   function step(now) {
@@ -103,13 +131,13 @@ const Island = (() => {
       selected = Math.min(selected, list.length - 1);
       const f = list[selected];
       const v = f.view('expanded');
-      return { key: 'x:' + f.id, el: v.el, w: v.w, h: v.h + FOOTER, y: TOP, withDots: list.length > 1 };
+      return { key: 'x:' + f.id, el: v.el, w: v.w, h: heightOf(v) + (list.length > 1 ? FOOTER : 0), y: TOP, withDots: list.length > 1 };
     }
     if (peekState && Date.now() < peekState.until) {
       compactKey = null;
       const f = peekState.feature;
       const v = f.view('peek') || f.view('expanded');
-      if (v) return { key: 'p:' + f.id, el: v.el, w: v.w, h: v.h, y: TOP };
+      if (v) return { key: 'p:' + f.id, el: v.el, w: v.w, h: heightOf(v), y: TOP };
     }
 
     const f = bestCompact(autoHide === 'never');

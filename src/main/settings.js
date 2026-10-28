@@ -6,6 +6,7 @@ const DEFAULTS = {
   lang: 'ar', // 'auto' | 'ar' | 'en'
   autoHide: 'auto', // 'auto' (shrink after a few seconds) | 'never' | 'always' (thin line until hovered)
   position: 'center', // 'center' | 'left' | 'right'
+  scale: 0.8, // UI size: 0.7 small, 0.8 medium, 1 large
   hideFullscreen: true,
   icsUrl: '',
   clipboard: true,

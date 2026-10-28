@@ -14,6 +14,9 @@ checks.forEach((k) => {
   $(k).addEventListener('change', () => api.set({ [k]: $(k).checked }));
 });
 
+$('scale').value = String(current.scale);
+$('scale').addEventListener('change', () => api.set({ scale: parseFloat($('scale').value) }));
+
 $('icsUrl').value = current.icsUrl || '';
 let icsTimer = 0;
 $('icsUrl').addEventListener('input', () => {

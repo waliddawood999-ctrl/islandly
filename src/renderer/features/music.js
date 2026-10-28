@@ -41,7 +41,7 @@ Island.register({
     this.ctls = h('div', { class: 'ctls', dir: 'ltr' }, this.prevBtn, this.backBtn, this.playBtn, this.fwdBtn, this.nextBtn);
     this.empty = h('div', { class: 'm-empty' }, h('div', { class: 'm-title lg' }, t('nothingPlaying')), h('div', { class: 'm-artist' }, t('openPlayer')));
     this.body = h('div', { class: 'm-body' }, this.title, this.artist, this.bar, h('div', { class: 'times' }, this.posLabel, this.durLabel), this.ctls);
-    this.expandedEl = h('div', { class: 'view music-expanded' }, this.bg, this.art, this.body, this.empty);
+    this.expandedEl = h('div', { class: 'view auto music-expanded' }, this.bg, this.art, this.body, this.empty);
 
     this.bindSeekBar();
     API.on('media:update', (m) => this.onUpdate(m));
@@ -228,7 +228,7 @@ Island.register({
     const has = this.media && this.media.title;
     if (mode === 'compact') return has ? { el: this.compact, w: 236, h: 42 } : null;
     if (mode === 'peek') return has ? { el: this.peekEl, w: 340, h: 80 } : null;
-    if (mode === 'expanded') return { el: this.expandedEl, w: 470, h: has ? 176 : 100 };
+    if (mode === 'expanded') return { el: this.expandedEl, w: 470, auto: true };
     return null;
   },
 });
