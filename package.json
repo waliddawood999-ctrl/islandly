@@ -14,7 +14,7 @@
   },
   "devDependencies": {
     "electron": "^45.1.0",
-    "electron-builder": "26.0.12"
+    "electron-builder": "26.18.0"
   },
   "optionalDependencies": {
     "@coooookies/windows-smtc-monitor": "^1.0.12"
