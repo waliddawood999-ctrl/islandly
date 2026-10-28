@@ -7,10 +7,10 @@ let cache = null;
 let cachedAt = 0;
 
 function roots() {
+  if (process.env.ISLANDLY_APPS_DIR) return [process.env.ISLANDLY_APPS_DIR]; // isolated fixture/explicit index root
   const list = [];
   if (process.env.APPDATA) list.push(path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs'));
   if (process.env.ProgramData) list.push(path.join(process.env.ProgramData, 'Microsoft', 'Windows', 'Start Menu', 'Programs'));
-  if (process.env.ISLANDLY_APPS_DIR) list.push(process.env.ISLANDLY_APPS_DIR); // used by tests
   return list;
 }
 

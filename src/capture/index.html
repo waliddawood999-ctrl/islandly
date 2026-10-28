@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; media-src blob:"
+    />
+    <link rel="stylesheet" href="capture.css" />
+    <title>Islandly Capture</title>
+  </head>
+  <body>
+    <header>
+      <h2>لقطة شاشة / Screen capture</h2>
+      <p>
+        اختر الشاشة ثم اسحب لتحديد منطقة. لا تُرسل صور الشاشة لأي خدمة ذكاء
+        اصطناعي.
+      </p>
+      <p>
+        Choose a display and drag a region. Screen content is never sent to an
+        AI service.
+      </p>
+    </header>
+    <div id="sources"></div>
+    <canvas id="canvas"></canvas><video id="video" muted autoplay></video>
+    <div id="actions">
+      <button id="save">حفظ المنطقة / Save region</button
+      ><button id="ocr">استخراج النص محليًا / Local OCR</button
+      ><button id="record">
+        بدء التسجيل (٦٠ ثانية كحد أقصى) / Record up to 60s</button
+      ><button id="stop">إيقاف وحفظ / Stop & save</button>
+    </div>
+    <p>
+      OCR: عند أول استخدام تُنزّل نماذج العربية والإنجليزية، ثم تعالج الصورة
+      محليًا. / Language models download on first OCR use; images are processed
+      locally.
+    </p>
+    <p id="status" role="status"></p>
+    <script src="capture.js"></script>
+  </body>
+</html>

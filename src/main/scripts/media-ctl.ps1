@@ -17,8 +17,8 @@ $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
 
 function Await($op, $type) {
   $task = $asTask.MakeGenericMethod($type).Invoke($null, @($op))
-  $null = $task.Wait(4000)
-  $task.Result
+  if (-not $task.Wait(4000)) { throw 'Media operation timed out' }
+  $task.GetAwaiter().GetResult()
 }
 
 function Press($vk) {
@@ -34,6 +34,7 @@ function Reply($id, $ok, $extra) {
   [Console]::Out.Flush()
 }
 
+$preferred = ''
 while ($true) {
   $line = [Console]::In.ReadLine()
   if ($null -eq $line) { break }
@@ -41,22 +42,27 @@ while ($true) {
   if ($parts.Count -lt 2) { continue }
   $id = $parts[0]
   $cmd = $parts[1]
-  $session = $manager.GetCurrentSession()
+  $session = if($preferred) { $manager.GetSessions() | Where-Object { $_.SourceAppUserModelId -eq $preferred } | Select-Object -First 1 } else { $manager.GetCurrentSession() }
   $ok = $false
   $extra = ''
 
+  try {
   switch ($cmd) {
+    'select' {
+      $preferred = if($parts.Count -ge 3) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($parts[2])) } else { '' }
+      $ok = $true
+    }
     'playpause' {
       if ($session) { $ok = Await ($session.TryTogglePlayPauseAsync()) ([bool]) }
-      if (-not $ok) { Press 0xB3; $ok = $true }
+      if (-not $ok -and -not $preferred) { Press 0xB3; $ok = $true }
     }
     'next' {
       if ($session) { $ok = Await ($session.TrySkipNextAsync()) ([bool]) }
-      if (-not $ok) { Press 0xB0; $ok = $true }
+      if (-not $ok -and -not $preferred) { Press 0xB0; $ok = $true }
     }
     'prev' {
       if ($session) { $ok = Await ($session.TrySkipPreviousAsync()) ([bool]) }
-      if (-not $ok) { Press 0xB1; $ok = $true }
+      if (-not $ok -and -not $preferred) { Press 0xB1; $ok = $true }
     }
     'seek' {
       if ($session -and $parts.Count -ge 3) {
@@ -73,5 +79,6 @@ while ($true) {
       }
     }
   }
+  } catch { $ok = $false; $extra = '' }
   Reply $id $ok $extra
 }

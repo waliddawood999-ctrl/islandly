@@ -1,4 +1,5 @@
-const { net } = require('electron');
+const { net } = require("electron");
+const { RequestScope } = require("../request");
 
 const REFRESH_MS = 30 * 60 * 1000;
 
@@ -7,11 +8,13 @@ class Weather {
   constructor(onChange) {
     this.onChange = onChange;
     this.timer = null;
+    this.scope = new RequestScope();
     this.loc = null;
     this.last = null;
   }
 
   configure(loc, enabled) {
+    this.scope.invalidate();
     clearInterval(this.timer);
     this.timer = null;
     this.loc = enabled ? loc : null;
@@ -26,12 +29,14 @@ class Weather {
 
   async refresh() {
     if (!this.loc) return;
+    const request = this.scope.begin();
     const { lat, lng } = this.loc;
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1`;
     try {
-      const res = await net.fetch(url);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const res = await net.fetch(url, { signal: request.signal });
+      if (!res.ok) throw new Error("HTTP " + res.status);
       const j = await res.json();
+      if (!request.current()) return;
       this.last = {
         temp: Math.round(j.current.temperature_2m),
         code: j.current.weather_code,
@@ -43,10 +48,13 @@ class Weather {
       this.onChange(this.last);
     } catch (_) {
       /* keep the last good reading */
+    } finally {
+      request.done();
     }
   }
 
   stop() {
+    this.scope.invalidate();
     clearInterval(this.timer);
   }
 }
