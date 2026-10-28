@@ -19,14 +19,14 @@ class MediaBridge {
     if (!this.running) return { ok: false };
     const generation = this.generation;
     const key = ['playpause', 'next', 'prev'].includes(command);
-    if (key && !this.ready) {
+    if (key && (!this.ready || host.failed)) {
       // Warm the shared host with a read-only query; never queue a duplicate toggle behind the fallback.
-      host.request('media', [], 'caps').then(result => { if (generation === this.generation) this.ready = !!result.ok; });
+      if (!host.failed) host.request('media', [], 'caps').then(result => { if (generation === this.generation) this.ready = !!result.ok; });
       return { ok: win32.mediaKey(command), fallback: true };
     }
     const result = await host.request('media', [], command, 6000);
     if (generation !== this.generation) return { ok: false };
-    this.ready = true; return result;
+    this.ready = !!result.ok; return result;
   }
   control(action, value) {
     if (action === 'seek' && Number.isFinite(Number(value))) return this.send(`seek ${Math.max(0, Number(value)).toFixed(3)}`);

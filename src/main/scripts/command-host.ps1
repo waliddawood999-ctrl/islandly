@@ -3,7 +3,7 @@
 $ErrorActionPreference = 'SilentlyContinue'
 function Await($op, $type) {
   $task = $asTask.MakeGenericMethod($type).Invoke($null, @($op))
-  $null = $task.Wait(4000)
+  if (-not $task.Wait(4000)) { return $null }
   $task.Result
 }
 
