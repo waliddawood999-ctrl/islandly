@@ -23,8 +23,8 @@ Island.register({
 
     // ---- peek: mini player
     this.pArt = h('div', { class: 'art round md' });
-    this.pTitle = h('div', { class: 'm-title' });
-    this.pArtist = h('div', { class: 'm-artist' });
+    this.pTitle = h('div', { class: 'm-title', dir: 'auto' });
+    this.pArtist = h('div', { class: 'm-artist', dir: 'auto' });
     this.pWave = this.wave('xs');
     this.pPrev = this.button(ICONS.prev, 'prev', 'mini');
     this.pPlay = this.button(ICONS.play, 'playpause', 'mini main');
@@ -40,22 +40,22 @@ Island.register({
     // ---- expanded: big player
     this.art = h('div', { class: 'art square' });
     this.bg = h('div', { class: 'm-bg' });
-    this.title = h('div', { class: 'm-title lg' });
-    this.artist = h('div', { class: 'm-artist' });
+    this.title = h('div', { class: 'm-title lg', dir: 'auto' });
+    this.artist = h('div', { class: 'm-artist', dir: 'auto' });
     this.xWave = this.wave('xs');
     this.fill = h('i');
     this.knob = h('b');
     this.bubble = h('span', { class: 'bubble', dir: 'ltr' });
     this.bar = h('div', { class: 'bar thin', dir: 'ltr' }, this.fill, this.knob, this.bubble);
-    this.posLabel = h('span', { dir: 'ltr' }, '0:00');
-    this.durLabel = h('span', { dir: 'ltr' }, '0:00');
+    this.posLabel = h('span', { dir: 'ltr' }, clock(0));
+    this.durLabel = h('span', { dir: 'ltr' }, clock(0));
     this.prevBtn = this.button(ICONS.prev, 'prev');
-    this.backBtn = h('button', { class: 'ctl', title: '-10s', onclick: () => this.skip(-10) }, html(ICONS.back10));
+    this.backBtn = I18N.mark(h('button', { class: 'ctl', onclick: () => this.skip(-10) }, html(ICONS.back10)), 'back10', { n: 10 }, 'title');
     this.playBtn = this.button(ICONS.play, 'playpause', 'main');
-    this.fwdBtn = h('button', { class: 'ctl', title: '+10s', onclick: () => this.skip(10) }, html(ICONS.fwd10));
+    this.fwdBtn = I18N.mark(h('button', { class: 'ctl', onclick: () => this.skip(10) }, html(ICONS.fwd10)), 'fwd10', { n: 10 }, 'title');
     this.nextBtn = this.button(ICONS.next, 'next');
     this.ctls = h('div', { class: 'ctls stagger', dir: 'ltr' }, this.prevBtn, this.backBtn, this.playBtn, this.fwdBtn, this.nextBtn);
-    this.empty = h('div', { class: 'm-empty' }, h('div', { class: 'm-title lg' }, t('nothingPlaying')), h('div', { class: 'm-artist' }, t('openPlayer')));
+    this.empty = h('div', { class: 'm-empty' }, h('div', { class: 'm-title lg' }, t('nothingPlaying')), h('div', { class: 'm-artist' }, T('openPlayer')));
     this.head = h('div', { class: 'm-head' }, this.art, h('div', { class: 'm-text' }, h('div', { class: 'mini-top' }, this.title, this.xWave), this.artist));
     this.body = h('div', { class: 'm-body' }, this.head, this.bar, h('div', { class: 'times' }, this.posLabel, this.durLabel), this.ctls);
     this.expandedEl = h('div', { class: 'view auto music-expanded' }, this.bg, this.body, this.empty);
@@ -82,7 +82,8 @@ Island.register({
   },
 
   button(icon, action, extra = '') {
-    return h('button', { class: ('ctl ' + extra).trim(), onclick: () => this.control(action) }, html(icon));
+    const label = { prev: 'prev', next: 'next', playpause: 'playPause' }[action];
+    return I18N.mark(h('button', { class: ('ctl ' + extra).trim(), onclick: () => this.control(action) }, html(icon)), label, null, 'title');
   },
 
   control(action) {

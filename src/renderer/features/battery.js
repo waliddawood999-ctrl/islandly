@@ -10,10 +10,10 @@ Island.register({
     // expanded: [ring + bolt]  82%  Charging / eta / tip / bluetooth devices
     this.xRing = ring(78, 9, '#34d399', 'rgba(255,255,255,.12)');
     this.xBolt = h('span', { class: 'ring-icon' }, html(ICONS.bolt));
-    this.pct = h('div', { class: 'b-pct', dir: 'ltr' });
+    this.pct = h('div', { class: 'b-pct' });
     this.state = h('div', { class: 'b-state' });
     this.eta = h('div', { class: 'b-eta' });
-    this.tip = h('div', { class: 'tip' }, t('tip80'));
+    this.tip = h('div', { class: 'tip' }, T('tip80', { pct: { pct: 0.8 } }));
     this.devs = h('div', { class: 'devs stagger' });
     this.expandedEl = h(
       'div',
@@ -24,7 +24,7 @@ Island.register({
 
     // compact (low battery): small ring + percent
     this.cRing = ring(20, 3, '#f87171', 'rgba(255,255,255,.14)');
-    this.cText = h('span', { class: 'tm', dir: 'ltr' });
+    this.cText = h('span', { class: 'tm' });
     this.compact = h('div', { class: 'view battery-compact' }, this.cRing.el, this.cText);
 
     // peek (plug / unplug / low)
@@ -80,13 +80,13 @@ Island.register({
     if (!isFinite(seconds) || seconds <= 0) return null;
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.round((seconds % 3600) / 60);
-    return hrs ? `${num(hrs)} ${t('hour')} ${num(mins)} ${t('min')}` : `${num(mins)} ${t('min')}`;
+    return hrs ? t('hoursShort', { h: hrs, m: mins }) : t('minutesShort', { m: mins });
   },
 
   paintDevices() {
     this.devs.replaceChildren(
       ...this.devices.slice(0, 3).map((d) =>
-        h('span', { class: 'dev' }, html(ICONS.headphones), h('span', { class: 'dev-name' }, d.name), h('b', { dir: 'ltr' }, d.battery + '%'))
+        h('span', { class: 'dev' }, html(ICONS.headphones), h('span', { class: 'dev-name' }, d.name), h('b', {}, I18N.pct(d.battery / 100)))
       )
     );
     this.devs.style.display = this.devices.length ? '' : 'none';
@@ -96,11 +96,10 @@ Island.register({
     const b = this.bat;
     if (!b) return;
     const level = b.level;
-    const pct = Math.round(level * 100) + '%';
+    const pct = I18N.pct(level);
     const color = this.color(level, b.charging);
     this.pct.textContent = this.cText.textContent = pct;
-    this.pText.textContent = num(Math.round(level * 100)) + '٪ · ' + t(b.charging ? 'charging' : 'onBattery');
-    if (LANG === 'en') this.pText.textContent = pct + ' · ' + t(b.charging ? 'charging' : 'onBattery');
+    this.pText.textContent = t('battPeek', { pct, state: t(b.charging ? 'charging' : 'onBattery') });
     for (const r of [this.xRing, this.cRing, this.pRing]) {
       r.set(level);
       r.color(color);
@@ -111,7 +110,7 @@ Island.register({
     this.state.textContent = b.charging ? (level >= 1 ? t('full') : t('charging')) : t('onBattery');
     const secs = b.charging ? b.chargingTime : b.dischargingTime;
     const d = this.duration(secs);
-    this.eta.textContent = level >= 1 && b.charging ? '' : d ? `${d} ${t(b.charging ? 'untilFull' : 'left')}` : t('calculating');
+    this.eta.textContent = level >= 1 && b.charging ? '' : d ? t(b.charging ? 'untilFull' : 'left', { d }) : t('calculating');
     this.tip.style.display = b.charging && level >= 0.8 && level < 1 ? '' : 'none';
     if (!this.pSub.textContent) this.pSub.textContent = this.eta.textContent;
     this.paintDevices();

@@ -3,7 +3,14 @@ const $ = (id) => document.getElementById(id);
 const current = api.get();
 document.documentElement.dataset.fonts = current.fontPairing || 'plex';
 
-const fields = ['position', 'autoHide', 'lang', 'prayerMethod', 'madhab', 'islandMode', 'material'];
+// Language (T11): `uiLang` and `digits` per the IPC contract; until main stores `uiLang` the legacy `lang` is
+// written too. A change re-translates this window at once.
+current.uiLang = current.uiLang || current.lang || 'auto';
+current.digits = current.digits || 'latn';
+I18N.configure(current);
+I18N.apply();
+
+const fields = ['position', 'autoHide', 'prayerMethod', 'madhab', 'islandMode', 'material'];
 const checks = ['hideFullscreen', 'clipboard', 'updates', 'prayerAlerts', 'weather', 'timeTracking', 'micCamIndicator'];
 
 // material: acrylic needs Windows 11; main says whether it is supported (task T15)
@@ -29,6 +36,19 @@ checks.forEach((k) => {
   $(k).addEventListener('change', () => api.set({ [k]: $(k).checked }));
 });
 
+$('uiLang').value = current.uiLang;
+$('uiLang').addEventListener('change', () => {
+  current.uiLang = $('uiLang').value;
+  api.set({ uiLang: current.uiLang, lang: current.uiLang });
+  relang();
+});
+$('digits').value = current.digits;
+$('digits').addEventListener('change', () => {
+  current.digits = $('digits').value;
+  api.set({ digits: current.digits });
+  relang();
+});
+
 $('scale').value = String(current.scale);
 $('scale').addEventListener('change', () => api.set({ scale: parseFloat($('scale').value) }));
 
@@ -41,12 +61,20 @@ $('icsUrl').addEventListener('input', () => {
 
 // --- city / custom coordinates
 const cities = api.cities();
-for (const c of [...cities, { key: 'custom', ar: 'موقع مخصص…' }]) {
+for (const c of [...cities, { key: 'custom' }]) {
   const o = document.createElement('option');
   o.value = c.key;
-  o.textContent = c.ar;
+  if (c.key === 'custom') o.dataset.i18n = 'settings.city.custom';
   $('city').append(o);
 }
+// city names come from main in both languages
+const paintCities = () => {
+  [...$('city').options].forEach((o, i) => {
+    if (cities[i]) o.textContent = cities[i][I18N.lang] || cities[i].ar;
+  });
+};
+paintCities();
+I18N.apply($('city'));
 $('city').value = current.city;
 const showCustom = () => ($('customBox').hidden = $('city').value !== 'custom');
 showCustom();
@@ -81,44 +109,58 @@ $('workspaces').value = current.workspaces || '';
 $('workspaces').addEventListener('input', debounced(() => api.set({ workspaces: $('workspaces').value })));
 
 // --- secrets: never read back, only replaced or cleared
-function secretField(input, button, state, name, flag, label) {
-  const paint = (has) => {
-    state.textContent = has ? '✓ ' + label + ' محفوظ. اترك الحقل فارغاً واضغط حفظ لحذفه.' : state.dataset.help || '';
+const secrets = [];
+function secretField(input, button, state, name, flag, labelKey, helpKey) {
+  let has = !!current[flag];
+  const paint = () => {
+    state.textContent = has ? t('settings.secret.saved', { what: t(labelKey) }) : helpKey ? t(helpKey) : '';
     state.classList.toggle('ok', has);
   };
-  state.dataset.help = state.textContent;
-  paint(!!current[flag]);
+  paint();
+  secrets.push(paint);
   button.addEventListener('click', async () => {
     const value = input.value.trim();
     await api.setSecret(name, value);
     input.value = '';
-    paint(!!value);
+    has = !!value;
+    paint();
   });
 }
-secretField($('aiKey'), $('aiKeySave'), $('aiKeyState'), 'aiKey', 'hasAiKey', 'المفتاح');
-secretField($('githubToken'), $('ghSave'), $('ghState'), 'githubToken', 'hasGithubToken', 'الرمز');
+secretField($('aiKey'), $('aiKeySave'), $('aiKeyState'), 'aiKey', 'hasAiKey', 'settings.secret.key');
+secretField($('githubToken'), $('ghSave'), $('ghState'), 'githubToken', 'hasGithubToken', 'settings.secret.token', 'settings.github.help');
 
-api.info().then((i) => ($('version').textContent = 'الإصدار ' + i.version));
+let version = '';
+const paintVersion = () => ($('version').textContent = version ? t('settings.version', { v: version }) : '');
+api.info().then((i) => {
+  version = i.version;
+  paintVersion();
+});
 
-const messages = {
-  'up-to-date': 'أنت على آخر إصدار.',
-  ready: 'تم تنزيل تحديث جديد. سيُثبَّت عند إعادة تشغيل التطبيق.',
-  'needs-full-download': 'يوجد إصدار جديد يحتاج تحميل الحزمة كاملة من GitHub.',
-  skipped: 'تم تخطّي إصدار لم يعمل بشكل صحيح من قبل.',
-  busy: 'جارٍ التحقق…',
-  error: 'تعذّر التحقق. تأكد من الاتصال بالإنترنت.',
-};
-
+// update status: kept as a key so a language switch repaints it
+let lastStatus = '';
+const paintStatus = () => ($('status').textContent = lastStatus ? t('settings.' + lastStatus) : '');
 $('check').addEventListener('click', async () => {
-  $('status').textContent = 'جارٍ التحقق…';
+  lastStatus = 'busy';
+  paintStatus();
   const r = await api.checkUpdate();
-  $('status').textContent = messages[r.status] || r.status;
-  if (r.status === 'ready') {
+  lastStatus = r.status;
+  paintStatus();
+  if (r.status === 'ready' && !$('restartNow')) {
     const b = document.createElement('button');
-    b.textContent = 'إعادة التشغيل الآن';
+    b.id = 'restartNow';
+    b.dataset.i18n = 'settings.restartNow';
     b.addEventListener('click', () => api.applyUpdate());
     $('status').after(b);
+    I18N.apply(b.parentNode);
   }
 });
+
+function relang() {
+  I18N.configure(current); // re-translates every [data-i18n] in the window
+  paintCities();
+  secrets.forEach((paint) => paint());
+  paintVersion();
+  paintStatus();
+}
 
 $('quit').addEventListener('click', () => api.quit());

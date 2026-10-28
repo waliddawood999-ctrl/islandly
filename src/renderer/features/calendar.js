@@ -9,21 +9,21 @@ Island.register({
 
   init() {
     // compact: [dot] title  in 5 min
-    this.cTitle = h('span', { class: 'c-title' });
+    this.cTitle = h('span', { class: 'c-title', dir: 'auto' });
     this.cWhen = h('span', { class: 'tm small' });
     this.cDot = h('i', { class: 'cal-dot' });
     this.compact = h('div', { class: 'view calendar-compact' }, this.cDot, this.cTitle, this.cWhen);
 
     // peek: title, when, join
-    this.pTitle = h('div', { class: 'm-title' });
+    this.pTitle = h('div', { class: 'm-title', dir: 'auto' });
     this.pSub = h('div', { class: 'm-artist' });
-    this.pJoin = h('button', { class: 'pill primary sm', onclick: () => this.joinNext() }, t('join'));
+    this.pJoin = h('button', { class: 'pill primary sm', onclick: () => this.joinNext() }, T('join'));
     this.peekEl = h('div', { class: 'view calendar-peek' }, h('span', { class: 'n-icon' }, html(ICONS.calendar)), h('div', { class: 'm-text' }, this.pTitle, this.pSub), this.pJoin);
 
     // expanded
     this.rows = h('div', { class: 'cal-list stagger' });
-    this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-title lg' }), h('div', { class: 'm-artist' }), h('button', { class: 'chip', onclick: () => API.send('settings:open') }, t('openSettings')));
-    this.expandedEl = h('div', { class: 'view auto panel' }, h('div', { class: 'p-head' }, h('div', { class: 'p-title' }, t('calendar'))), this.rows, this.empty);
+    this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-title lg' }), h('div', { class: 'm-artist' }), h('button', { class: 'chip', onclick: () => API.send('settings:open') }, T('openSettings')));
+    this.expandedEl = h('div', { class: 'view auto panel' }, h('div', { class: 'p-head' }, h('div', { class: 'p-title' }, T('calendar'))), this.rows, this.empty);
 
     API.on('calendar:update', (s) => this.set(s));
     API.call('calendar:get').then((s) => s && this.set(s));
@@ -60,12 +60,12 @@ Island.register({
     const e = this.next();
     if (e) {
       const mins = this.minutesTo(e);
-      const when = mins > 0 ? t('inMin', { n: num(mins) }) : t('nowLabel');
+      const when = mins > 0 ? t('inMin', { count: mins }) : t('nowLabel');
       this.cTitle.textContent = e.title;
       this.cWhen.textContent = when;
       this.cDot.classList.toggle('soon', mins <= 5);
       this.pTitle.textContent = e.title;
-      this.pSub.textContent = mins > 0 ? t('startsIn', { n: num(mins) }) : t('nowLabel');
+      this.pSub.textContent = mins > 0 ? t('startsIn', { count: mins }) : t('nowLabel');
       this.pJoin.style.display = e.url ? '' : 'none';
       // One heads-up five minutes before, one when it starts.
       const stage = mins <= 0 ? 'now' : mins <= 5 ? 'soon' : null;
@@ -83,13 +83,18 @@ Island.register({
     this.paintRows();
   },
 
+  relang() {
+    this.paint();
+    this.tick();
+  },
+
   dayLabel(e) {
     const d = new Date(e.start);
     const today = new Date();
     if (d.toDateString() === today.toDateString()) return t('today');
     const tomorrow = new Date(today.getTime() + 86400000);
     if (d.toDateString() === tomorrow.toDateString()) return t('tomorrow');
-    return d.toLocaleDateString(LANG === 'ar' ? 'ar' : 'en', { weekday: 'short' });
+    return I18N.date(d, { weekday: 'short' });
   },
 
   paint() {
@@ -109,13 +114,13 @@ Island.register({
     const upcoming = this.upcoming().slice(0, 3);
     this.rows.replaceChildren(
       ...upcoming.map((e) => {
-        const time = new Date(e.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        const time = I18N.time(new Date(e.start));
         return h(
           'div',
           { class: 'cal-row' },
           h('div', { class: 'cal-time' }, h('b', { dir: 'ltr' }, time), h('small', {}, this.dayLabel(e))),
           h('div', { class: 'cal-title', dir: 'auto' }, e.title),
-          e.url ? h('button', { class: 'pill primary sm', 'data-interactive': '1', onclick: (ev) => { ev.stopPropagation(); API.send('open:external', e.url); } }, t('join')) : null
+          e.url ? h('button', { class: 'pill primary sm', 'data-interactive': '1', onclick: (ev) => { ev.stopPropagation(); API.send('open:external', e.url); } }, T('join')) : null
         );
       })
     );

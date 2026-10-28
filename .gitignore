@@ -11,3 +11,4 @@ __pycache__/
 dev/states/*.webm
 dev/fonts/compare/*-*-*.png
 dev/fonts/compare/shots.json
+dev/i18n/shots/

@@ -53,25 +53,23 @@ Island.register({
 
   tick() {
     const now = new Date();
-    this.label.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    this.label.textContent = I18N.time(now);
     this.paintPanel(now);
     // Wake once a minute, exactly on the minute.
     this.timer = setTimeout(() => this.tick(), (60 - now.getSeconds()) * 1000 - now.getMilliseconds() + 20);
   },
 
   paintPanel(now = new Date()) {
-    this.bigTime.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    this.bigSec.textContent = ':' + pad2(now.getSeconds());
-    this.dateEl.textContent = now.toLocaleDateString(LANG === 'ar' ? 'ar' : 'en', { weekday: 'long', day: 'numeric', month: 'long' });
-    try {
-      this.hijriEl.textContent = new Intl.DateTimeFormat((LANG === 'ar' ? 'ar-SA' : 'en') + '-u-ca-islamic-umalqura', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      }).format(now);
-    } catch (_) {
-      this.hijriEl.textContent = '';
-    }
+    this.bigTime.textContent = I18N.time(now);
+    this.bigSec.textContent = I18N.digits(':' + pad2(now.getSeconds()));
+    this.dateEl.textContent = I18N.date(now);
+    this.hijriEl.textContent = I18N.hijri(now);
+  },
+
+  relang() {
+    this.label.textContent = I18N.time(new Date());
+    this.paintPanel();
+    this.setShortcuts(this.shortcuts);
   },
 
   // Seconds tick only while the panel is on screen.

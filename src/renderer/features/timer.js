@@ -27,7 +27,7 @@ Island.register({
     this.xLabel = h('div', { class: 'ring-label', dir: 'ltr' });
     this.xTitle = h('div', { class: 't-title' });
     this.mainBtn = h('button', { class: 'pill primary', onclick: () => this.toggle() });
-    this.resetBtn = h('button', { class: 'pill icon', title: t('reset'), onclick: () => this.reset() }, html(ICONS.reset));
+    this.resetBtn = I18N.mark(h('button', { class: 'pill icon', onclick: () => this.reset() }, html(ICONS.reset)), 'reset', null, 'title');
     this.chips = h('div', { class: 'chips' });
     this.modeTabs = h('div', { class: 'seg' });
     this.expandedEl = h(
@@ -155,7 +155,7 @@ Island.register({
       this.remaining = this.total;
       this.peekTitle.textContent = t(wasFocus ? 'sessionDone' : 'restDone');
       this.peekSub.textContent = t(wasFocus ? 'timeForRest' : 'timeToFocus');
-      this.peekAction.textContent = t('start') + ' · ' + t(this.mode);
+      this.peekAction.textContent = t('startMode', { mode: t(this.mode) });
     }
     this.paint();
     Island.peek('timer', 9000);
@@ -169,7 +169,7 @@ Island.register({
   paintTime() {
     if (this.isStopwatch()) {
       const e = this.elapsed();
-      const label = e >= 3600 ? clock(Math.floor(e)) : `${Math.floor(e / 60)}:${pad2(Math.floor(e % 60))}.${Math.floor((e % 1) * 10)}`;
+      const label = e >= 3600 ? clock(Math.floor(e)) : I18N.digits(`${Math.floor(e / 60)}:${pad2(Math.floor(e % 60))}.${Math.floor((e % 1) * 10)}`);
       this.cLabel.textContent = clock(Math.floor(e));
       this.xLabel.textContent = label;
       // the ring sweeps once a minute, like a second hand
@@ -207,20 +207,20 @@ Island.register({
       const isPreset = this.presets.quick.includes(minutes);
       this.chips.replaceChildren(
         ...this.presets.quick.map((mins) =>
-          h('button', { class: 'chip' + (mins === minutes ? ' on' : ''), dir: 'ltr', onclick: () => this.setMinutes(mins) }, `${num(mins)} ${t('min')}`)
+          h('button', { class: 'chip' + (mins === minutes ? ' on' : ''), onclick: () => this.setMinutes(mins) }, t('minutesShort', { m: mins }))
         ),
         h(
           'div',
           { class: 'stepper' + (isPreset ? '' : ' on'), dir: 'ltr' },
-          h('button', { class: 'step', title: '-1', onclick: () => this.stepCustom(-1) }, '−'),
-          h('button', { class: 'step-val', title: t('custom'), onclick: () => this.setMinutes(this.custom) }, `${num(this.custom)} ${t('min')}`),
-          h('button', { class: 'step', title: '+1', onclick: () => this.stepCustom(1) }, '+')
+          h('button', { class: 'step', title: t('stepDown'), onclick: () => this.stepCustom(-1) }, '−'),
+          h('button', { class: 'step-val', dir: 'auto', title: t('custom'), onclick: () => this.setMinutes(this.custom) }, t('minutesShort', { m: this.custom })),
+          h('button', { class: 'step', title: t('stepUp'), onclick: () => this.stepCustom(1) }, '+')
         )
       );
     } else {
       this.chips.replaceChildren(
         ...this.presets[this.mode].map((mins) =>
-          h('button', { class: 'chip' + (mins === minutes ? ' on' : ''), dir: 'ltr', onclick: () => this.setMinutes(mins) }, `${num(mins)} ${t('min')}`)
+          h('button', { class: 'chip' + (mins === minutes ? ' on' : ''), onclick: () => this.setMinutes(mins) }, t('minutesShort', { m: mins }))
         )
       );
     }

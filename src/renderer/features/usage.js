@@ -5,13 +5,13 @@ Island.register({
   data: { total: 0, apps: [] },
 
   init() {
-    this.total = h('span', { class: 'count wide', dir: 'ltr' });
+    this.total = h('span', { class: 'count wide' });
     this.list = h('div', { class: 'us-list stagger' });
-    this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-artist' }, t('usageEmpty')));
+    this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-artist' }, T('usageEmpty')));
     this.expandedEl = h(
       'div',
       { class: 'view auto panel usage' },
-      h('div', { class: 'p-head' }, h('div', { class: 'p-title-wrap' }, h('div', { class: 'p-title' }, t('usage')), this.total)),
+      h('div', { class: 'p-head' }, h('div', { class: 'p-title-wrap' }, h('div', { class: 'p-title' }, T('usage')), this.total)),
       this.list,
       this.empty
     );
@@ -29,7 +29,7 @@ Island.register({
 
   dur(seconds) {
     const m = Math.round(seconds / 60);
-    return m < 60 ? t('minutesShort', { m: num(m) }) : t('hoursShort', { h: num(Math.floor(m / 60)), m: num(m % 60) });
+    return m < 60 ? t('minutesShort', { m }) : t('hoursShort', { h: Math.floor(m / 60), m: m % 60 });
   },
 
   paint() {

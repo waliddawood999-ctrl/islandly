@@ -5,7 +5,7 @@ Island.register({
   todos: [],
 
   init() {
-    this.input = h('input', { class: 'nt-input', type: 'text', maxlength: '140', placeholder: t('notesPlaceholder'), dir: 'auto' });
+    this.input = I18N.mark(h('input', { class: 'nt-input', type: 'text', maxlength: '140', dir: 'auto' }), 'notesPlaceholder', null, 'placeholder');
     this.input.addEventListener('mousedown', () => this.focusIn());
     this.input.addEventListener('focus', () => this.focusIn());
     this.input.addEventListener('blur', () => this.focusOut());
@@ -16,11 +16,11 @@ Island.register({
     this.addBtn = h('button', { class: 'pill primary sm', onclick: () => this.add() }, '+');
     this.list = h('div', { class: 'nt-list stagger scroll' });
     this.count = h('span', { class: 'count' });
-    this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-artist' }, t('notesEmpty')));
+    this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-artist' }, T('notesEmpty')));
     this.expandedEl = h(
       'div',
       { class: 'view auto panel notes' },
-      h('div', { class: 'p-head' }, h('div', { class: 'p-title-wrap' }, h('div', { class: 'p-title' }, t('notes')), this.count)),
+      h('div', { class: 'p-head' }, h('div', { class: 'p-title-wrap' }, h('div', { class: 'p-title' }, T('notes')), this.count)),
       h('div', { class: 'nt-add' }, this.input, this.addBtn),
       this.list,
       this.empty

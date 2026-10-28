@@ -75,19 +75,23 @@
     Island.configure({ autoHide: s.autoHide, islandMode: s.islandMode });
     applyMaterial(s.materialEffective || s.material); // materialEffective: what main actually applied (contract §2.11)
     document.documentElement.dataset.fonts = s.fontPairing || 'plex';
+    // instant language switch: no reload (contract §2.1); I18N.onChange below repaints the features
+    I18N.configure({ uiLang: s.uiLang, lang: s.lang, digits: s.digits });
     Island.render();
   });
+
+  I18N.onChange(() => Island.relang());
 
   API.on('update:ready', ({ version }) => {
     Notice.show({ text: t('updateReady'), detail: t('updateReadySub', { v: version }), actionLabel: t('restartNow'), run: () => API.call('update:apply') }, 20000);
   });
 
   API.on('break:due', () => {
-    Notice.show({ text: t('breakTitle'), detail: t('breakSub') }, 12000);
+    Notice.show({ text: t('breakTitle'), detail: t('breakSub', { n: 20 }) }, 12000);
   });
 
   API.on('toast', ({ key, version }) => {
-    Notice.show({ text: t(key), detail: version ? 'v' + version : '' }, 4000);
+    Notice.show({ text: t(key), detail: version ? t('versionShort', { v: version }) : '' }, 4000);
   });
 
   Island.render();

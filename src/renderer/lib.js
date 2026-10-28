@@ -90,8 +90,8 @@ function pad2(n) {
 
 function clock(seconds) {
   const s = Math.max(0, Math.round(seconds));
-  if (s >= 3600) return `${Math.floor(s / 3600)}:${pad2(Math.floor((s % 3600) / 60))}:${pad2(s % 60)}`;
-  return `${Math.floor(s / 60)}:${pad2(s % 60)}`;
+  if (s >= 3600) return I18N.digits(`${Math.floor(s / 3600)}:${pad2(Math.floor((s % 3600) / 60))}:${pad2(s % 60)}`);
+  return I18N.digits(`${Math.floor(s / 60)}:${pad2(s % 60)}`);
 }
 
 function beep() {
