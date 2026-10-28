@@ -3,6 +3,22 @@
   // The window is only as large as the island plus a small margin, so "pointer inside the window" is the hover.
   document.documentElement.addEventListener('mouseenter', () => Island.setHover(true));
   document.documentElement.addEventListener('mouseleave', () => Island.setHover(false));
+  // The main process watches the real cursor and reports an exit that no mouseleave announced.
+  API.on('island:pointer-left', () => Island.setHover(false));
+  // "Over the page" mode: the colour of the page around the island (null = none).
+  API.on('surface:tint', (rgb) => Island.setTint(rgb));
+  // Window material: acrylic (Windows 11) or dark glass. Main reports the material actually in use, so an
+  // unsupported system (Windows 10) falls back to glass; until it does, the stored setting is used.
+  const applyMaterial = (m) => {
+    const acrylic = m === 'acrylic';
+    document.documentElement.classList.toggle('acrylic', acrylic);
+    Island.setMaterial(acrylic ? 'acrylic' : 'glass');
+  };
+  applyMaterial(API.settings.materialEffective || API.settings.material || 'acrylic');
+  API.call('material:get')
+    .then((r) => r && applyMaterial(r.material))
+    .catch(() => {});
+  API.on('material:changed', (r) => r && applyMaterial(r.material));
 
   // Report script errors to the log file so problems can be diagnosed.
   window.addEventListener('error', (e) => API.send('log:error', `${e.message} (${e.filename}:${e.lineno})`));
@@ -29,6 +45,7 @@
     if (cmd === 'pomodoro') Island.feature('timer').toggle();
     if (typeof cmd === 'string' && cmd.startsWith('timer:')) {
       const timer = Island.feature('timer');
+      timer.setMode('quick');
       timer.setMinutes(Number(cmd.slice(6)) || 25);
       timer.start();
       Island.open('timer');
@@ -55,7 +72,8 @@
     } catch (_) {
       /* settings object from the preload may be read-only; the next reload picks changes up */
     }
-    Island.configure({ autoHide: s.autoHide });
+    Island.configure({ autoHide: s.autoHide, islandMode: s.islandMode });
+    applyMaterial(s.materialEffective || s.material); // materialEffective: what main actually applied (contract §2.11)
     Island.render();
   });
 

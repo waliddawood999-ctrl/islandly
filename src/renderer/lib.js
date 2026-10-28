@@ -57,6 +57,11 @@ const ICONS = {
   battery: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2" y="7" width="17" height="10" rx="2.5"/><path d="M22 10.5v3" stroke-linecap="round"/></svg>',
 };
 
+// Lucide icons (vendor/lucide.js) replace the hand-drawn set. The custom ones kept here have no Lucide
+// equivalent: ±10 s with the number inside, the gold crescent, and the GitHub mark (brand icons are not in Lucide).
+const KEEP_CUSTOM = ['back10', 'fwd10', 'moon', 'github', 'note'];
+if (typeof LUCIDE === 'object') for (const [k, v] of Object.entries(LUCIDE)) if (!KEEP_CUSTOM.includes(k)) ICONS[k] = v;
+
 /** Circular progress ring. set(fraction 0..1) updates the arc without rebuilding. */
 function ring(size, stroke, color, track = 'rgba(255,255,255,.14)') {
   const r = (size - stroke) / 2;

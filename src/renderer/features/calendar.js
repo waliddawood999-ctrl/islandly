@@ -130,7 +130,7 @@ Island.register({
   },
 
   view(mode) {
-    if (mode === 'compact') return this.priority() ? { el: this.compact, w: 270, h: 42 } : null;
+    if (mode === 'compact') return this.priority() ? { el: this.compact, w: 240, h: 32 } : null;
     if (mode === 'peek') return this.next() ? { el: this.peekEl, w: 420, h: 84 } : null;
     if (mode === 'expanded') {
       return { el: this.expandedEl, w: 480, auto: true };

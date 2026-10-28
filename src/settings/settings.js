@@ -2,8 +2,22 @@ const api = window.settingsAPI;
 const $ = (id) => document.getElementById(id);
 const current = api.get();
 
-const fields = ['position', 'autoHide', 'lang', 'prayerMethod', 'madhab'];
+const fields = ['position', 'autoHide', 'lang', 'prayerMethod', 'madhab', 'islandMode', 'material'];
 const checks = ['hideFullscreen', 'clipboard', 'updates', 'prayerAlerts', 'weather', 'timeTracking', 'micCamIndicator'];
+
+// material: acrylic needs Windows 11; main says whether it is supported (task T15)
+if (!current.material) current.material = 'acrylic';
+if (api.material)
+  api
+    .material()
+    .then((r) => {
+      if (r && r.supported === false) {
+        $('material').querySelector('option[value="acrylic"]').disabled = true;
+        $('materialHint').hidden = false;
+        $('material').value = 'glass';
+      }
+    })
+    .catch(() => {});
 
 fields.forEach((k) => {
   $(k).value = current[k];
@@ -58,6 +72,9 @@ const saveCustom = debounced(() => {
 
 $('breakEvery').value = String(current.breakEvery);
 $('breakEvery').addEventListener('change', () => api.set({ breakEvery: parseInt($('breakEvery').value, 10) }));
+
+$('shortcuts').value = current.shortcuts || '';
+$('shortcuts').addEventListener('input', debounced(() => api.set({ shortcuts: $('shortcuts').value })));
 
 $('workspaces').value = current.workspaces || '';
 $('workspaces').addEventListener('input', debounced(() => api.set({ workspaces: $('workspaces').value })));

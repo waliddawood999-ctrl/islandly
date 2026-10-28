@@ -175,7 +175,7 @@ Island.register({
   },
 
   view(mode) {
-    if (mode === 'compact') return this.priority() ? { el: this.compact, w: 210, h: 42 } : null;
+    if (mode === 'compact') return this.priority() ? { el: this.compact, w: 180, h: 32 } : null;
     if (mode === 'peek') return { el: this.peekEl, w: 360, h: 72 };
     if (mode === 'expanded') return this.sched ? { el: this.expandedEl, w: 470, auto: true } : null;
     return null;
