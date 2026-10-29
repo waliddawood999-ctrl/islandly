@@ -259,6 +259,8 @@ const Island = (() => {
         h('button', {
           class: 'dot' + (f === active ? ' on' : ''),
           title: t(f.id),
+          'aria-label': t(f.id),
+          'aria-current': f === active ? 'true' : null,
           'data-interactive': '1',
           onclick: () => select(i),
         })

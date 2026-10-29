@@ -315,5 +315,15 @@
   "settings.ram.proc.powershell": "PowerShell",
   "settings.ram.proc.other": "Other",
   "settings.ram.meta": "PowerShell processes: {ps} · Uptime: {up}",
-  "settings.ram.hint": "Figures cover what is open right now. The collapsed island runs on a light native host and panels exit completely when closed (idle budget: under 180 MB)."
+  "settings.ram.hint": "Figures cover what is open right now. The collapsed island runs on a light native host and panels exit completely when closed (idle budget: under 180 MB).",
+  "settings.saved": "Saved",
+  "settings.preview": "Preview",
+  "settings.nav": "Sections",
+  "settings.nav.perf": "Performance",
+  "settings.nav.appearance": "Appearance",
+  "settings.nav.today": "Prayer & weather",
+  "settings.nav.health": "Health",
+  "settings.nav.keys": "Keys",
+  "settings.nav.privacy": "Privacy",
+  "settings.nav.updates": "Updates"
 }
