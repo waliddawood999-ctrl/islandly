@@ -17,7 +17,7 @@ $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
 
 function Await($op, $type) {
   $task = $asTask.MakeGenericMethod($type).Invoke($null, @($op))
-  $null = $task.Wait(4000)
+  if (-not $task.Wait(4000)) { return $null }
   $task.Result
 }
 
@@ -46,6 +46,20 @@ while ($true) {
   $extra = ''
 
   switch ($cmd) {
+    'pause' {
+      if ($session -and $session.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing') {
+        $ok = Await ($session.TryPauseAsync()) ([bool])
+        if ($ok) { $extra = ',"app":' + ($session.SourceAppUserModelId | ConvertTo-Json -Compress) }
+      }
+    }
+    'play' {
+      if ($session -and $parts.Count -eq 3) {
+        try { $expected = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($parts[2])) } catch { $expected = '' }
+        if ($expected -and $session.SourceAppUserModelId -eq $expected -and $session.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Paused') {
+          $ok = Await ($session.TryPlayAsync()) ([bool])
+        }
+      }
+    }
     'playpause' {
       if ($session) { $ok = Await ($session.TryTogglePlayPauseAsync()) ([bool]) }
       if (-not $ok) { Press 0xB3; $ok = $true }

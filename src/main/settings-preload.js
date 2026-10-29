@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('settingsAPI', {
+  prayer: () => ipcRenderer.invoke('prayer:get'),
+  hijri: () => ipcRenderer.invoke('hijri:get'),
   get: () => ipcRenderer.sendSync('settings:get'),
   set: (patch) => ipcRenderer.invoke('settings:set', patch),
   info: () => ipcRenderer.invoke('app:info'),
