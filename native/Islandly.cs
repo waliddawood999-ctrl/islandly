@@ -25,6 +25,13 @@ static class Native {
     [DllImport("user32.dll")] public static extern bool RegisterHotKey(IntPtr h, int id, uint mods, uint key);
     [DllImport("user32.dll")] public static extern bool UnregisterHotKey(IntPtr h, int id);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool AddClipboardFormatListener(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool RemoveClipboardFormatListener(IntPtr h);
+    [StructLayout(LayoutKind.Sequential)] public struct LASTINPUT { public uint size,time; }
+    [DllImport("user32.dll")] public static extern bool GetLastInputInfo(ref LASTINPUT input);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
+    [DllImport("advapi32.dll")] public static extern int RegNotifyChangeKeyValue(IntPtr key,bool subtree,uint filter,IntPtr ev,bool async);
+
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT rect);
     [DllImport("user32.dll")] public static extern int GetClassName(IntPtr h, StringBuilder text, int count);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
@@ -61,6 +68,12 @@ sealed class IslandHost : Form {
     Native.APPBARDATA abd;
     DateTime settingsStamp;
     int launchCount;
+    long lastBackground;
+    int breakSeconds;
+    readonly List<string> pendingClipboard = new List<string>();
+    ConsentWatcher consent;
+    string privacyLabel = "";
+
     public IslandHost(string[] args) {
         packaged = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"IslandlyPanels.exe"));
         root = Arg(args,"--root", packaged ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"resources/app") : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"../..")));
@@ -72,6 +85,8 @@ sealed class IslandHost : Form {
         if (probe != "") { Directory.CreateDirectory(probe); measuring = true; }
         ReadSettings();
         try { state = json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(profile,"native-session.json"))); } catch { }
+        object pending;
+        if(state.TryGetValue("clipboardPending",out pending) && pending is IEnumerable) pendingClipboard.AddRange(((IEnumerable)pending).Cast<object>().Select(x => Convert.ToString(x)).Take(30));
         Text = "Islandly Native"; Name = "IslandlyNative";
         FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true;
         BackColor = Color.FromArgb(8,8,10); ForeColor = Color.White;
@@ -110,6 +125,8 @@ sealed class IslandHost : Form {
         Native.RegisterHotKey(Handle,2,0x4003,0x20);
         Native.RegisterHotKey(Handle,3,0x4003,0x50);
         Native.RegisterHotKey(Handle,4,0x4003,0x53);
+        Native.AddClipboardFormatListener(Handle);
+        consent = new ConsentWatcher(delegate(string label) { if(!closing) { privacyLabel = label; Position(); } });
         Position();
     }
     void DisplayChanged(object s, EventArgs e) { if (!closing && IsHandleCreated) BeginInvoke((Action)Position); }
@@ -134,7 +151,8 @@ sealed class IslandHost : Form {
         float scale; if (!Single.TryParse(Setting("scale","0.8"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture,out scale)) scale = .8f;
         scale = Math.Max(.5f, Math.Min(2f,scale)) * CreateGraphicsDpi();
         var screen = Screen.PrimaryScreen.Bounds;
-        bool sliver = Setting("autoHide","auto") != "never" && !TimerRunning();
+        if(Setting("micCamIndicator","True") == "False") privacyLabel = "";
+        bool sliver = Setting("autoHide","auto") != "never" && !TimerRunning() && privacyLabel == "";
         int w = (int)((sliver ? 84 : 138)*scale), height = Math.Max(4,(int)((sliver ? 5 : 36)*scale));
         if (bar) {
             var previous = abd.rect;
@@ -153,6 +171,8 @@ sealed class IslandHost : Form {
         if (Height < 12) return;
         string label = DateTime.Now.ToString("HH:mm");
         if (TimerRunning()) { long end = Convert.ToInt64(state["endAt"]); var left = Math.Max(0,(end-DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())/1000); label = (left/60).ToString("00")+":"+(left%60).ToString("00"); }
+        if(privacyLabel != "") label = privacyLabel;
+        else if(!TimerRunning() && SystemInformation.PowerStatus.BatteryChargeStatus != BatteryChargeStatus.NoSystemBattery && SystemInformation.PowerStatus.BatteryLifePercent < .2f) label = ((int)(SystemInformation.PowerStatus.BatteryLifePercent*100))+"%";
         using(var brush = new SolidBrush(Color.FromArgb(167,139,250))) e.Graphics.FillEllipse(brush,Width*.16f,Height*.42f,Height*.16f,Height*.16f);
         using(var font = new Font("Segoe UI",Math.Max(8,Height*.32f),FontStyle.Regular,GraphicsUnit.Pixel)) TextRenderer.DrawText(e.Graphics,label,font,new Rectangle((int)(Width*.2f),0,(int)(Width*.7f),Height),ForeColor,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
     }
@@ -161,6 +181,7 @@ sealed class IslandHost : Form {
         hoverArmed = false;
         if (child != null) { if (ready) Send(command); return; }
         if (!File.Exists(electron)) { tray.ShowBalloonTip(5000,"Islandly","Panel runtime missing. Run npm ci or reinstall the full package.",ToolTipIcon.Error); return; }
+        launchedAt = clock.ElapsedMilliseconds;
         job = Native.CreateJobObject(IntPtr.Zero,null);
         var limit = new Native.EXTENDEDLIMIT(); limit.basic.flags = 0x2000; // KILL_ON_JOB_CLOSE
         if (job == IntPtr.Zero || !Native.SetInformationJobObject(job,9,ref limit,Marshal.SizeOf(limit))) throw new Exception("Cannot contain panel process tree");
@@ -183,7 +204,7 @@ sealed class IslandHost : Form {
         try { started = Native.CreateProcess(electron,new StringBuilder("\""+electron+"\""+(packaged ? "" : " \""+root+"\"")),IntPtr.Zero,IntPtr.Zero,true,0x08000404,env,root,ref startup,out pi); }
         finally { Marshal.FreeHGlobal(env); }
         if(!started) { EndSession(); throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()); }
-        launchedAt = clock.ElapsedMilliseconds; ready = false; shutdownAt = 0; lastCommand = command;
+        ready = false; shutdownAt = 0; lastCommand = command;
         try {
             if(!Native.AssignProcessToJobObject(job,pi.process)) throw new Exception("Panel job assignment failed");
             child = Process.GetProcessById(pi.pid);
@@ -214,6 +235,7 @@ sealed class IslandHost : Form {
         if(line == "ISLANDLY:restart:") { EndSession(); OpenPanel("settings"); return; }
         if(line == "ISLANDLY:exit:") { Close(); return; }
         if(line.StartsWith("ISLANDLY:state:")) {
+            pendingClipboard.Clear();
             try { state = json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(Convert.FromBase64String(line.Substring(15))));
                 SaveState();
             } catch {} // invalid child data never becomes a command
@@ -232,6 +254,7 @@ sealed class IslandHost : Form {
     }
     void Tick(object sender, EventArgs e) {
         ReadSettings();
+        if(clock.ElapsedMilliseconds-lastBackground >= 5000) { lastBackground=clock.ElapsedMilliseconds; if(child == null) BackgroundTick(); }
         if(child != null && (child.HasExited || shutdownAt > 0 && clock.ElapsedMilliseconds-shutdownAt > 1500 || !ready && clock.ElapsedMilliseconds-launchedAt > 30000)) EndSession();
         if(hoverArmed && !measuring && clock.ElapsedMilliseconds-hoverAt >= 280) OpenPanel("expand");
         if(TimerRunning() && Convert.ToInt64(state["endAt"]) <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() && child == null) {
@@ -265,6 +288,30 @@ sealed class IslandHost : Form {
         var data = new { hostPid=Process.GetCurrentProcess().Id, phase=child == null ? "idle" : ready ? "panel" : "starting", averageNotApplicable=true, totalMB=total, processes=processes, launchCount=launchCount, latenciesMs=latencies.ToArray(), appBar=bar, appBarTop=abd.rect.top, appBarBottom=abd.rect.bottom, stateAgeMs=clock.ElapsedMilliseconds-stateWrittenAt, command=lastCommand };
         string file=Path.Combine(probe,"status.json"); try { File.WriteAllText(file+".tmp",json.Serialize(data)); if(File.Exists(file)) File.Replace(file+".tmp",file,null); else File.Move(file+".tmp",file); } catch(IOException) {}
     }
+    void BackgroundTick() {
+        var input=new Native.LASTINPUT(); input.size=(uint)Marshal.SizeOf(input);
+        bool active=Native.GetLastInputInfo(ref input) && unchecked((uint)Environment.TickCount-input.time)<60000;
+        if(Setting("timeTracking","True") != "False" && Setting("ecoMode","False") != "True" && active) {
+            try {
+                uint pid; Native.GetWindowThreadProcessId(Native.GetForegroundWindow(),out pid);
+                string name; using(var p=Process.GetProcessById((int)pid)) name=p.ProcessName;
+                string[] skip={"Islandly","IslandlyPanels","electron","LockApp","SearchHost","ShellExperienceHost","StartMenuExperienceHost","TextInputHost"};
+                if(!skip.Contains(name,StringComparer.OrdinalIgnoreCase)) {
+                    string file=Path.Combine(profile,"usage.json"); Dictionary<string,object> usage;
+                    try { usage=json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file)); } catch { usage=new Dictionary<string,object>(); }
+                    string day=DateTime.Now.ToString("yyyy-MM-dd"); object data;
+                    var counts=usage.TryGetValue(day,out data) ? data as Dictionary<string,object> : null;
+                    if(counts == null) { counts=new Dictionary<string,object>(); usage[day]=counts; }
+                    object seconds; counts[name]=(counts.TryGetValue(name,out seconds)?Convert.ToInt32(seconds):0)+5;
+                    foreach(string old in usage.Keys.OrderBy(x=>x).Take(Math.Max(0,usage.Count-14)).ToArray()) usage.Remove(old);
+                    File.WriteAllText(file+".tmp",json.Serialize(usage)); if(File.Exists(file)) File.Replace(file+".tmp",file,null); else File.Move(file+".tmp",file);
+                }
+            } catch {}
+        }
+        int every; Int32.TryParse(Setting("breakEvery","60"),out every);
+        if(!active) { if(unchecked((uint)Environment.TickCount-input.time)>=300000) breakSeconds=0; }
+        else if(every>0 && (breakSeconds+=5)>=every*60) { breakSeconds=0; tray.ShowBalloonTip(5000,"Islandly","Time for a short break",ToolTipIcon.Info); }
+    }
     void ToggleStartup() {
         using(var key=Microsoft.Win32.Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")) {
             if(key.GetValue("Islandly") != null) key.DeleteValue("Islandly");
@@ -272,6 +319,11 @@ sealed class IslandHost : Form {
         }
     }
     protected override void WndProc(ref Message m) {
+        if(m.Msg == 0x031D && child == null && Setting("clipboard","True") != "False") {
+            try { if(Clipboard.ContainsText()) { string text=Clipboard.GetText(); if(text.Length > 5000) text=text.Substring(0,5000);
+                if(text != "") { pendingClipboard.Remove(text); pendingClipboard.Add(text); while(pendingClipboard.Count > 30) pendingClipboard.RemoveAt(0); state["clipboardPending"]=pendingClipboard.ToArray(); SaveState(); }
+            } } catch(System.Runtime.InteropServices.ExternalException) {}
+        }
         if(m.Msg == 0x0312) { int id=m.WParam.ToInt32(); OpenPanel(id==2?"palette":id==3?"pomodoro":id==4?"stash":"expand"); }
         if(m.Msg == 0x8001 && m.WParam.ToInt32() == 1) BeginInvoke((Action)Position);
         base.WndProc(ref m);
@@ -281,8 +333,47 @@ sealed class IslandHost : Form {
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= DisplayChanged;
         if(bar) { Native.SHAppBarMessage(1,ref abd); bar=false; }
         for(int i=1;i<=4;i++) Native.UnregisterHotKey(Handle,i);
+        Native.RemoveClipboardFormatListener(Handle); if(consent != null) consent.Dispose();
         Send("quit"); EndSession(); tray.Visible=false; tray.Dispose(); ticker.Dispose();
     }
+}
+sealed class ConsentWatcher : IDisposable {
+    Microsoft.Win32.RegistryKey key;
+    EventWaitHandle changed;
+    RegisteredWaitHandle registration;
+    readonly Action<string> update;
+    readonly SynchronizationContext context = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
+    bool stopped;
+    public ConsentWatcher(Action<string> update) {
+        this.update=update;
+        try {
+            key=Microsoft.Win32.Registry.CurrentUser.OpenSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore");
+            if(key == null) return;
+            changed=new EventWaitHandle(false,EventResetMode.AutoReset);
+            Arm(); Read();
+        } catch { Dispose(); }
+    }
+    void Arm() {
+        if(stopped) return;
+        if(Native.RegNotifyChangeKeyValue(key.Handle.DangerousGetHandle(),true,0x10000005,changed.SafeWaitHandle.DangerousGetHandle(),true) != 0) return;
+        registration=ThreadPool.RegisterWaitForSingleObject(changed,delegate(object state,bool timeout) {
+            if(stopped) return;
+            context.Post(delegate(object unused) { if(!stopped) { Arm(); Read(); } },null);
+        },null,Timeout.Infinite,true);
+    }
+    bool Active(Microsoft.Win32.RegistryKey node,int depth) {
+        if(node == null || depth>6) return false;
+        object start=node.GetValue("LastUsedTimeStart"), stop=node.GetValue("LastUsedTimeStop");
+        if(start is long && (long)start != 0 && stop is long && (long)stop == 0) return true;
+        foreach(string sub in node.GetSubKeyNames().Take(1024)) using(var child=node.OpenSubKey(sub)) if(Active(child,depth+1)) return true;
+        return false;
+    }
+    void Read() {
+        try { bool mic,cam; using(var m=key.OpenSubKey("microphone")) mic=Active(m,0); using(var c=key.OpenSubKey("webcam")) cam=Active(c,0);
+            update(cam ? "Camera active" : mic ? "Mic active" : "");
+        } catch { }
+    }
+    public void Dispose() { stopped=true; if(registration != null) registration.Unregister(null); if(key != null) key.Dispose(); if(changed != null) changed.Dispose(); }
 }
 static class Program {
     [STAThread] static void Main(string[] args) {
