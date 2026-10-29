@@ -20,7 +20,7 @@ Island.register({
     this.nextAt = h('div', { class: 'm-artist' });
     this.next = h('div', { class: 'np' }, h('div', {}, this.nextName, this.nextAt), this.nextIn);
     this.row = h('div', { class: 'pr-row stagger' });
-    this.place = h('div', { class: 'td-place' });
+    this.place = h('div', { class: 'td-place', dir: 'auto' });
     this.expandedEl = h(
       'div',
       { class: 'view auto panel today' },
@@ -77,11 +77,11 @@ Island.register({
     const hh = Math.floor(s / 3600);
     const mm = Math.floor((s % 3600) / 60);
     const ss = s % 60;
-    return hh ? `${hh}:${pad2(mm)}:${pad2(ss)}` : `${mm}:${pad2(ss)}`;
+    return I18N.digits(hh ? `${hh}:${pad2(mm)}:${pad2(ss)}` : `${mm}:${pad2(ss)}`);
   },
 
   fmtTime(ms) {
-    return new Date(ms).toLocaleTimeString(LANG === 'ar' ? 'ar-SA' : 'en', { hour: 'numeric', minute: '2-digit' });
+    return I18N.time(new Date(ms), { hour: 'numeric', minute: '2-digit' });
   },
 
   tick() {
@@ -98,7 +98,7 @@ Island.register({
         const soon = next.name + next.time + ':soon';
         if (left <= 10 * 60000 && left > 9 * 60000 && !this.alerted.has(soon)) {
           this.alerted.add(soon);
-          this.pTitle.textContent = t('prayerSoon', { p: t('p_' + next.name) });
+          this.pTitle.textContent = t('prayerSoon', { p: t('p_' + next.name), count: 10 });
           this.pSub.textContent = this.fmtTime(next.time);
           Island.peek('today', 8000);
         }
@@ -138,20 +138,17 @@ Island.register({
 
   paint() {
     const now = new Date();
-    const loc = LANG === 'ar' ? 'ar-SA' : 'en';
-    this.date.textContent = now.toLocaleDateString(LANG === 'ar' ? 'ar' : 'en', { weekday: 'long', day: 'numeric', month: 'long' });
-    try {
-      this.hijri.textContent = new Intl.DateTimeFormat(loc + '-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }).format(now);
-    } catch (_) {
-      this.hijri.textContent = '';
-    }
+    this.date.textContent = I18N.date(now);
+    this.hijri.textContent = I18N.hijri(now);
     const w = this.weather;
     this.wx.style.display = w ? '' : 'none';
     if (w) {
       const [key, dayIcon, nightIcon] = this.wxText(w.code);
       this.wxIcon.textContent = w.day ? dayIcon : nightIcon;
-      this.wxTemp.textContent = w.temp + '°';
-      this.wxDesc.textContent = `${t('wx_' + key)} · ${w.max}° / ${w.min}°`;
+      // a degree sign is direction-neutral: isolate each temperature so it stays after its number in Arabic
+      const deg = (n) => '\u2066' + I18N.num(n) + '°\u2069';
+      this.wxTemp.textContent = deg(w.temp);
+      this.wxDesc.textContent = t('tempRange', { desc: t('wx_' + key), max: deg(w.max), min: deg(w.min) });
     }
     this.place.textContent = this.sched && this.sched.location ? this.sched.location : '';
     this.paintRow();

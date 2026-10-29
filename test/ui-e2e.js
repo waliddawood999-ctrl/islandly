@@ -10,6 +10,10 @@ const { app, BrowserWindow } = require('electron');
 
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'islandly-e2e-'));
 app.setPath('userData', userData);
+// Interface language for this run: ISLANDLY_E2E_LANG=en runs the same checks in English (T11).
+const LANG = process.env.ISLANDLY_E2E_LANG === 'en' ? 'en' : 'ar';
+// Updates off: a real "update ready" notice from GitHub would cover the island at a random moment.
+fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ lang: LANG, uiLang: LANG, updates: false }));
 
 const { MediaBridge } = require('../src/main/media');
 const controls = [];
@@ -75,6 +79,17 @@ app.whenReady().then(() =>
       const slackH = b.height - r.h * z;
       return { b, slackW, slackH, ok: slackW >= -1 && slackH >= -1 && slackW <= 60 && slackH <= 40 };
     };
+
+    await step(`interface is in ${LANG} with the matching direction, and no text of the other language shows`, async () => {
+      const r = await js(`({ lang: document.documentElement.lang, dir: document.documentElement.dir })`);
+      assert.deepStrictEqual(r, { lang: LANG, dir: LANG === 'ar' ? 'rtl' : 'ltr' });
+      if (LANG === 'en') {
+        // every panel's text, built or not yet on screen
+        const text = await js(`Island.relang(), ['clock','music','timer','calendar','clipboard','shelf','notes','battery','system','usage','github'].map((id) => { const f = Island.feature(id); return Object.values(f).filter((v) => v instanceof HTMLElement).map((e) => e.innerText + ' ' + [...e.querySelectorAll('[title],[placeholder]')].map((x) => (x.title || '') + (x.placeholder || '')).join(' ')).join(' '); }).join(' ')`);
+        const arabic = text.match(/[\u0600-\u06FF][^\n]{0,30}/g);
+        assert(!arabic, 'Arabic text in the English interface: ' + JSON.stringify(arabic));
+      }
+    });
 
     await step('when idle the window is only as big as the thin line (does not cover tabs or pages)', async () => {
       xmouse('move', 5, 400);
@@ -207,7 +222,9 @@ app.whenReady().then(() =>
     await step('"over the page" tint applies only while resting', async () => {
       await js('Island.configure({ autoHide: "never" }); 0');
       win.webContents.send('surface:tint', { r: 240, g: 240, b: 244 });
-      await waitFor('tinted while resting', () => js(`document.getElementById('island').classList.contains('tinted')`), 3000);
+      await waitFor('tinted while resting', () => js(`document.getElementById('island').classList.contains('tinted')`), 3000).catch(async (e) => {
+        throw new Error(e.message + ' ' + JSON.stringify(await js('({ ...Island.debug(), cls: document.getElementById("island").className })')));
+      });
       await js('Island.open("clock"); 0');
       await waitFor('not tinted when open', async () => !(await js(`document.getElementById('island').classList.contains('tinted')`)), 3000);
       await js('Island.togglePin(); Island.configure({ autoHide: "auto" }); 0');
@@ -305,6 +322,30 @@ app.whenReady().then(() =>
       assert(fit.ok, 'window does not fit the indicator: ' + JSON.stringify(fit));
       win.webContents.send('privacy:update', { mic: [], cam: [] });
       await waitFor('indicator gone', async () => !/privacy-compact/.test(await js(`(document.querySelector('#content > .view') || {}).className || ''`)), 4000);
+    });
+
+    await step('switching the language is instant: no reload, the open panel and a running timer are kept', async () => {
+      const other = LANG === 'ar' ? 'en' : 'ar';
+      await js('window.__noReload = 1; const tm = Island.feature("timer"); tm.setMode("quick"); tm.setMinutes(5); tm.start(); Island.open("timer"); 0');
+      await sleep(700);
+      const before = await js('document.querySelector(".timer-expanded .t-title").textContent');
+      const settings = await js('({ ...API.settings })');
+      win.webContents.send('settings:update', { ...settings, uiLang: other, lang: other });
+      await waitFor('language switched', async () => (await js('document.documentElement.lang')) === other, 2000);
+      const r = await js(`({ dir: document.documentElement.dir, marker: window.__noReload, running: Island.feature('timer').running, panel: Island.selectedId(), title: document.querySelector('.timer-expanded .t-title').textContent, expect: t('quickTimer'), tab: document.querySelector('.timer-expanded .seg-btn').textContent, tabExpect: t('focus') })`);
+      assert.strictEqual(r.marker, 1, 'the page reloaded');
+      assert.strictEqual(r.dir, other === 'ar' ? 'rtl' : 'ltr');
+      assert.strictEqual(r.running, true, 'the timer stopped');
+      assert.strictEqual(r.panel, 'timer', 'the open panel changed');
+      assert.strictEqual(r.title, r.expect);
+      assert.notStrictEqual(r.title, before);
+      assert.strictEqual(r.tab, r.tabExpect);
+      win.webContents.send('settings:update', { ...settings, uiLang: LANG, lang: LANG });
+      await waitFor('language back', async () => (await js('document.documentElement.lang')) === LANG, 2000);
+      assert.strictEqual(await js('document.querySelector(".timer-expanded .t-title").textContent'), before);
+      await js('Island.feature("timer").reset(); Island.feature("timer").setMode("focus"); Island.togglePin(); 0');
+      xmouse('move', 5, 400);
+      await waitFor('closed', async () => !(await js('Island.isExpanded()')), 6000);
     });
 
     await step('pushing the cursor against the top screen edge opens the island and keeps it open', async () => {

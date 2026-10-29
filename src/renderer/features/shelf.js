@@ -8,11 +8,11 @@ Island.register({
   notice: '',
 
   init() {
-    this.title = h('div', { class: 'p-title' }, t('shelf'));
+    this.title = h('div', { class: 'p-title' }, T('shelf'));
     this.count = h('span', { class: 'count' });
-    this.clearBtn = h('button', { class: 'chip', onclick: () => this.clear() }, t('clearAll'));
+    this.clearBtn = h('button', { class: 'chip', onclick: () => this.clear() }, T('clearAll'));
     this.strip = h('div', { class: 'sh-strip scroll stagger' });
-    this.empty = h('div', { class: 'sh-empty' }, h('div', { class: 'm-title lg' }, t('shelfEmpty')), h('div', { class: 'm-artist' }, t('shelfEmptySub')));
+    this.empty = h('div', { class: 'sh-empty' }, h('div', { class: 'm-title lg' }, T('shelfEmpty')), h('div', { class: 'm-artist' }, T('shelfEmptySub')));
     this.expandedEl = h('div', { class: 'view auto panel shelf' }, h('div', { class: 'p-head' }, h('div', { class: 'p-title-wrap' }, this.title, this.count), this.clearBtn), this.strip, this.empty);
 
     this.peekText = h('div', { class: 'm-title' });
@@ -20,7 +20,7 @@ Island.register({
 
     API.on('shelf:update', (items) => this.set(items));
     API.on('shelf:added', ({ count, selected }) => {
-      this.peekText.textContent = count ? t('shelfAdded', { n: num(count) }) : selected ? t('shelfAlready') : t('shelfNothing');
+      this.peekText.textContent = count ? t('shelfAdded', { count }) : selected ? t('shelfAlready') : t('shelfNothing');
       Island.peek('shelf', 2600);
     });
     API.call('shelf:list').then((items) => items && this.set(items));
@@ -80,7 +80,7 @@ Island.register({
             },
           },
           h('div', { class: 'sh-icon' }, icon),
-          h('div', { class: 'sh-name' }, item.name),
+          h('div', { class: 'sh-name', dir: 'auto' }, item.name),
           item.isImage
             ? h(
                 'div',

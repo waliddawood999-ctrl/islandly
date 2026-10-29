@@ -349,6 +349,21 @@ const Island = (() => {
     else swap(v);
   }
 
+  // Language switch (T11): marked text is already re-translated by I18N; each feature repaints the text it
+  // builds itself (relang(), or paint() by default), without resetting its state.
+  function relang() {
+    for (const f of features) {
+      try {
+        if (f.relang) f.relang();
+        else if (f.paint) f.paint();
+      } catch (err) {
+        API.send('log:error', `relang ${f.id}: ${err && err.message}`);
+      }
+    }
+    if (current && current.withDots) renderDots();
+    render();
+  }
+
   function select(i) {
     selected = i;
     userChoseAt = Date.now();
@@ -582,6 +597,7 @@ const Island = (() => {
     selectFeature,
     open,
     configure,
+    relang,
     setTint,
     setMaterial,
     isExpanded: () => hovered || pinned,
