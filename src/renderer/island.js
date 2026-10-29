@@ -614,7 +614,7 @@ const Island = (() => {
     setMaterial,
     setMotion(mode, eco) {
       motionOff = mode === 'off';
-      reducedMotion = !!eco || mode === 'reduced' || !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      reducedMotion = motionOff || !!eco || mode === 'reduced' || !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
       SPRING = reducedMotion ? { duration: 0.12, ease: 'easeOut' } : { type: 'spring', visualDuration: 0.34, bounce: 0.24 };
       document.documentElement.dataset.motion = motionOff ? 'off' : reducedMotion ? 'reduced' : 'full';
     },

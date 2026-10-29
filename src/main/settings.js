@@ -48,6 +48,7 @@ function init() {
   file = path.join(app.getPath('userData'), 'settings.json');
   try {
     data = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+    if (data.islandMode === 'reserved-bar') data.islandMode = 'appbar';
     if (!['acrylic', 'glass'].includes(data.material)) data.material = DEFAULTS.material;
     for (const key of ['ecoMode', 'ecoAuto']) if (typeof data[key] !== 'boolean') data[key] = DEFAULTS[key];
     if (!['full', 'reduced', 'off'].includes(data.motion)) data.motion = DEFAULTS.motion;

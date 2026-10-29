@@ -8,6 +8,10 @@ foreach($file in @('native/Islandly.cs','scripts/build-native.ps1','test/native-
         throw $reason
     }
 }
+# Electron 45 may resolve/download its runtime lazily. Prepare it before launching
+# the native candidate; idle is never allowed to start a downloader or panel process.
+& node -e "console.log(require('electron'))"
+if($LASTEXITCODE -ne 0){throw 'Panel runtime preparation failed'}
 & "$root/scripts/build-native.ps1"
 if($LASTEXITCODE -ne 0){throw 'Candidate native build failed'}
 $output=Join-Path $root "native-perf-$Mode.json"

@@ -19,7 +19,8 @@ $probe = Join-Path ([IO.Path]::GetTempPath()) ('islandly-native-probe-' + [Guid]
 $profile = Join-Path $probe 'profile'
 New-Item -ItemType Directory -Path $profile -Force | Out-Null
 # Same optional feature settings as the prior Electron controls; separate disposable profile.
-$initialSettings = @{ weather=$false; updates=$false; icsUrl=''; breakEvery=0; timeTracking=$false; prayerAlerts=$false; hideFullscreen=$false; islandMode=$Mode } | ConvertTo-Json
+$storedMode = if ($Mode -eq 'reserved-bar') { 'appbar' } else { 'overlay' }
+$initialSettings = @{ weather=$false; updates=$false; icsUrl=''; breakEvery=0; timeTracking=$false; prayerAlerts=$false; hideFullscreen=$false; islandMode=$storedMode } | ConvertTo-Json
 [IO.File]::WriteAllText("$profile/settings.json",$initialSettings,[Text.UTF8Encoding]::new($false))
 $timerDeadline = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + 7200000
 if ($Smoke) {
