@@ -105,8 +105,11 @@ try {
     $opened = Wait-Phase 'panel'
     $panel = Samples 'panel'
     if ($Mode -eq 'reserved-bar' -and (!(Read-Status).appBar -or [WorkAreaProbe]::Top() -lt (Read-Status).appBarBottom)) { throw 'AppBar lost while panel open' }
+    $closeTimer = [Diagnostics.Stopwatch]::StartNew()
     Command 'close'
     $closed = Wait-Phase 'idle'
+    $shutdownMs = $closeTimer.ElapsedMilliseconds
+    if ($shutdownMs -gt 8000) { throw "Panel runtime outlived short idle timeout: $shutdownMs ms" }
     $afterClose = Samples 'idle'
     # A second cold open proves relaunch works after complete runtime shutdown.
     Command 'expand'
@@ -114,10 +117,10 @@ try {
     Command 'close'
     $final = Wait-Phase 'idle'
     $result = @{ method='sum of native host and Windows Job Object process working sets / 1048576'; platform='Windows'; mode=$Mode; warmupSeconds=15; sampleCount=60; sampleIntervalSeconds=1;
-        idle=$idle; panel=$panel; afterClose=$afterClose; panelOpenLatencyMs=@($reopened.latenciesMs); latencyDefinition='native interaction to existing panel ready-to-show plus initial 350ms layout; cold opens';
+        idle=$idle; panel=$panel; afterClose=$afterClose; runtimeShutdownMs=$shutdownMs; panelOpenLatencyMs=@($reopened.latenciesMs); latencyDefinition='native interaction to existing panel ready-to-show plus initial 350ms layout; cold opens';
         electron=(Get-Content "$root/node_modules/electron/package.json" -Raw | ConvertFrom-Json).version; measuredAt=[DateTime]::UtcNow.ToString('o'); ownedPids=@($owned); acceptanceUnder180=($idle.averageMB -lt 180 -and $afterClose.averageMB -lt 180) }
     $result | ConvertTo-Json -Depth 12 | Set-Content $Output -Encoding UTF8
-    Write-Output "NATIVE FOOTPRINT: idle $($idle.averageMB) MB; panel $($panel.averageMB) MB; after-close $($afterClose.averageMB) MB; panel latency $($result.panelOpenLatencyMs -join ', ') ms"
+    Write-Output "NATIVE FOOTPRINT: idle $($idle.averageMB) MB; panel $($panel.averageMB) MB; after-close $($afterClose.averageMB) MB; panel latency $($result.panelOpenLatencyMs -join ', ') ms; shutdown $shutdownMs ms; idle CPU $($idle.averageCPU)%"
     if (!$result.acceptanceUnder180) { throw 'Idle RAM acceptance failed: must be below 180 MB before and after opening panels' }
 } finally {
     try { if (!$hostProcess.HasExited -and (Test-Path "$probe/status.json")) { Write-Output ('LAST STATUS: ' + ((Read-Status) | ConvertTo-Json -Compress -Depth 5)) } } catch { Write-Output 'Final status unavailable; continuing cleanup' }

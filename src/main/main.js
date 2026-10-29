@@ -531,7 +531,7 @@ function startNativeSession() {
   logError('native session initializing');
   const fs = require('node:fs');
   const stateFile = path.join(app.getPath('userData'), 'native-session.json');
-  let closingPanel = false;
+  let closingPanel = false, nativeActions = 0;
   const connection = require('node:net').createConnection('\\\\.\\pipe\\' + process.env.ISLANDLY_NATIVE_PIPE);
   connection.on('error', err => { logError('native pipe', err); app.quit(); });
   const renderer = script => win.webContents.executeJavaScript(script);
@@ -544,7 +544,10 @@ function startNativeSession() {
       } else if (action === 'palette') {
         palette.toggle();
         if (palette.win?.webContents.isLoading()) await new Promise(resolve => palette.win.webContents.once('did-finish-load', resolve));
-      } else if (action === 'stash') stashFromExplorer();
+      } else if (action === 'stash') {
+        nativeActions++;
+        try { await stashFromExplorer(); } finally { nativeActions--; }
+      }
       else if (action === 'close') {
         settingsWin?.close(); palette.hide();
         await renderer("Island.setHover(false); if (Island.isExpanded()) Island.togglePin();");
@@ -561,7 +564,7 @@ function startNativeSession() {
   nativeSession = new NativeSession({
     input: connection, output: connection,
     command, quit: () => app.quit(),
-    busy: () => (!closingPanel && nativeExpanded) || !!settingsWin?.isVisible() || !!palette.win?.isVisible() || commandHost.pending.size > 0,
+    busy: () => (!closingPanel && nativeExpanded) || !!settingsWin?.isVisible() || !!palette.win?.isVisible() || nativeActions > 0,
     restore: async () => {
       logError('native renderer ready, restoring');
       let saved;
