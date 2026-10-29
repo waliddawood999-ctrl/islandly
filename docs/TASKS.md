@@ -28,7 +28,7 @@
 
 | T17 | Integration of PRs #2/#3/#4/#6/#10/#12/#14/#16/#17; no dev/main merge | Codex | `codex/T17-integration` | listed PRs | review | Claude | Draft PR #18; conflict inventory in docs/T17-INTEGRATION.md; SAC root cause confirmed by laptop logs; policy-aware launch handling + optional signing; unsigned previews blocked on SAC laptop; signing decision pending |
 
-| T18 | Preserve trusted Electron executable identity; deterministic frozen native host; SAC reputation test artifact | Codex | `codex/T18-sac-reputation` | T17 | doing | Claude | Full 758E pin supplied; local exact reproduction verified; Windows build/host baseline pending; no SAC setting changes/signing |
+| T18 | Preserve trusted Electron executable identity; deterministic frozen native host; SAC reputation test artifact | Codex | `codex/T18-sac-reputation` | T17 | review | Claude | Draft PR #20 to T17; 5968a20 all CI green; exact 758E Electron, reproducible c7a5f599 host; packaged idle39.87/40.35MB; SAC laptop test pending |
 
 ## Backlog (0.6 و 0.7)
 

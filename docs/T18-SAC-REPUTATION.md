@@ -39,7 +39,7 @@ Keep T17 hardening and policy notice; change only three host path expressions to
 
 native/toolchain-lock.json pins Microsoft.Net.Compilers.Toolset4.14.0 and .NETFramework reference assemblies net48 1.0.3 by full package SHA256. No machine-dependent framework compiler/reference fallback. Native compilation uses deterministic output, mapped source paths, explicit UTF8, no debug information and fixed compiler options. test/native-reproducible.ps1 builds the same sources in two clean roots (including a path with spaces) and fails unless EXEs are byte-identical.
 
-CI reports the host hash against the recorded build baseline and the laptop-accepted T9 hash separately. The first candidate baseline remains pending its Windows build. A new native hash **requires laptop SAC testing**; matching a reproducible-build baseline is not a claim of cloud reputation. Preserve/retag that accepted binary only after Walid confirms it. Future app-only changes must retain the native source/toolchain; code/binary changes are visible as a hash change and retest flag.
+CI reports the host hash against the recorded build baseline and the laptop-accepted T9 hash separately. Windows CI verified and pinned candidate baseline c7a5f5998c0a148e8da8bc38ce649ad172c3e8d7086cd24990245fb71cf1f501. It matches across clean roots and independently built source/package jobs; it is not the laptop-accepted E138 identity. A new native hash **requires laptop SAC testing**; matching a reproducible-build baseline is not a claim of cloud reputation. Preserve/retag that accepted binary only after Walid confirms it. Future app-only changes must retain the native source/toolchain; code/binary changes are visible as a hash change and retest flag.
 
 ## Verification and limitations
 
@@ -48,3 +48,16 @@ npm test adds full-pin/name/size/content rejection and complete recursive EXE-in
 Measurements retain15s warmup and60 one-second samples for idle/settings-open/returned-idle. No working-set trim or omitted helper. Raw reports and hashes accompany Islandly-sac-reputation-win64.zip in the islandly-t18-sac-reputation-windows artifact. Do not claim Windows artifact/runtime measurements until those tests pass. No UI/settings/palette/font/CSS source changes.
 
 A running host retains the bilingual SAC/App Control notice and suppresses automatic policy-block retries. If SAC blocks the native host itself before entry, no host log or tray notice can run. Keep SAC enabled and use CodeIntegrity evidence for the new candidate. Windows Server CI verifies packaging/lifecycle/accounting, not real SAC acceptance. Existing T17 optional signing remains historical; T18's identity-locked package never invokes it, and the signing script refuses a locked package.
+
+## Validated candidate and laptop steps
+
+Source5968a209859fc057b5c8db1e9523c0997a7c1adf passed all seven workflows. Native/package run40935706701 verifies Windows exact758E reproduction, identical host bytes from clean roots, actual hover/click/Ctrl+Alt+I, error recovery and full shutdown. The package contains exactly these two EXEs:
+
+| File | SHA256 |
+|---|---|
+| Islandly.exe | c7a5f5998c0a148e8da8bc38ce649ad172c3e8d7086cd24990245fb71cf1f501 |
+| panels/Islandly.exe | 758e43cf25850408fa42d7de76565561ae329b353b8facc508ece9875bcd1592 |
+
+[Windows test artifact](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40935706701/artifacts/12925517588), islandly-t18-sac-reputation-windows, contains Islandly-sac-reputation-win64.zip (152.54MB). [Raw packaged measurements/identity manifests](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40935706701/artifacts/12925597405). Artifact source is explicitly pinned; subsequent baseline/metadata-only verification changes do not change either EXE.
+
+Close every older Islandly instance through its tray before testing, especially the currently running T9 host (the per-profile mutex otherwise exits the new instance). Extract the artifact wrapper and the inner ZIP, then launch the top-level Islandly.exe. Keep SAC On. Verify hover/click/Ctrl+Alt+I and both overlay/AppBar modes, then wait8s after closing panels and confirm only the native root PID remains. A direct click of panels/Islandly.exe delegates to the native parent instead of recursively re-launching Electron. The native host hash is new and still needs a laptop SAC test; if it is blocked before entry, use CodeIntegrity evidence because no application log can exist. Do not mistake a successful Server test for SAC acceptance.

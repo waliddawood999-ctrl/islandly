@@ -186,3 +186,16 @@ Same method and inventory as above, with all idle samples native-only and <180MB
 ### Laptop acceptance correction: SAC blocks unsigned previews
 
 Walid reports cf89cc2 does not start on the Windows11 build26300 laptop: SAC is On and application control blocks the unsigned host before entry. CodeIntegrity also confirms the older unsigned panel runtime was blocked at the original failure times (see HANDOFF and T17-LAUNCH-VERIFY). The tables above remain **Windows Server CI measurements only**. No laptop native idle RAM, panel RAM/latency or SAC-compatible signed build is claimed. Keep SAC enabled. Optional signing is documented in WINDOWS-SIGNING.md; credentials/certificate choice and laptop confirmation remain pending Walid's decision.
+
+## T18 preserved Electron identity / reproducible native host — Windows CI
+
+Measured source5968a209859fc057b5c8db1e9523c0997a7c1adf, [native and packaged workflow40935706701](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40935706701), all seven workflows PASS. These rows measure the **packaged layout** (root native Islandly.exe + panels/Islandly.exe matching758E exactly), not a substitute blank app. Native hashc7a5f5998c0a148e8da8bc38ce649ad172c3e8d7086cd24990245fb71cf1f501 repeats byte-for-byte across clean roots and independent source/package jobs. Both process names are Islandly; full host/Job PID inventory is retained, with no name-based exclusions.
+
+| Mode | Idle RAM avg MB | Idle CPU | Settings RAM avg MB | After-close RAM avg MB | Cold settings / expanded ms | Full shutdown ms |
+|---|---:|---:|---:|---:|---:|---:|
+| Overlay | 39.87 | 0.233% | 417.23 | 28.23 | 974 / 651 | 4820 |
+| AppBar | 40.35 | 0.467% | 419.31 | 31.01 | 1991 / 640 | 4312 |
+
+Same15s warmup /60 one-second samples per workload; every idle sample contains only the native host, no Electron/GPU/Utility/Renderer or worker. No trimming. Both idle/returned means <180MB and CPU means <1%. Source strict raw-sample guards in40935706373 also pass all samples: overlay40.26MB avg/42.43peak, CPU.470%; AppBar40.59/42.70MB, CPU.285%. Packaged CI now also invokes the same deep raw-sample validator (all idle peaks <180MB, meanCPU<1%) rather than relying only on the original average check; final run linked in PR20.
+
+[Raw packaged reports/identities](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40935706701/artifacts/12925597405), [Windows artifact](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40935706701/artifacts/12925517588). The exact Electron hash is758e43cf25850408fa42d7de76565561ae329b353b8facc508ece9875bcd1592; native host differs from accepted T9 E138 and needs laptop SAC confirmation. No real-laptop native RAM/SAC acceptance claimed. No signing or policy changes.

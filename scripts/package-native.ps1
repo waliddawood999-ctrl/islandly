@@ -44,7 +44,7 @@ try {
     Get-ChildItem $koffi -Directory | Where-Object {$_.Name -ne 'win32_x64'} | Remove-Item -Recurse -Force
     Copy-Item "$root/native/bin/Islandly.exe" "$package/Islandly.exe"
     $version=[Diagnostics.FileVersionInfo]::GetVersionInfo("$package/panels/Islandly.exe")
-    @{ProductName=$version.ProductName;FileDescription=$version.FileDescription;FileVersion=$version.FileVersion;ProductVersion=$version.ProductVersion} | ConvertTo-Json | Set-Content "$package/EXE-VERSION-RESOURCES.json" -Encoding utf8
+    @{ProductName=$version.ProductName;FileDescription=$version.FileDescription;FileVersion=$version.FileVersion;ProductVersion=$version.ProductVersion;OriginalFilename=$version.OriginalFilename;InternalName=$version.InternalName;CompanyName=$version.CompanyName;LegalCopyright=$version.LegalCopyright} | ConvertTo-Json | Set-Content "$package/EXE-VERSION-RESOURCES.json" -Encoding utf8
     & node "$PSScriptRoot/windows-identity.js" $package
     if($LASTEXITCODE -ne 0){throw 'Executable identity guard failed'}
     Set-Content "$package/SIGNING-STATUS.txt" 'UNSIGNED IDENTITY-PRESERVED TEST: no stamping or signing; new native host identity requires SAC laptop validation.' -Encoding utf8

@@ -77,10 +77,16 @@ jobs:
         run: ./test/packaged-input.ps1
       - name: Packaged native-only idle and panel RAM (overlay)
         shell: pwsh
-        run: ./test/native-footprint.ps1 -Mode overlay -Output native-perf-packaged-overlay.json -Executable out/Islandly-native-win64/Islandly.exe
+        run: |
+          ./test/native-footprint.ps1 -Mode overlay -Output native-perf-packaged-overlay.json -Executable out/Islandly-native-win64/Islandly.exe
+          node test/performance-check.js native-perf-packaged-overlay.json overlay
+          if($LASTEXITCODE -ne 0){throw 'Packaged overlay raw-sample guard failed'}
       - name: Packaged native-only idle and panel RAM (AppBar)
         shell: pwsh
-        run: ./test/native-footprint.ps1 -Mode reserved-bar -Output native-perf-packaged-appbar.json -Executable out/Islandly-native-win64/Islandly.exe
+        run: |
+          ./test/native-footprint.ps1 -Mode reserved-bar -Output native-perf-packaged-appbar.json -Executable out/Islandly-native-win64/Islandly.exe
+          node test/performance-check.js native-perf-packaged-appbar.json reserved-bar
+          if($LASTEXITCODE -ne 0){throw 'Packaged AppBar raw-sample guard failed'}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
