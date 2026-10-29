@@ -256,7 +256,7 @@ sealed class IslandHost : Form {
         Status();
     }
     async void ReadSession(NamedPipeServerStream pipe) {
-        try { using(var reader=new StreamReader(pipe,Encoding.UTF8)) {
+        try { using(var reader=new StreamReader(pipe,Encoding.UTF8,true,65536,true)) {
             string line; while((line=await reader.ReadLineAsync()) != null) {
                 if(closing || pipe != sessionPipe) return;
                 if(line.StartsWith("ISLANDLY:")) Message(line);
@@ -308,7 +308,7 @@ sealed class IslandHost : Form {
         ready = false;
         if(job != IntPtr.Zero) { Native.TerminateJobObject(job,0); Native.CloseHandle(job); job = IntPtr.Zero; }
         if(child != null) { child.Dispose(); child = null; }
-        if(childInput != null) { childInput.Dispose(); childInput = null; }
+        if(childInput != null) { try { childInput.Dispose(); } catch(IOException) {} catch(ObjectDisposedException) {} childInput = null; }
         if(sessionPipe != null) { sessionPipe.Dispose(); sessionPipe=null; }
         if(inputPipe != null) { inputPipe.Dispose(); inputPipe = null; }
         if(outputPipe != null) { outputPipe.Dispose(); outputPipe = null; }
