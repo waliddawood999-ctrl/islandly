@@ -6,3 +6,7 @@ out/
 dev/shots/
 *.zip
 *.mp4
+
+native/bin/
+footprint-local-*.json
+native-perf-*.json

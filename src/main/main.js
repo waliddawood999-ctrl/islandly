@@ -1,5 +1,9 @@
 const path = require('path');
 const { app, BrowserWindow, screen, ipcMain, Tray, Menu, globalShortcut, nativeImage, shell } = require('electron');
+const nativeManaged = process.env.ISLANDLY_NATIVE_SESSION === '1';
+if (nativeManaged && process.env.ISLANDLY_NATIVE_PROFILE) app.setPath('userData', process.env.ISLANDLY_NATIVE_PROFILE);
+const { NativeSession } = require('./native-session');
+let nativeSession, nativeExpanded = true;
 Menu.setApplicationMenu(null); // A widget has no application menu; avoid creating one at startup.
 const settings = require('./settings');
 const { PerformanceMonitor } = require('./perf');
@@ -223,7 +227,7 @@ function trayMenuTemplate() {
       },
       { type: 'separator' },
       { label: `Islandly ${info.version}`, enabled: false },
-      { label: 'خروج', click: () => app.quit() },
+      { label: 'خروج', click: () => { nativeSession?.send('exit'); app.quit(); } },
   ];
 }
 
@@ -295,7 +299,7 @@ function registerIpc() {
   ipcMain.on('open:external', (_e, url) => openExternal(url));
   ipcMain.on('settings:open', openSettings);
   ipcMain.on('menu:show', () => Menu.buildFromTemplate(trayMenuTemplate()).popup({ window: win }));
-  ipcMain.on('app:quit', () => app.quit());
+  ipcMain.on('app:quit', () => { nativeSession?.send('exit'); app.quit(); });
   ipcMain.on('shelf:drag', (e, ids) => {
     const paths = shelf.pathsFor(ids);
     if (!paths.length) return;
@@ -329,6 +333,7 @@ function registerIpc() {
   ipcMain.handle('calendar:get', () => ({ status: calendar.status, events: calendar.last || [] }));
   ipcMain.handle('update:check', () => updater.check());
   ipcMain.handle('update:apply', () => {
+    if (nativeManaged) { nativeSession.send('restart'); app.quit(); return; }
     app.relaunch();
     app.quit();
   });
@@ -362,7 +367,7 @@ app.on('second-instance', () => {
 app.whenReady().then(() => {
   settings.init();
   createWindow();
-  createTray();
+  if (!nativeManaged) createTray();
   registerIpc();
 
   media = new MediaBridge((payload) => {
@@ -442,10 +447,12 @@ app.whenReady().then(() => {
 
   applyActivityPolicy();
   const send = (cmd) => push('shortcut', cmd);
+  if (!nativeManaged) {
   globalShortcut.register('Control+Alt+I', () => send('toggle'));
   globalShortcut.register('Control+Alt+P', () => send('pomodoro'));
   globalShortcut.register('Control+Alt+S', stashFromExplorer);
   if (!globalShortcut.register('Control+Alt+Space', () => palette.toggle())) logError('shortcut Ctrl+Alt+Space is taken by another app');
+  }
 
   settings.onChange((now, prev) => {
     if (now.position !== prev.position) positionWindow();
@@ -484,13 +491,14 @@ app.whenReady().then(() => {
     buildTrayMenu();
   });
 
+  if (nativeManaged) startNativeSession();
   screen.on('display-metrics-changed', positionWindow);
   screen.on('display-added', positionWindow);
   screen.on('display-removed', positionWindow);
 });
 
 function stopNativeServices() { privacy?.stop(); media?.stop(); perf?.stop(); commandHost.shutdown(true); }
-app.on('before-quit', stopNativeServices);
+app.on('before-quit', () => { nativeSession?.stop(); stopNativeServices(); });
 process.on('exit', stopNativeServices);
 
 app.on('will-quit', () => {
@@ -505,3 +513,76 @@ app.on('will-quit', () => {
 app.on('window-all-closed', () => {
   if (!win || win.isDestroyed()) app.quit();
 });
+
+
+// Native host owns the collapsed window and shortcuts; Electron owns existing panels only.
+// Calls the existing public Island API at the lifetime boundary; no UI source or IPC contract changes.
+function startNativeSession() {
+  const fs = require('node:fs');
+  const stateFile = path.join(app.getPath('userData'), 'native-session.json');
+  let closingPanel = false;
+  const renderer = script => win.webContents.executeJavaScript(script);
+  const command = async action => {
+    try {
+      closingPanel = false;
+      if (action === 'settings') {
+        openSettings();
+        if (settingsWin.webContents.isLoading()) await new Promise(resolve => settingsWin.once('ready-to-show', resolve));
+      } else if (action === 'palette') {
+        palette.toggle();
+        if (palette.win?.webContents.isLoading()) await new Promise(resolve => palette.win.webContents.once('did-finish-load', resolve));
+      } else if (action === 'stash') stashFromExplorer();
+      else if (action === 'close') {
+        settingsWin?.close(); palette.hide();
+        await renderer("Island.setHover(false); if (Island.isExpanded()) Island.togglePin();");
+        closingPanel = true;
+        nativeExpanded = false;
+        win.hide();
+      } else {
+        const cmd = action === 'pomodoro' ? 'pomodoro' : 'toggle';
+        push('shortcut', cmd);
+        applyVisibility();
+      }
+    } catch (err) { logError('native command', err); }
+  };
+  nativeSession = new NativeSession({
+    input: process.stdin, output: process.stdout,
+    command, quit: () => app.quit(),
+    busy: () => (!closingPanel && nativeExpanded) || !!settingsWin?.isVisible() || !!palette.win?.isVisible(),
+    restore: async () => {
+      let saved;
+      try { saved = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch (_) { saved = null; }
+      if (saved) {
+        clipboardHistory.items = Array.isArray(saved.clipboard) ? saved.clipboard.slice(0, 100) : [];
+        clipboardHistory.seq = Math.max(0, ...clipboardHistory.items.map(x => Number(x.id) || 0)) + 1;
+        for (const text of saved.clipboardPending || []) if (typeof text === 'string') clipboardHistory.add(text);
+        await renderer(`(() => {
+          const saved = ${JSON.stringify(saved)};
+          const timer = Island.feature('timer');
+          if (timer && ['focus','rest'].includes(saved.mode) && Number.isFinite(saved.total) && saved.total > 0) {
+            timer.mode = saved.mode; timer.total = saved.total;
+            timer.remaining = Math.max(0, Number(saved.remaining) || 0);
+            if (saved.running) timer.remaining = Math.max(0, (saved.endAt - Date.now()) / 1000);
+            if (saved.completed || saved.running && timer.remaining <= 0) timer.finish();
+            else if (saved.running) timer.start();
+            else timer.paint();
+          }
+          if (saved.selected) Island.selectFeature(saved.selected);
+        })()`);
+      }
+      await command(process.env.ISLANDLY_NATIVE_COMMAND || 'expand');
+      // Include first panel layout/paint rather than counting process spawn as panel readiness.
+      await new Promise(resolve => setTimeout(resolve, 350));
+    },
+    capture: async () => {
+      const snapshot = await renderer(`(() => {
+        const timer = Island.feature('timer');
+        return { mode: timer.mode, total: timer.total, remaining: timer.remaining, running: timer.running,
+          endAt: timer.endAt, selected: Island.selectedId(), expanded: Island.isExpanded() };
+      })()`);
+      nativeExpanded = snapshot.expanded;
+      return { ...snapshot, clipboard: clipboardHistory.items, clipboardPending: [] };
+    },
+  });
+  win.once('ready-to-show', () => nativeSession.loaded().catch(err => { logError('native load', err); app.quit(); }));
+}

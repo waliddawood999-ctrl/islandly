@@ -1,0 +1,34 @@
+name: T9 native idle and on-demand panels
+on:
+  pull_request:
+    branches: [dev]
+  push:
+    branches: [codex/T9-perf-ram]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:native
+      - name: Native-only idle, settings panel, complete shutdown and reopen
+        shell: pwsh
+        run: ./test/native-footprint.ps1 -Output native-perf-overlay.json -Mode overlay
+      - name: Reserved-bar ownership and work-area recovery with on-demand panels
+        shell: pwsh
+        run: ./test/native-footprint.ps1 -Output native-perf-reserved-bar.json -Mode reserved-bar
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t9-native-footprint
+          path: native-perf-*.json
+          if-no-files-found: warn
