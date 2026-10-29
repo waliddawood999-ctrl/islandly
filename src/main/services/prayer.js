@@ -62,8 +62,8 @@ class PrayerService {
   }
   start() { this.active = true; this.update(true); }
   stop() { this.active = false; this.generation++; this.clearTimer(this.timer); this.timer = null; }
-  get() { const state = windowFor(this.getSettings(), this.now(), this.getTimes).state; return { ...state, pausedByAdhan: this.pausedByAdhan }; }
-  emit(force = false) { const state = this.get(), key = JSON.stringify(state); if (force || key !== this.last) { this.last = key; this.onState(state); } return state; }
+  get() { const state = windowFor(this.getSettings(), this.now(), this.getTimes).state; return { ...state, pausedByAdhan: this.pausedByAdhan && ['adhan','iqama'].includes(state.phase) }; }
+  emit(force = false) { const state = this.get(), key = JSON.stringify(state); this.snapshot = state; if (force || key !== this.last) { this.last = key; this.onState(state); } return state; }
   update(force = false) {
     this.clearTimer(this.timer); this.timer = null;
     if (!this.active) return;
@@ -83,12 +83,18 @@ class PrayerService {
       }).catch(() => {});
     }
     // Genuine next-boundary timeout, never a per-second polling interval. First alignment can be <1 minute.
-    this.timer = this.setTimer(() => this.update(), Math.max(1, Math.min(2147483647, wakeAt - now)));
+    this.timer = this.setTimer(() => this.update(), Math.max(1, Math.min(2147483647, wakeAt - this.now())));
   }
   changed() { this.generation++; this.update(true); }
-  mediaChanged(payload) { if (payload?.type === 'media' && (!payload.active || payload.playing) && this.pausedByAdhan) { this.pausedByAdhan = false; this.emit(); } }
+  mediaChanged(payload) {
+    if (payload?.type !== 'media' || !this.active) return;
+    if ((!payload.active || payload.playing) && this.pausedByAdhan) { this.pausedByAdhan = false; this.emit(); }
+    // Initial SMTC metadata can arrive after startup. Catch it during adhan, once; timeline events in idle are O(1).
+    const state = this.snapshot;
+    if (payload.active && payload.playing && state?.phase === 'adhan' && this.pauseFor !== state.current?.time) this.update();
+  }
   async resume() {
-    if (!this.pausedByAdhan) return { ok: false };
+    if (!this.get().pausedByAdhan) return { ok: false };
     const generation = this.generation;
     const result = await this.media.resumeAfterAdhan();
     if (result?.ok && generation === this.generation) { this.pausedByAdhan = false; this.emit(); }
