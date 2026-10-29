@@ -21,6 +21,11 @@ New-Item -ItemType Directory -Path $profile -Force | Out-Null
 # Same optional feature settings as the prior Electron controls; separate disposable profile.
 $initialSettings = @{ weather=$false; updates=$false; icsUrl=''; breakEvery=0; timeTracking=$false; prayerAlerts=$false; hideFullscreen=$false; islandMode=$Mode } | ConvertTo-Json
 [IO.File]::WriteAllText("$profile/settings.json",$initialSettings,[Text.UTF8Encoding]::new($false))
+$timerDeadline = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + 7200000
+if ($Smoke) {
+    $fixture = @{ mode='focus'; total=7200; remaining=7200; running=$true; endAt=$timerDeadline; selected='timer'; clipboard=@(); clipboardPending=@('native handoff fixture') } | ConvertTo-Json
+    [IO.File]::WriteAllText("$profile/native-session.json",$fixture,[Text.UTF8Encoding]::new($false))
+}
 $exe = Join-Path $root 'native/bin/Islandly.exe'
 $hostProcess = Start-Process $exe -ArgumentList @('--root',"`"$root`"",'--profile',"`"$profile`"",'--probe-dir',"`"$probe`"",'--mode',$Mode) -PassThru
 $owned = [System.Collections.Generic.HashSet[int]]::new()
@@ -45,7 +50,7 @@ function Wait-Phase([string]$phase) {
         Start-Sleep -Milliseconds 250
         if (Test-Path "$probe/status.json") {
             $status = Read-Status
-            if ($status.phase -eq $phase) { return $status }
+            if ($status.hostPid -eq $hostProcess.Id -and $status.phase -eq $phase) { return $status }
         }
     } while ([DateTime]::UtcNow -lt $deadline)
     throw "Timed out waiting for $phase. Probe evidence: $probe"
@@ -72,7 +77,21 @@ try {
         $workArea = [WorkAreaProbe]::Current()
         if ([WorkAreaProbe]::Top() -lt $initial.appBarBottom) { throw "Reserved top work area not applied: $workArea" }
     }
-    if ($Smoke) { Command 'settings'; $opened=Wait-Phase 'panel'; Command 'close'; $closed=Wait-Phase 'idle'; Write-Output ('Native lifecycle smoke passed; latency ' + $opened.latenciesMs); return }
+    if ($Smoke) {
+        Command 'settings'; $opened=Wait-Phase 'panel'; Start-Sleep -Seconds 1
+        Command 'close'; $closed=Wait-Phase 'idle'
+        $saved = Get-Content "$profile/native-session.json" -Raw | ConvertFrom-Json
+        if (!$saved.running -or [Math]::Abs($saved.endAt-$timerDeadline) -gt 1000) { throw 'Timer deadline lost or reset across runtime shutdown' }
+        if ('native handoff fixture' -notin @($saved.clipboard.text)) { throw 'Native clipboard handoff was lost' }
+        Command 'settings'; $second=Wait-Phase 'panel'
+        $hostProcess.Kill(); $hostProcess.WaitForExit(); Start-Sleep -Seconds 2
+        foreach ($id in $owned) { if (Get-Process -Id $id -ErrorAction SilentlyContinue) { throw "Owned PID $id survived native owner crash" } }
+        $hostProcess = Start-Process $exe -ArgumentList @('--root',"`"$root`"",'--profile',"`"$profile`"",'--probe-dir',"`"$probe`"",'--mode',$Mode) -PassThru
+        $recovered = Wait-Phase 'idle'
+        if ($Mode -eq 'reserved-bar' -and !$recovered.appBar) { throw 'AppBar failed to recover after native owner crash' }
+        Write-Output ('Native timer/clipboard handoff, cold launch, crash containment and recovery passed; latency ' + $opened.latenciesMs)
+        return
+    }
     $idle = Samples 'idle'
     Command 'settings'
     $opened = Wait-Phase 'panel'

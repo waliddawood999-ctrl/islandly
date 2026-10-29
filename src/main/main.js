@@ -3,6 +3,12 @@ const { app, BrowserWindow, screen, ipcMain, Tray, Menu, globalShortcut, nativeI
 const nativeManaged = process.env.ISLANDLY_NATIVE_SESSION === '1';
 if (nativeManaged && process.env.ISLANDLY_NATIVE_PROFILE) app.setPath('userData', process.env.ISLANDLY_NATIVE_PROFILE);
 const { NativeSession } = require('./native-session');
+if (nativeManaged) {
+  // User-launched applications must survive closing our Chromium Job Object.
+  shell.openExternal = async target => { const error = await nativeSession.external('url', target); if (error) throw Error(error); };
+  shell.openPath = target => nativeSession.external('path', target);
+  shell.showItemInFolder = target => { nativeSession.external('reveal', target); };
+}
 let nativeSession, nativeExpanded = true;
 Menu.setApplicationMenu(null); // A widget has no application menu; avoid creating one at startup.
 const settings = require('./settings');

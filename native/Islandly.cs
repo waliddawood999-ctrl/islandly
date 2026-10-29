@@ -163,8 +163,7 @@ sealed class IslandHost : Form {
         float scale; if (!Single.TryParse(Setting("scale","0.8"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture,out scale)) scale = .8f;
         scale = Math.Max(.5f, Math.Min(2f,scale)) * CreateGraphicsDpi();
         var screen = TargetScreen().Bounds;
-        if(Setting("micCamIndicator","True") == "False") privacyLabel = "";
-        bool sliver = Setting("autoHide","auto") != "never" && !TimerRunning() && privacyLabel == "";
+        bool sliver = Setting("autoHide","auto") != "never" && !TimerRunning() && (privacyLabel == "" || Setting("micCamIndicator","True") == "False");
         int w = (int)((sliver ? 84 : 138)*scale), height = Math.Max(4,(int)((sliver ? 5 : 36)*scale));
         if (bar) {
             var previous = abd.rect;
@@ -195,7 +194,7 @@ sealed class IslandHost : Form {
         using(var gradient=new LinearGradientBrush(ClientRectangle,Color.FromArgb(12,12,16),Color.Black,90f)) e.Graphics.FillRectangle(gradient,ClientRectangle);
         string label = DateTime.Now.ToString("HH:mm");
         if (TimerRunning()) { long end = Convert.ToInt64(state["endAt"]); var left = Math.Max(0,(end-DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())/1000); label = (left/60).ToString("00")+":"+(left%60).ToString("00"); }
-        if(privacyLabel != "") label = privacyLabel;
+        if(privacyLabel != "" && Setting("micCamIndicator","True") != "False") label = privacyLabel;
         else if(!TimerRunning() && SystemInformation.PowerStatus.BatteryChargeStatus != BatteryChargeStatus.NoSystemBattery && SystemInformation.PowerStatus.BatteryLifePercent < .2f) label = ((int)(SystemInformation.PowerStatus.BatteryLifePercent*100))+"%";
         using(var brush = new SolidBrush(Color.FromArgb(167,139,250))) e.Graphics.FillEllipse(brush,Width*.16f,Height*.42f,Height*.16f,Height*.16f);
         using(var font = new Font("Segoe UI",Math.Max(8,Height*.32f),FontStyle.Regular,GraphicsUnit.Pixel)) TextRenderer.DrawText(e.Graphics,label,font,new Rectangle((int)(Width*.2f),0,(int)(Width*.7f),Height),ForeColor,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
@@ -272,6 +271,20 @@ sealed class IslandHost : Form {
     void Send(string command) { try { if(childInput != null) childInput.WriteLine(command); } catch {} }
     void Message(string line) {
         if(child == null) return;
+        if(line.StartsWith("ISLANDLY:shell:")) {
+            int id=0; string error="";
+            try {
+                var request=json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(Convert.FromBase64String(line.Substring(15))));
+                id=Convert.ToInt32(request["id"]); string kind=Convert.ToString(request["kind"]), target=Convert.ToString(request["target"]);
+                if(target.Length>32768) throw new Exception("Target too long");
+                if(kind == "url") { Uri url; if(!Uri.TryCreate(target,UriKind.Absolute,out url) || (url.Scheme != "http" && url.Scheme != "https")) throw new Exception("Unsupported URL"); }
+                else if(kind != "path" && kind != "reveal" || !Path.IsPathRooted(target)) throw new Exception("Unsupported path");
+                // Shell activation is requested by the user, outside the panel-runtime job.
+                using(var process=Process.Start(new ProcessStartInfo(kind == "reveal" ? "explorer.exe" : target,kind == "reveal" ? "/select,\""+target.Replace("\"","")+"\"" : "") { UseShellExecute=true })) {}
+            } catch(Exception ex) { error=ex.Message; }
+            Send("shell-result:"+id+":"+Convert.ToBase64String(Encoding.UTF8.GetBytes(error)));
+            return;
+        }
         if(line == "ISLANDLY:ready:") { ready = true; readyAt = clock.ElapsedMilliseconds; latencies.Enqueue(readyAt-launchedAt); Position(); Status(); }
         if(line == "ISLANDLY:idle:") { shutdownAt = clock.ElapsedMilliseconds; }
         if(line == "ISLANDLY:restart:") { EndSession(); OpenPanel("settings"); return; }
