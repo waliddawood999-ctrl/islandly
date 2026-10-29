@@ -1,3 +1,6 @@
+const refreshWorkArea = () => API.call('island:work-area').then(workArea => { if (workArea) Island.configure({ workArea }); }).catch(() => {});
+refreshWorkArea();
+API.on('settings:update', refreshWorkArea);
 // Wiring: pointer handling, drag & drop, shortcuts, settings, updates.
 (() => {
   // The window is only as large as the island plus a small margin, so "pointer inside the window" is the hover.

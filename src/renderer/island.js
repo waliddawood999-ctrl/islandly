@@ -23,7 +23,7 @@ const Island = (() => {
   const features = [];
   const M = window.Motion || null;
 
-  const FOOTER = 22; // room for the tab dots below the panel's content
+  const FOOTER = 24; // room for the tab dots below the panel's content
   const TOP = 8; // gap above the island
   const BELOW_GAP = 8; // gap between the island and the strip under it
   const AUTO_HIDE_MS = 5000;
@@ -42,6 +42,7 @@ const Island = (() => {
   let selected = 0;
   let peekState = null;
   let current = null;
+  let workArea = { width: screen.availWidth || 1280, height: screen.availHeight || 800 };
   let autoHide = (window.islandAPI && window.islandAPI.settings.autoHide) || 'auto';
   let compactKey = null;
   let compactSince = 0;
@@ -87,35 +88,34 @@ const Island = (() => {
 
   function setTarget(w, hgt, y, r, nextBelow) {
     const now = liveSize();
-    const grow = (a, b) => Math.max(a, b) * OVERSHOOT;
-    const extra =
-      nextBelow || belowShape
-        ? { w: Math.max(nextBelow ? nextBelow.w : 0, belowShape ? belowShape.w : 0), h: Math.max(nextBelow ? nextBelow.h : 0, belowShape ? belowShape.h : 0) }
-        : null;
-    sendEnvelope(grow(now.w, w), grow(now.h, hgt), Math.max(now.y, y), extra);
+    sendEnvelope(Math.max(now.w, w), Math.max(now.h, hgt), Math.max(now.y, y), nextBelow || belowShape);
     Object.assign(shape, { w, h: hgt, y, r });
     placeBelow(nextBelow);
-
     if (shapeAnim) shapeAnim.stop();
-    const target = { width: w + 'px', height: hgt + 'px', top: y + 'px', borderRadius: r + 'px' };
-    if (!M || motionOff) {
-      Object.assign(el.style, target);
-      settle();
-      return;
-    }
+    // FLIP: one layout at the destination, then compositor transform/opacity only.
+    Object.assign(el.style, { width: w + 'px', height: hgt + 'px', top: y + 'px', borderRadius: r + 'px' });
+    if (motionOff || !el.animate) { settle(); return; }
     animating = true;
-    startFollow();
-    startShapeLoop();
+    el.style.willChange = 'transform';
     const started = performance.now();
-    const anim = M.animate(el, target, SPRING);
-    shapeAnim = anim;
-    stats.animations++;
-    anim.then(() => {
-      if (shapeAnim !== anim) return; // a newer animation took over
-      shapeAnim = null;
+    const animation = el.animate([
+      { transform: `translateX(-50%) translateY(${now.y-y}px) scale(${now.w/w}, ${now.h/hgt})` },
+      { transform: 'translateX(-50%) translateY(0px) scale(1, 1)' },
+    ], { duration: reducedMotion ? 100 : 180, easing: 'cubic-bezier(.2,.9,.3,1)' });
+    const anim = { stop: () => animation.cancel() };
+    shapeAnim = anim; stats.animations++;
+    if (nextBelow) {
+      below.style.top = (y + hgt + BELOW_GAP) + 'px';
+      below.animate([{ transform: `translateY(${now.y + now.h - y - hgt}px)` }, { transform: 'translateY(0px)' }],
+        { duration: reducedMotion ? 100 : 180, easing: 'cubic-bezier(.2,.9,.3,1)' });
+    }
+    startShapeLoop(); reportShape();
+    animation.finished.then(() => {
+      if (shapeAnim !== anim) return;
+      shapeAnim = null; el.style.willChange = '';
       stats.lastDuration = performance.now() - started;
       settle();
-    });
+    }).catch(() => {});
   }
 
   function settle() {
@@ -133,7 +133,7 @@ const Island = (() => {
     if (nextEl !== belowEl) {
       if (belowEl && M && !motionOff) {
         const old = belowEl;
-        M.animate(below, { opacity: 0, y: -6 }, { duration: 0.1 }).then(() => old.remove());
+        M.animate(below, { opacity: 0 }, { duration: 0.1 }).then(() => old.remove());
       } else if (belowEl) belowEl.remove();
       belowEl = nextEl;
       if (nextEl) {
@@ -141,7 +141,7 @@ const Island = (() => {
         if (M && !motionOff) {
           below.style.opacity = '0';
           belowAnimating++;
-          M.animate(below, { opacity: [0, 1], y: [-8, 0], scale: [0.96, 1] }, { ...SPRING, delay: reducedMotion ? 0 : 0.18 }).then(() => { belowAnimating--; reportShape(); });
+          M.animate(below, { opacity: [0, 1] }, { ...SPRING, delay: reducedMotion ? 0 : 0.18 }).then(() => { belowAnimating--; reportShape(); });
           startShapeLoop();
         }
       }
@@ -157,24 +157,6 @@ const Island = (() => {
     }
   }
 
-  // Keep the strip under the pill while the pill's height animates. The loop runs only while a strip is shown.
-  let following = false;
-  function followBelow() {
-    if (!belowShape) {
-      following = false;
-      return;
-    }
-    below.style.top = el.getBoundingClientRect().bottom + BELOW_GAP + 'px';
-    reportShape();
-    if (animating) requestAnimationFrame(followBelow);
-    else following = false;
-  }
-  function startFollow() {
-    if (following || !belowShape) return;
-    following = true;
-    requestAnimationFrame(followBelow);
-  }
-
   /** Natural height of a view: panels (v.auto) are measured, small pills use their fixed height. */
   function heightOf(v) {
     if (!v.auto) return v.h;
@@ -185,6 +167,21 @@ const Island = (() => {
     return Math.ceil(v.el.offsetHeight);
   }
 
+  function expandedSize(v, id) {
+    const maxWidth = Math.max(160, Math.min(560, workArea.width - 2 * GUTTER));
+    const base = Math.min(360, maxWidth);
+    const preferred = id === 'music' && v.el.querySelector('.m-body')?.style.display !== 'none' ? Math.min(460, maxWidth) : base;
+    const clone = v.el.cloneNode(true);
+    Object.assign(clone.style, { width: (preferred - 32) + 'px', height: 'auto', position: 'relative', padding: '0', inset: 'auto' });
+    meter.classList.add('expanded-grid'); meter.appendChild(clone);
+    const needed = Math.max(preferred, Math.min(v.w, clone.scrollWidth + 32));
+    const w = Math.min(maxWidth, needed);
+    clone.style.width = (w - 32) + 'px';
+    const natural = v.auto ? clone.offsetHeight : v.h;
+    clone.remove();
+    const hgt = Math.min(Math.max(120, workArea.height - TOP - GUTTER - (v.below ? v.below.h + BELOW_GAP : 0)), Math.max(440, natural + FOOTER + 44));
+    return { w, h: hgt };
+  }
   const expandable = () => features.filter((f) => f.view('expanded'));
 
   function bestCompact(includeIdle) {
@@ -209,18 +206,19 @@ const Island = (() => {
       selected = Math.min(selected, list.length - 1);
       const f = list[selected];
       const v = f.view('expanded');
-      const hgt = heightOf(v) + (list.length > 1 ? FOOTER : 0);
+      const dims = expandedSize(v, f.id);
+      const hgt = dims.h;
       return {
         key: 'x:' + f.id,
         mode: 'expanded',
         el: v.el,
-        w: v.w,
+        w: dims.w,
         h: hgt,
         y: TOP,
         r: radiusFor(v.w, hgt, v),
         withDots: list.length > 1,
         auto: !!v.auto,
-        below: v.below || null,
+        below: v.below ? { ...v.below, w: Math.min(v.below.w, workArea.width - 2 * GUTTER) } : null,
       };
     }
     if (peekState && Date.now() < peekState.until) {
@@ -279,7 +277,7 @@ const Island = (() => {
 
   function mount(v) {
     resizer.disconnect();
-    if (v.auto) resizer.observe(v.el);
+    if (v.auto) { resizer.observe(v.el); for (const child of v.el.children) resizer.observe(child); }
     sizeStage(v);
     const kids = [v.el];
     if (v.withDots) {
@@ -305,6 +303,8 @@ const Island = (() => {
 
   // The content box is centred with `left`, so transforms stay free for the enter animation.
   function sizeStage(v) {
+    stage.classList.toggle('expanded-grid', v.mode === 'expanded');
+    if(v.mode !== 'expanded') v.el.style.width = '';
     stage.style.width = v.w + 'px';
     stage.style.height = v.h + 'px';
     stage.style.left = `calc(50% - ${v.w / 2}px)`;
@@ -325,8 +325,8 @@ const Island = (() => {
       mount(v);
       M.animate(
         stage,
-        { opacity: [0, 1], scale: [0.96, 1], filter: ['blur(4px)', 'blur(0px)'] },
-        { duration: reducedMotion ? 0.08 : 0.24, ease: [0.2, 0.9, 0.3, 1], delay: reducedMotion ? 0 : 0.12 }
+        { opacity: [0, 1], scale: [0.98, 1] },
+        { duration: reducedMotion ? 0.08 : 0.12, ease: [0.2, 0.9, 0.3, 1], delay: 0 }
       );
     });
   }
@@ -506,6 +506,7 @@ const Island = (() => {
   }
 
   function configure(opts) {
+    if (opts.workArea) { workArea = opts.workArea; render(); }
     if (opts.autoHide) {
       autoHide = opts.autoHide;
       compactKey = null;
@@ -618,6 +619,17 @@ const Island = (() => {
       SPRING = reducedMotion ? { duration: 0.12, ease: 'easeOut' } : { type: 'spring', visualDuration: 0.34, bounce: 0.24 };
       document.documentElement.dataset.motion = motionOff ? 'off' : reducedMotion ? 'reduced' : 'full';
     },
+    whenPainted: () => new Promise((resolve, reject) => {
+      const until = performance.now() + 5000;
+      function painted() {
+        if (current && current.el.parentNode === stage && !animating && Number(getComputedStyle(stage).opacity) > .98) {
+          requestAnimationFrame(() => requestAnimationFrame(resolve)); return;
+        }
+        if (performance.now() > until) { reject(new Error('Island first paint timed out')); return; }
+        requestAnimationFrame(painted);
+      }
+      document.fonts.ready.then(painted);
+    }),
     isExpanded: () => hovered || pinned,
     hold,
     selectedId: () => {

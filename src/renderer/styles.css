@@ -437,3 +437,29 @@ html[dir] .lyrics-strip [dir='auto'], html[dir] .sh-item [dir='auto'], html[dir]
 /* T17 binds the backend motion setting; preserve existing layout, colors and type. */
 :root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation: none !important; transition: none !important; }
 :root[data-motion="reduced"] .wave i { animation: none !important; }
+
+/* T20: expanded content and pagination occupy separate grid rows. */
+#content.expanded-grid {
+  display: grid; grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px; padding: 16px; box-sizing: border-box;
+}
+#content.expanded-grid > .view {
+  position: relative; inset: auto; width: 100% !important; height: 100%; min-width: 0; min-height: 0;
+  overflow: auto; padding: 0; align-self: stretch; box-sizing: border-box;
+}
+#content.expanded-grid > .dots {
+  position: relative; inset: auto; min-height: 12px; gap: 8px; align-items: center;
+}
+.expanded-grid .clock-panel { display: grid; grid-template-rows: auto 1fr; gap: 16px; }
+.expanded-grid .ck-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+.expanded-grid .ck-clock { gap: 8px; flex-wrap: wrap; }
+.expanded-grid .ck-dates { text-align: start; display: grid; gap: 8px; }
+.expanded-grid .ck-apps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; align-content: start; }
+.expanded-grid .ck-app { padding: 12px; gap: 8px; min-height: 76px; }
+.expanded-grid .ck-app-name { white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
+.expanded-grid .p-head, .expanded-grid .td-head, .expanded-grid .np { gap: 12px; flex-wrap: wrap; }
+.expanded-grid .pr-row { display: grid; grid-template-columns: repeat(auto-fit,minmax(82px,1fr)); gap: 8px; }
+.expanded-grid .music-expanded { isolation: isolate; }
+.expanded-grid .m-bg { z-index: -1; }
+#island { transform-origin: 50% 0; transition: background-color .15s, color .15s; }
+#island.hint { transform: translateX(-50%); opacity: .9; }

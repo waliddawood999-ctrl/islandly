@@ -1,7 +1,7 @@
 name: T9 native idle and on-demand panels
 on:
   pull_request:
-    branches: [dev, codex/T17-integration, codex/T18-sac-reputation]
+    branches: [dev, codex/T17-integration, codex/T18-sac-reputation, codex/T19-contracts]
     paths:
       - 'src/**'
       - 'native/**'
@@ -33,6 +33,9 @@ jobs:
       - name: Reproducible frozen host (two clean build roots)
         shell: pwsh
         run: ./test/native-reproducible.ps1
+      - name: Slow first launch, native responsiveness and hotkey conflict regression
+        shell: pwsh
+        run: ./test/t20-startup.ps1
       - name: Cold-launch readiness and complete shutdown smoke
         shell: pwsh
         run: ./test/native-footprint.ps1 -Smoke -Mode reserved-bar
@@ -49,6 +52,7 @@ jobs:
           path: |
             native-perf-*.json
             out/host-identity.json
+            out/t20-startup/**
           if-no-files-found: warn
   packaged-windows:
     runs-on: windows-latest
@@ -105,6 +109,6 @@ jobs:
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
-          name: islandly-t18-sac-reputation-windows
+          name: islandly-t20-laptop-fixes-windows
           path: out/Islandly-sac-reputation-win64.zip
           if-no-files-found: error
