@@ -99,10 +99,10 @@ sealed class IslandHost : Form {
     string appliedMaterial = "";
 
     public IslandHost(string[] args) {
-        packaged = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"IslandlyPanels.exe"));
-        root = Arg(args,"--root", packaged ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"resources/app") : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"../..")));
+        packaged = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"panels/Islandly.exe"));
+        root = Arg(args,"--root", packaged ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"panels/resources/app") : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"../..")));
         root=Path.GetFullPath(root);
-        electron = Arg(args,"--electron", packaged ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"IslandlyPanels.exe") : Path.Combine(root,"node_modules/electron/dist/electron.exe"));
+        electron = Arg(args,"--electron", packaged ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"panels/Islandly.exe") : Path.Combine(root,"node_modules/electron/dist/electron.exe"));
         electron=Path.GetFullPath(electron);
         profile = Arg(args,"--profile", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"islandly"));
         profile=Path.GetFullPath(profile); NativeLog.Profile=profile;

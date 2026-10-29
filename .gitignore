@@ -14,5 +14,6 @@ dev/fonts/compare/shots.json
 dev/i18n/shots/
 
 native/bin/
+native/toolchain/
 footprint-local-*.json
 native-perf-*.json

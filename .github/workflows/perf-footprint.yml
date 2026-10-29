@@ -1,7 +1,7 @@
 name: T9 RAM footprint diagnosis
 on:
   pull_request:
-    branches: [dev]
+    branches: [dev, codex/T17-integration]
     paths:
       - 'src/**'
       - 'native/**'

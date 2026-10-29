@@ -1,10 +1,11 @@
 name: T9 native idle and on-demand panels
 on:
   pull_request:
-    branches: [dev]
+    branches: [dev, codex/T17-integration]
     paths:
       - 'src/**'
       - 'native/**'
+      - 'packaging/**'
       - 'scripts/**'
       - 'test/**'
       - 'package*.json'
@@ -29,7 +30,9 @@ jobs:
         run: |
           ./test/launch-policy.ps1
           ./test/sign-windows.test.ps1
-      - run: npm run build:native
+      - name: Reproducible frozen host (two clean build roots)
+        shell: pwsh
+        run: ./test/native-reproducible.ps1
       - name: Cold-launch readiness and complete shutdown smoke
         shell: pwsh
         run: ./test/native-footprint.ps1 -Smoke -Mode reserved-bar
@@ -43,11 +46,13 @@ jobs:
         if: always()
         with:
           name: t9-native-footprint
-          path: native-perf-*.json
+          path: |
+            native-perf-*.json
+            out/host-identity.json
           if-no-files-found: warn
   packaged-windows:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -59,25 +64,33 @@ jobs:
       - name: Package native launcher and on-demand runtime
         shell: pwsh
         run: ./scripts/package-native.ps1 -SkipArchive
-      - name: Optional Authenticode (credentials only on manual workflow dispatch)
-        shell: pwsh
-        env:
-          ISLANDLY_SIGN_PFX_BASE64: ${{ github.event_name == 'workflow_dispatch' && secrets.ISLANDLY_SIGN_PFX_BASE64 || '' }}
-          ISLANDLY_SIGN_PFX_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && secrets.ISLANDLY_SIGN_PFX_PASSWORD || '' }}
-          ISLANDLY_SIGN_TIMESTAMP_URL: ${{ vars.ISLANDLY_SIGN_TIMESTAMP_URL }}
-        run: ./scripts/sign-windows.ps1
-      - name: Archive the optionally signed package
+      - name: Archive identity-checked unsigned package
         shell: pwsh
         run: ./scripts/archive-native.ps1
       - name: Packaged startup, state handoff and crash containment
         shell: pwsh
-        run: ./test/native-footprint.ps1 -Smoke -Mode reserved-bar -Executable out/IslandlyPanels-win32-x64/Islandly.exe
-      - name: Compare reported legacy packaged launch path
-        shell: pwsh
-        run: ./test/legacy-packaged-launch.ps1
+        run: ./test/native-footprint.ps1 -Smoke -Mode reserved-bar -Executable out/Islandly-native-win64/Islandly.exe
+      - name: Exact reference EXE hash and full executable inventory
+        run: node scripts/windows-identity.js out/Islandly-native-win64
       - name: Packaged real hover click hotkey and recoverable launch errors
         shell: pwsh
         run: ./test/packaged-input.ps1
+      - name: Packaged native-only idle and panel RAM (overlay)
+        shell: pwsh
+        run: ./test/native-footprint.ps1 -Mode overlay -Output native-perf-packaged-overlay.json -Executable out/Islandly-native-win64/Islandly.exe
+      - name: Packaged native-only idle and panel RAM (AppBar)
+        shell: pwsh
+        run: ./test/native-footprint.ps1 -Mode reserved-bar -Output native-perf-packaged-appbar.json -Executable out/Islandly-native-win64/Islandly.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t18-packaged-footprint-and-identities
+          path: |
+            native-perf-packaged-*.json
+            out/Islandly-native-win64/EXECUTABLE-IDENTITY.json
+            out/Islandly-native-win64/EXE-SHA256.txt
+            out/Islandly-native-win64/EXE-VERSION-RESOURCES.json
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -86,6 +99,6 @@ jobs:
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
-          name: islandly-native-windows-preview
-          path: out/Islandly-native-win64.zip
+          name: islandly-t18-sac-reputation-windows
+          path: out/Islandly-sac-reputation-win64.zip
           if-no-files-found: error
