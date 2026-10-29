@@ -1,27 +1,29 @@
 # T17 packaged launch verification
 
-## Evidence and remaining uncertainty
+## Laptop root cause: Smart App Control
 
-Walid reports the original native host `5420c0b` from `C:\Users\walid\Desktop\Islandly-T9` on Windows 11 build 26300. His visible Desktop is redirected to OneDrive, but the reported executable path is outside `OneDrive\Desktop`. The dialog stack reaches `IslandHost.OpenPanel(String command)` from a WinForms timer callback. Messages include both error 87 and “The operation completed successfully” (error 0).
+Walid's Windows 11 build26300 Acer Aspire Lite16 has `SmartAppControlState=On`. His CodeIntegrity events3077/3118/3033/3089 identify unsigned `Desktop\Islandly-T9\IslandlyPanels.exe` blocked by policy `{0283ac0f-fff1-49ae-ada1-8a933130cad6}` at15:34,15:35,15:40,15:41 (twice) and16:09 Riyadh time, matching the old launch failures. Starting the cf89cc2 host itself now returns “An Application Control policy has blocked this file.” This is user-supplied real-laptop evidence; the Windows Server runner has no SAC and cannot establish SAC compatibility. Desktop redirection/ABI/cwd are not the demonstrated laptop cause.
 
-The original code captures `GetLastWin32Error()` **after** `EndSession()`. That cleanup calls other native APIs and can replace the actual process-creation error. The candidate captures it immediately after `CreateProcessW`, before freeing the environment or cleanup, and preserves the numeric error in the exception/log. This diagnostic defect and the escaping timer exception are confirmed in source; the underlying laptop process-creation failure remains unconfirmed until its original error is captured.
+**Both EXEs in previous previews are unsigned. Do not disable SAC.** If Windows blocks Islandly.exe before entry, it cannot create a native log or show a tray balloon. An unsigned preview is not a usable laptop fix for this machine. A signed build accepted by Windows policy is required before laptop panel/RAM validation can continue; adding a signing hook alone does not produce such a build.
 
-The legacy host successfully opens on the Windows Server CI runner with production package paths. Do not treat a directory named OneDrive in CI as actual OneDrive cloud-provider or Windows 11 build 26300 coverage. x64 layouts are checked as STARTUPINFO 104, PROCESS_INFORMATION 24 and extended job limits 144 bytes; no evidence establishes an original ABI-size defect.
+If the host can run but CreateProcessW reports a code-integrity/application-control block, it logs the exact error and shows an Arabic/English notice that Windows Smart App Control / App Control blocked the panels and a signed build is required. Win32 errors577,1260,4551 and the corresponding image-hash/policy/certificate NTSTATUS/HRESULT forms are classified, including wrapped exceptions. Generic access-denied5, malformed-image193/216 and unrelated errors are not labelled SAC. Policy blocks suppress the automatic retry and subsequent hover attempts. Explicit click/hotkey/tray actions can try again after replacing the runtime with a trusted build. Ordinary failures retain the single bounded retry.
 
-The candidate removes unused inherited anonymous stdio handles, uses explicit Unicode CreateProcessW and a normalized executable-parent working directory, and retains suspended creation followed by kill-on-close job assignment and resume. The named session pipe carries the existing contracts. Launch errors are logged before child startup, caught, shown through a throttled tray balloon and retried once. A later user action can try again. No Electron process remains resident while idle.
+Earlier hardening still applies: immediate last-error capture before cleanup, checked x64 layouts104/24/144, explicit Unicode CreateProcessW, normalized executable-parent cwd, no unused inherited stdio, scoped loader-dialog suppression and suspended job assignment before resume. It fixes diagnostics/recovery but cannot override OS application control. The native host remains the only idle process. See [WINDOWS-SIGNING.md](WINDOWS-SIGNING.md) for the optional signing workflow and its verification limits.
 
 ## Laptop confirmation with the artifact
+
+Only perform these steps on the SAC laptop with a signed/trusted build accepted by its policy. Current unsigned CI previews are for Windows Server regression testing.
 
 1. Exit previous Islandly instances through the tray. Download the latest **launch-regression-passing** Windows artifact linked in PR #18. Extract the artifact wrapper, then extract its `Islandly-native-win64.zip` into a new folder; keep the complete directory together. Launch **Islandly.exe**.
 2. Test hover, then close the expanded panel and wait for complete shutdown. Repeat with a click, then Ctrl+Alt+I. Open Settings through the tray as well. Confirm there is no .NET exception dialog and no hung host. Repeat in overlay and reserved-bar modes.
 3. After a panel closes, wait at least 8 seconds and check Task Manager: only `Islandly.exe` should remain; there should be no `IslandlyPanels.exe` Browser/GPU/Utility/Renderer processes.
 4. If launch fails, keep `%APPDATA%\islandly\native-panels.log` (and `.old`, if present). It records the launch stage, working directory and original numeric error without environment values. `panel-chromium.log` may exist if Chromium starts. A missing Chromium log alone does not identify a native API failure. Share the native log for diagnosis; do not infer the cause from a balloon.
 
-CI is automated Windows Server input injection, not a manual test on Walid's laptop. Successful laptop confirmation is still required.
+CI is automated Windows Server input injection, not SAC enforcement. Laptop confirmation is blocked pending a signed/trusted build; no certificate has been bought, generated or configured.
 
 ## Reproduce automated packaged input on the laptop
 
-From a checkout of `codex/T17-integration`, with other Islandly instances closed, use PowerShell. Replace only the package folder below with the extracted artifact's folder containing both EXEs:
+This malformed-image regression intentionally substitutes an unsigned fake runtime. Run it on a Windows test runner without SAC enforcement, not as SAC-laptop acceptance. From a checkout of `codex/T17-integration`, with other Islandly instances closed, use PowerShell. Replace only the package folder below with the extracted artifact's folder containing both EXEs:
 
 ```powershell
 $env:RUNNER_TEMP = Join-Path $env:TEMP ('Islandly-T17-' + [guid]::NewGuid())

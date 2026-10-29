@@ -74,7 +74,7 @@ sealed class IslandHost : Form {
     StreamWriter childInput;
     NamedPipeServerStream sessionPipe;
     readonly System.Windows.Forms.Timer launchRetry = new System.Windows.Forms.Timer();
-    bool launching;
+    bool launching, policyBlockedHover;
     string retryCommand="";
     long nextLaunchAt, lastFailureNotice;
     IntPtr job;
@@ -253,21 +253,27 @@ sealed class IslandHost : Form {
         NativeLog.Write(stage,ex);
         if(tray!=null && clock.ElapsedMilliseconds-lastFailureNotice>=5000 || tray!=null && lastFailureNotice==0) {
             lastFailureNotice=clock.ElapsedMilliseconds;
-            try { tray.ShowBalloonTip(5000,"Islandly","Could not open the panel. Retrying once; click the island to try again. Details: native-panels.log in your Islandly data folder.",ToolTipIcon.Warning); } catch { }
+            string notice=LaunchPolicy.IsBlocked(ex)?LaunchPolicy.Notice:"Could not open the panel. Retrying once; click the island to try again. Details: native-panels.log in your Islandly data folder.";
+            try { tray.ShowBalloonTip(5000,"Islandly",notice,ToolTipIcon.Warning); } catch { }
         }
     }
     void OpenPanel(string command,string origin="command",bool retry=false) {
         hoverArmed=false; hoverDwell.Stop();
+        if(policyBlockedHover && origin=="hover") return;
         if(closing || launching || clock.ElapsedMilliseconds<nextLaunchAt) return;
         if(child!=null) { if(ready) Send(command); return; }
         launchRetry.Stop(); retryCommand=""; launching=true;
-        try { OpenPanelCore(command,origin); }
+        try { OpenPanelCore(command,origin); policyBlockedHover=false; }
         catch(Exception ex) {
             // Capture API errors at the call site, before any disposal/positioning calls.
             try { EndSession(); } catch(Exception cleanup) { NativeLog.Write("launch-cleanup",cleanup); }
             nextLaunchAt=clock.ElapsedMilliseconds+1000;
+            if(LaunchPolicy.IsBlocked(ex)) {
+                policyBlockedHover=true;
+                NativeLog.Write("launch-policy-block","automatic retry and subsequent hover launches suppressed; a signed/trusted build is required; explicit user action can retry after replacement");
+            }
             ReportFailure("launch-failed origin="+origin,ex);
-            if(!retry && !closing) {
+            if(LaunchPolicy.ShouldRetry(ex,retry) && !closing) {
                 retryCommand=command; launchRetry.Start();
             }
         } finally { launching=false; }

@@ -24,6 +24,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Application-control error policy and signing guards
+        shell: pwsh
+        run: |
+          ./test/launch-policy.ps1
+          ./test/sign-windows.test.ps1
       - run: npm run build:native
       - name: Cold-launch readiness and complete shutdown smoke
         shell: pwsh
@@ -52,7 +57,18 @@ jobs:
       - run: npm ci
       - run: npm test
       - name: Package native launcher and on-demand runtime
-        run: npm run package:native
+        shell: pwsh
+        run: ./scripts/package-native.ps1 -SkipArchive
+      - name: Optional Authenticode (credentials only on manual workflow dispatch)
+        shell: pwsh
+        env:
+          ISLANDLY_SIGN_PFX_BASE64: ${{ github.event_name == 'workflow_dispatch' && secrets.ISLANDLY_SIGN_PFX_BASE64 || '' }}
+          ISLANDLY_SIGN_PFX_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && secrets.ISLANDLY_SIGN_PFX_PASSWORD || '' }}
+          ISLANDLY_SIGN_TIMESTAMP_URL: ${{ vars.ISLANDLY_SIGN_TIMESTAMP_URL }}
+        run: ./scripts/sign-windows.ps1
+      - name: Archive the optionally signed package
+        shell: pwsh
+        run: ./scripts/archive-native.ps1
       - name: Packaged startup, state handoff and crash containment
         shell: pwsh
         run: ./test/native-footprint.ps1 -Smoke -Mode reserved-bar -Executable out/IslandlyPanels-win32-x64/Islandly.exe
