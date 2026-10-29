@@ -149,12 +149,12 @@ In the collapsed pill, **eyes + time** (confirmed): `[eyes] [time]`, mirrored in
 | Eye | one **solid capsule 13 × 26**, fully rounded ends (radius 6.5), **no pupil, no outline** |
 | Resting tilt | **−11°** (top leans left), both eyes parallel; the same in LTR and RTL |
 | Two eyes | centres **22 apart**; the group's bounding box is ≈ **40 × 28** (78 % of the 36 px height; 4 px free above and below at rest) |
-| Eyes ↔ time | **≥ 16 px** at rest (CSS gap 16 + box slack), **≥ 6 px** at the extreme gaze (checked by the audit) |
+| Eyes ↔ time | **≥ 16 px** at rest, **≥ 11 px** at the extreme gaze (checked by the audit); the eyes never swap sides or approach the time |
 | Colour | dark island: `#f7f8fc`; light island: `#0c0c12` (near-black, strong contrast); the light/dark choice follows the island's tint exactly like the text does (`on-light`) |
 | Lid (sleepy) | not an overlay: the upright slot of each eye is **clipped from the top** by `lid × slot height`, so the cut edge is horizontal on screen and any material shows through |
 
-### 4.3 The gaze (fixed: obvious, 2-D, continuous angle)
-One smoothed vector **g ∈ [−1,1]²** drives everything; offset, lean, squash and foreshortening are all derived from it, so they cannot disagree.
+### 4.3 The gaze (obvious, 2-D, continuous angle; the eyes never change place)
+**The eyes stay fixed**: same two spots in the bar, same side of the time always (mirrored only by language direction), same −11° tilt, no lean. The gaze is a **small shift of a few pixels inside each eye's own spot**, plus a slight squash of the far-side eye for direction. One smoothed vector **g ∈ [−1,1]²** drives it, so the parts cannot disagree.
 
 ```
 d   = cursor − pillCentre            dist = |d|
@@ -165,21 +165,20 @@ g += (target − g) · (1 − exp(−4·dt))                  // 4 per second: t
 ```
 | Derived value | Formula | At full gaze |
 |---|---|---|
-| Group offset | `x = 7·g.x`, `y = clamp(4·g.y + droop − 0.5·squint, ±4)` | up to **±7 px** sideways, **±4 px** up/down (was ±5 / ±2) |
-| Lean (the 3-D turn) | both eyes rotate to `−11° + 7°·g.x`, i.e. **toward the cursor** | −18° looking left, −4° looking right |
+| Gaze shift (both eyes, same amount) | `x = 4·g.x`, `y = 3·g.y − 0.5·squint` | up to **±4 px** sideways, **±3 px** up/down |
 | Far-eye squash | the eye on the far side gets width `1 − 0.18·|g.x|` (cursor right: the left eye; cursor left: the right eye) | **0.82** |
 | Foreshortening | both eyes get length `1 − 0.12·|g.y|` | **0.88** looking straight down/up |
-| Droop (sleepy only) | `+2.5 px · lid/0.54` | |
+| Tilt, position of the group | **fixed**: −11°, the same spot | none |
 
 *sim*, the five requested positions (cursor measured from the pill centre; gaze after 2 s):
 
-| Cursor | g | group offset | tilt (both eyes) | far-eye width | length |
-|---|---|---|---|---|---|
-| left (−170, 0) | (−1.00, 0) | **−7 px**, 0 | −18° | right eye 0.82 | 1.00 |
-| right (+170, 0) | (+1.00, 0) | **+7 px**, 0 | −4° | left eye 0.82 | 1.00 |
-| below-left (−120, +85) | (−0.82, +0.58) | −5.7 px, **+2.3 px** | −16.7° | right eye 0.85 | 0.93 |
-| below-right (+120, +85) | (+0.82, +0.58) | +5.7 px, **+2.3 px** | −5.3° | left eye 0.85 | 0.93 |
-| directly below (0, +95) | (0, +1.00) | 0, **+4 px** | −11° | both 1.00 | **0.88** |
+| Cursor | g | gaze shift | far-eye width | length |
+|---|---|---|---|---|
+| left (−170, 0) | (−1.00, 0) | **−4 px**, 0 | right eye 0.82 | 1.00 |
+| right (+170, 0) | (+1.00, 0) | **+4 px**, 0 | left eye 0.82 | 1.00 |
+| below-left (−120, +85) | (−0.82, +0.58) | −3.3 px, **+1.7 px** | right eye 0.85 | 0.93 |
+| below-right (+120, +85) | (+0.82, +0.58) | +3.3 px, **+1.7 px** | left eye 0.85 | 0.93 |
+| directly below (0, +95) | (0, +1.00) | 0, **+3 px** | both 1.00 | **0.88** |
 
 Gaze accuracy (checked in every theme × language × mode of the QA run): the angle of **g equals the angle to the cursor within 4°**, including far positions (330 px away), where the magnitude is 0.60 and the lids are sleepy. Glide response to a cursor jump from below to the right (*sim*): 33 % of the way at 100 ms, **63 % at 250 ms**, 86.5 % at 500 ms, 98.2 % at 1 s.
 
@@ -187,7 +186,7 @@ Gaze accuracy (checked in every theme × language × mode of the QA run): the an
 | State | Condition | Lid | Gaze | Blink |
 |---|---|---|---|---|
 | **Awake** | cursor within 240 px | 0 | full (above) | auto, every **3–4 s**, **280 ms** |
-| **Sleepy** | cursor farther than 240 px, or left the screen | eases to **0.54** (τ 220 ms; wakes with τ 70 ms): flat-topped, half-closed filled eyes, drooping 2.5 px, 10 % shorter | still follows the angle at 60 % (or rests at the centre if the pointer left) | slow, every **8–14 s**, 380 ms |
+| **Sleepy** | cursor farther than 240 px, or left the screen | eases to **0.54** (τ 220 ms; wakes with τ 70 ms): flat-topped, half-closed filled eyes in the same spot, 10 % shorter | still follows the angle at 60 % (or rests at the centre if the pointer left) | slow, every **8–14 s**, 380 ms |
 | **Happy squint** | pointer on the pill | 0 | as awake, fades out | eyes become 1.1 × wider and **0.6 ×** as long (τ 90 ms), nudged up 0.5 px |
 | **Blink** | timer | | | the *filled eye itself* narrows to **10 % of its width** (1.3 px, still solid) and back: close 40 % of 280 ms (ease-in, quadratic), hold 8 %, open 52 % (ease-out); blink and gaze combine by multiplication |
 | **Hidden** | fullscreen, Eco, Motion Off, `idleEyes` false, opening, other compact content | | | |
@@ -218,4 +217,4 @@ The Settings preview already renders material × mode × size × position; it ga
 5. Manual Windows check list (never claimed from CI): 100/150/200 % DPI, two monitors, AppBar mode, acrylic vs glass, 60/144 Hz, RTL position clamp, fullscreen hide.
 
 ## 7. Limits of the prototype
-HTML springs are the same maths but run in Chromium; the eyes' gaze, lean and squash are CSS transforms of two `<i>` capsules, not Direct2D shapes; the droplet outline is a CSS path, not Direct2D; acrylic is `backdrop-filter`; screenshots/GIFs are produced on a manual clock (GIFs are slowed ×5: 8 ms of animation per 40 ms frame), so they show shape, not real-time feel. No real-device timing, power or GPU measurement exists for any of A–C.
+HTML springs are the same maths but run in Chromium; the eyes' gaze shift and squash are CSS transforms of two `<i>` capsules, not Direct2D shapes; the droplet outline is a CSS path, not Direct2D; acrylic is `backdrop-filter`; screenshots/GIFs are produced on a manual clock (GIFs are slowed ×5: 8 ms of animation per 40 ms frame), so they show shape, not real-time feel. No real-device timing, power or GPU measurement exists for any of A–C.

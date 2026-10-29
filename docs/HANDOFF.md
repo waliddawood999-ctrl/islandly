@@ -772,3 +772,8 @@
 - Prototype (`dev/t19/prototype/`) now has the approved capsules, theme control (dark/light), a drawn cursor for captures, blink/sleepy/squint, and light-theme cards. `shots.mjs` audits 11 liquid-expand combinations (incl. 3 light), 8 gaze positions × dark/light × ar/en × 3 modes, 8 eye states × dark/light × ar/en, plus Reduced/Off.
 - Requests to Codex unchanged (keys `floating`, `idleEyes`, `panel:ready`, perf cases `eyes-idle|moving|hidden`, `liquid-open`); the real Settings window still has no floating/eyes switch because those keys are not in the contract.
 - Not tested: real Windows, real cursor polling cost (budgets only), GPU/CPU/power for B and C, screen readers, 150 % DPI. GIFs are slowed (liquid ×5; eyes real-time at 25 fps equivalents) on a manual clock.
+
+## 2026-10-29 · Claude · T19-UX (correction: the eyes never move, only the gaze)
+
+- Walid's correction applied to `docs/MOTION_SPEC.md` §4.3 and the prototype: the eyes stay in fixed spots (same side of the time always, mirrored only by language direction, tilt fixed at -11°); the gaze is a few-pixel shift inside each eye's own spot (**±4 px sideways, ±3 px up/down**) plus the far-side squash (0.82) and the 0.88 foreshortening looking down. The 6-8° lean and the sleepy droop are removed. The earlier ±7/±4 px group travel and lean numbers in the previous entry are superseded by this entry.
+- Evidence: `node dev/t19/prototype/shots.mjs` no layout problems, no page errors; eyes-to-time clearance now audited at >= 11 px at the extreme gaze; gaze angle within 4° of the cursor in all combinations. Re-rendered boards: `dev/t19/sheets/motion-C-gaze-{overlay,appbar,floating}.png` (+ `-far`), `motion-C-states.png`, GIFs.

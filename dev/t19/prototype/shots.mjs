@@ -54,7 +54,7 @@ const AUDIT = (state) => {
       });
       if (hit(e[0], e[1])) bad.push('eyes overlap each other');
       const edge = Math.min(...e.map((x) => (x.left > t.left ? x.left - t.right : t.left - x.right)));
-      if (edge < 6) bad.push('eyes and time closer than 6 px: ' + edge.toFixed(1));
+      if (edge < 11) bad.push('eyes and time closer than 11 px: ' + edge.toFixed(1));
     }
   } else {
     const card = document.getElementById('card');
@@ -140,7 +140,7 @@ for (const theme of ['dark', 'light'])
       const page = await open(base, 2);
       for (const [name, dx, dy] of GAZE_AT) {
         const tag = `${theme}-${lang}-${mode}-gaze-${name}`;
-        await page.evaluate(([x, y]) => { window.proto.pointer(x, y); window.proto.step(2000); }, [360 + dx, cy + dy]);
+        await page.evaluate(([x, y]) => { window.proto.pointer(x, y); window.proto.step(2000); window.proto.deferBlink(); }, [360 + dx, cy + dy]);
         await audit(page, 'collapsed', tag);
         const st = await page.evaluate(() => window.proto.state().eye);
         const rec = { theme, lang, mode, name, gx: st.g.x, gy: st.g.y, lid: +st.lid.toFixed(2) };
@@ -174,6 +174,7 @@ for (const theme of ['dark', 'light'])
       await page.evaluate(([p, cy]) => {
         if (p === 'pill') window.proto.pointer(360, cy); else if (p) window.proto.pointer(360 + p[0], cy + p[1]); else window.proto.pointer(360 + 120, cy + 70);
         window.proto.step(1500);
+        if (!window.__keepBlink) window.proto.deferBlink();
       }, [at, cy]);
       if (extra.blink) await page.evaluate(() => { const P = window.proto; P.blinkNow(); for (let i = 0; i < 400; i++) { P.step(1); const e = P.state().eye; if (e.blinkT >= 112) break; } });
       await audit(page, 'collapsed', tag);

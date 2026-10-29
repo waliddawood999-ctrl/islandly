@@ -95,8 +95,8 @@
   }
 
   // ---- C: eyes (MOTION_SPEC.md section 4). Two filled capsules, no pupils. The gaze is one smoothed vector g in [-1, 1]^2
-  // that follows the real angle to the cursor; offset, lean, far-eye squash and foreshortening are all derived from it.
-  const GAZE = { x: 7, y: 4, lean: 7, farSquash: 0.18, foreshorten: 0.12, ramp: 50, rate: 4, farGain: 0.6, yLimit: 4 };
+  // that follows the real angle to the cursor; the small offset, far-eye squash and foreshortening are all derived from it.
+  const GAZE = { x: 4, y: 3, farSquash: 0.18, foreshorten: 0.12, ramp: 50, rate: 4, farGain: 0.6 }; // the eyes never change place: only a few px of gaze shift
   const g = { x: 0, y: 0 }; // smoothed gaze
   let squint = 0, lidNow = 0.54;
   const slots = [...document.querySelectorAll('.slot')], eyeEls = [...document.querySelectorAll('.eye')], eyesBox = $('eyes');
@@ -137,10 +137,9 @@
       }
     }
     eye.g = { x: +g.x.toFixed(3), y: +g.y.toFixed(3) }; eye.lid = lidNow; eye.squint = squint; eye.blinkW = blinkW;
-    const tilt = -11 + g.x * GAZE.lean; // both eyes lean toward the cursor
-    const droop = 2.5 * (lidNow / 0.54);
+    const tilt = -11; // fixed: no lean
     const x = g.x * GAZE.x;
-    const y = clamp(g.y * GAZE.y + droop - 0.5 * squint, -GAZE.yLimit, GAZE.yLimit);
+    const y = g.y * GAZE.y - 0.5 * squint;
     eyesBox.style.transform = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px)`;
     const fore = 1 - GAZE.foreshorten * Math.abs(g.y) - 0.1 * (lidNow / 0.54);
     const sy = fore * (1 - 0.4 * squint);
@@ -208,6 +207,7 @@
     step(ms) { // manual clock: advance in 1 ms slices so the springs behave as in a live run
       for (let i = 0; i < ms; i++) { fake += 1; frame(1); }
     },
+    deferBlink() { eye.blinkT = -1; eye.blinkAt = now() + 1e7; stepC(0, now()); },
     blinkNow() { eye.blinkAt = now(); eye.blinkT = -1; },
     setBlinkT(ms) { eye.blinkT = ms; eye.blinkLen = 280; stepC(0, now()); },
     state() { return { f, d, vf, vd, target, eye: { ...eye } }; },
