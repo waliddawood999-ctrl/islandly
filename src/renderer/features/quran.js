@@ -20,11 +20,18 @@ Island.register({
     this.bar = h('div', { class: 'bar thin q-bar', dir: 'ltr' }, this.fill);
     this.pos = h('span', { dir: 'ltr' }, clock(0));
     this.dur = h('span', { dir: 'ltr' }, clock(0));
-    const ctl = (icon, key, fn, extra = '') => I18N.mark(h('button', { class: ('ctl ' + extra).trim(), 'data-interactive': '1', onclick: fn }, html(icon)), key, null, 'title');
+    const ctl = (icon, key, fn, extra = '') =>
+      I18N.mark(h('button', { class: ('ctl ' + extra).trim(), 'data-interactive': '1', onclick: fn }, html(icon)), key, null, 'title');
     this.playBtn = ctl(ICONS.play, 'quranPlay', () => this.toggle(), 'main');
     this.stopBtn = I18N.mark(h('button', { class: 'chip', 'data-interactive': '1', onclick: () => this.stop() }), 'quranStop');
     // like the music player: the transport keeps its left-to-right order in Arabic too
-    this.ctls = h('div', { class: 'ctls', dir: 'ltr' }, ctl(ICONS.prev, 'quranPrev', () => this.step(-1)), this.playBtn, ctl(ICONS.next, 'quranNext', () => this.step(1)));
+    this.ctls = h(
+      'div',
+      { class: 'ctls', dir: 'ltr' },
+      ctl(ICONS.prev, 'quranPrev', () => this.step(-1)),
+      this.playBtn,
+      ctl(ICONS.next, 'quranNext', () => this.step(1))
+    );
     this.status = h('div', { class: 'm-artist q-status' });
     this.listEl = h('div', { class: 'q-list scroll' });
     this.head = h(
@@ -142,11 +149,26 @@ Island.register({
     a.volume = Math.max(0, Math.min(1, Number(API.settings.quranVolume ?? 0.8)));
     // events from an element that was already dropped are ignored
     const mine = (fn) => () => this.audio === a && fn();
-    a.addEventListener('play', mine(() => ((this.playing = true), this.paint(), Island.render())));
-    a.addEventListener('pause', mine(() => ((this.playing = false), this.paint(), Island.render())));
-    a.addEventListener('timeupdate', mine(() => this.progress()));
-    a.addEventListener('ended', mine(() => this.step(1)));
-    a.addEventListener('error', mine(() => ((this.error = 'quranOffline'), this.stop())));
+    a.addEventListener(
+      'play',
+      mine(() => ((this.playing = true), this.paint(), Island.render()))
+    );
+    a.addEventListener(
+      'pause',
+      mine(() => ((this.playing = false), this.paint(), Island.render()))
+    );
+    a.addEventListener(
+      'timeupdate',
+      mine(() => this.progress())
+    );
+    a.addEventListener(
+      'ended',
+      mine(() => this.step(1))
+    );
+    a.addEventListener(
+      'error',
+      mine(() => ((this.error = 'quranOffline'), this.stop()))
+    );
     a.src = url;
     this.audio = a;
     this.remember();
@@ -234,9 +256,7 @@ Island.register({
     } else {
       const m = this.moshaf();
       const list = m ? m.surahList : Array.from({ length: 114 }, (_, i) => i + 1);
-      this.listEl.replaceChildren(
-        ...list.map((n) => row(`${I18N.num(n)} · ${t('surah.' + n)}`, n === this.pick.sura, () => this.choose('surahs', n)))
-      );
+      this.listEl.replaceChildren(...list.map((n) => row(`${I18N.num(n)} · ${t('surah.' + n)}`, n === this.pick.sura, () => this.choose('surahs', n))));
     }
   },
 
