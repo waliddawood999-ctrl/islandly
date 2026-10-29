@@ -23,7 +23,7 @@ $initialSettings = @{ weather=$false; updates=$false; icsUrl=''; breakEvery=0; t
 [IO.File]::WriteAllText("$profile/settings.json",$initialSettings,[Text.UTF8Encoding]::new($false))
 $timerDeadline = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + 7200000
 if ($Smoke) {
-    $fixture = @{ mode='focus'; total=7200; remaining=7200; running=$true; endAt=$timerDeadline; selected='timer'; clipboard=@(); clipboardPending=@('native handoff fixture') } | ConvertTo-Json
+    $fixture = @{ mode='focus'; total=7200; remaining=7200; running=$true; endAt=$timerDeadline; breakActive=17.25; selected='timer'; clipboard=@(); clipboardPending=@('native handoff fixture') } | ConvertTo-Json
     [IO.File]::WriteAllText("$profile/native-session.json",$fixture,[Text.UTF8Encoding]::new($false))
 }
 $exe = if ($Executable) { [IO.Path]::GetFullPath($Executable) } else { Join-Path $root 'native/bin/Islandly.exe' }
@@ -88,6 +88,7 @@ try {
         Command 'settings'; $opened=Wait-Phase 'panel'; Start-Sleep -Seconds 1
         Command 'close'; $closed=Wait-Phase 'idle'
         $saved = Get-Content "$profile/native-session.json" -Raw | ConvertFrom-Json
+        if ([Math]::Abs($saved.breakActive-17.25) -gt 0.001) { throw 'Active break counter lost across runtime shutdown' }
         if (!$saved.running -or [Math]::Abs($saved.endAt-$timerDeadline) -gt 1000) { throw 'Timer deadline lost or reset across runtime shutdown' }
         if ('native handoff fixture' -notin @($saved.clipboard.text)) { throw 'Native clipboard handoff was lost' }
         Command 'settings'; $second=Wait-Phase 'panel'

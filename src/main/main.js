@@ -567,6 +567,7 @@ function startNativeSession() {
       let saved;
       try { saved = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch (_) { saved = null; }
       if (saved) {
+        if (Number.isFinite(saved.breakActive)) breaks.active = Math.max(0, saved.breakActive);
         clipboardHistory.items = Array.isArray(saved.clipboard) ? saved.clipboard.slice(0, 100) : [];
         clipboardHistory.seq = Math.max(0, ...clipboardHistory.items.map(x => Number(x.id) || 0)) + 1;
         for (const text of saved.clipboardPending || []) if (typeof text === 'string') clipboardHistory.add(text);
@@ -597,7 +598,7 @@ function startNativeSession() {
           endAt: timer.endAt, selected: Island.selectedId(), expanded: Island.isExpanded() };
       })()`);
       nativeExpanded = snapshot.expanded;
-      return { ...snapshot, clipboard: clipboardHistory.items, clipboardPending: [],
+      return { ...snapshot, breakActive: breaks.active, clipboard: clipboardHistory.items, clipboardPending: [],
         monitors: screen.getAllDisplays().map(d => ({ id: String(d.id), ...screen.dipToScreenPoint({ x: d.bounds.x, y: d.bounds.y }) })) };
     },
   });

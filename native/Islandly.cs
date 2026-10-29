@@ -31,6 +31,7 @@ static class Native {
     [DllImport("user32.dll")] public static extern bool RemoveClipboardFormatListener(IntPtr h);
     [StructLayout(LayoutKind.Sequential)] public struct LASTINPUT { public uint size,time; }
     [DllImport("user32.dll")] public static extern bool GetLastInputInfo(ref LASTINPUT input);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr window,StringBuilder title,int max);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
     [DllImport("advapi32.dll")] public static extern int RegNotifyChangeKeyValue(IntPtr key,bool subtree,uint filter,IntPtr ev,bool async);
 
@@ -58,6 +59,12 @@ sealed class IslandHost : Form {
     readonly JavaScriptSerializer json = new JavaScriptSerializer();
     readonly System.Windows.Forms.Timer ticker = new System.Windows.Forms.Timer();
     readonly Stopwatch clock = Stopwatch.StartNew();
+    static readonly Dictionary<string,string> FriendlyNames = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase) {
+        {"chrome","Chrome"},{"msedge","Edge"},{"firefox","Firefox"},{"code","VS Code"},{"explorer","File Explorer"},
+        {"winword","Word"},{"excel","Excel"},{"powerpnt","PowerPoint"},{"outlook","Outlook"},{"olk","Outlook"},
+        {"teams","Teams"},{"ms-teams","Teams"},{"spotify","Spotify"},{"discord","Discord"},{"whatsapp","WhatsApp"},
+        {"telegram","Telegram"},{"slack","Slack"},{"notepad","Notepad"},{"windowsterminal","Terminal"},{"zoom","Zoom"}
+    };
     readonly Queue<double> latencies = new Queue<double>();
     Dictionary<string,object> settings = new Dictionary<string,object>();
     Dictionary<string,object> state = new Dictionary<string,object>();
@@ -95,6 +102,7 @@ sealed class IslandHost : Form {
         if (probe != "") { Directory.CreateDirectory(probe); measuring = true; }
         ReadSettings();
         try { state = json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(profile,"native-session.json"))); } catch { }
+        object initialBreak; if(state.TryGetValue("breakActive",out initialBreak)) breakSeconds=(int)(Math.Max(0,Convert.ToDouble(initialBreak))*60);
         object pending;
         if(state.TryGetValue("clipboardPending",out pending) && pending is IEnumerable) pendingClipboard.AddRange(((IEnumerable)pending).Cast<object>().Select(x => Convert.ToString(x)).Take(30));
         Text = "Islandly Native"; Name = "IslandlyNative";
@@ -209,6 +217,7 @@ sealed class IslandHost : Form {
         hoverArmed = false;
         if (child != null) { if (ready) Send(command); return; }
         if (!File.Exists(electron)) { tray.ShowBalloonTip(5000,"Islandly","Panel runtime missing. Run npm ci or reinstall the full package.",ToolTipIcon.Error); return; }
+        state["breakActive"]=breakSeconds/60.0; SaveState();
         launchedAt = clock.ElapsedMilliseconds;
         job = Native.CreateJobObject(IntPtr.Zero,null);
         var limit = new Native.EXTENDEDLIMIT(); limit.basic.flags = 0x2000; // KILL_ON_JOB_CLOSE
@@ -299,6 +308,7 @@ sealed class IslandHost : Form {
             try { var next = json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(Convert.FromBase64String(line.Substring(15))));
                 object previousEnd, nextEnd; if(next.TryGetValue("endAt",out nextEnd) && (!state.TryGetValue("endAt",out previousEnd) || Convert.ToString(previousEnd) != Convert.ToString(nextEnd))) compactAt=clock.ElapsedMilliseconds;
                 state = next;
+                object activeBreak; if(state.TryGetValue("breakActive",out activeBreak)) breakSeconds=(int)(Math.Max(0,Convert.ToDouble(activeBreak))*60);
                 SaveState();
             } catch {} // invalid child data never becomes a command
         }
@@ -386,8 +396,15 @@ sealed class IslandHost : Form {
             try {
                 uint pid; Native.GetWindowThreadProcessId(Native.GetForegroundWindow(),out pid);
                 string name; using(var p=Process.GetProcessById((int)pid)) name=p.ProcessName;
-                string[] skip={"Islandly","IslandlyPanels","electron","LockApp","SearchHost","ShellExperienceHost","StartMenuExperienceHost","TextInputHost"};
+                string[] skip={"Islandly","IslandlyPanels","electron","LockApp","SearchHost","SearchApp","ShellExperienceHost","StartMenuExperienceHost","TextInputHost"};
                 if(!skip.Contains(name,StringComparer.OrdinalIgnoreCase)) {
+                    string friendly;
+                    if(FriendlyNames.TryGetValue(name,out friendly)) name=friendly;
+                    else if(name.Equals("ApplicationFrameHost",StringComparison.OrdinalIgnoreCase)) {
+                        var title=new StringBuilder(512); Native.GetWindowText(Native.GetForegroundWindow(),title,512);
+                        name=title.ToString().Split(new[]{" - "},StringSplitOptions.None).Last().Trim();
+                        if(name == "") name="Store app"; if(name.Length>40) name=name.Substring(0,40);
+                    }
                     string file=Path.Combine(profile,"usage.json"); Dictionary<string,object> usage;
                     try { usage=json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file)); } catch { usage=new Dictionary<string,object>(); }
                     string day=DateTime.Now.ToString("yyyy-MM-dd"); object data;
@@ -426,6 +443,7 @@ sealed class IslandHost : Form {
         if(bar) { RemoveBar(); bar=false; }
         for(int i=1;i<=4;i++) Native.UnregisterHotKey(Handle,i);
         Native.RemoveClipboardFormatListener(Handle); if(consent != null) consent.Dispose();
+        state["breakActive"]=breakSeconds/60.0; SaveState();
         Send("quit"); EndSession(); tray.Visible=false; tray.Dispose(); ticker.Dispose();
     }
 }
