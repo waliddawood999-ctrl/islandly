@@ -5,30 +5,33 @@
  *   'compact'  - resting state (shown while the feature has the highest priority)
  *   'peek'     - short transient popup (Island.peek)
  *   'expanded' - full panel while hovered or pinned
- * and view() returns { el, w, h } or null. Elements are built once and updated in place.
+ * and view() returns { el, w, h } (or { el, w, auto: true } for panels that size to their content),
+ * optionally with `below: { el, w, h }`: a second, smaller pill shown under the island (e.g. lyrics).
+ * Elements are built once and updated in place.
+ *
+ * Motion: the pill's size is a spring (Motion, vendor/motion.js) that overshoots a little and settles in
+ * ~0.35 s, opening from the top centre downwards and sideways. Content never resizes with the pill: the old
+ * view fades out fast, the new one fades and scales in (0.96 -> 1) as the pill arrives. Only the pill box
+ * itself changes size (one isolated element with `contain`); its content is laid out once at the final size.
  *
  * Auto-hide: after a few seconds a compact view shrinks to a thin line at the top edge, so the island
  * does not sit on top of tabs and page content. Hovering the line brings it back.
- *
- * The animation loop only runs while the size is actually changing, so an idle island costs no CPU.
  */
 const Island = (() => {
   const el = $('#island');
   const stage = $('#content');
   const features = [];
+  const M = window.Motion || null;
 
   const FOOTER = 22; // room for the tab dots below the panel's content
   const TOP = 8; // gap above the island
+  const BELOW_GAP = 8; // gap between the island and the strip under it
   const AUTO_HIDE_MS = 5000;
   const HOVER_DWELL_MS = 280; // pointer must rest on the island before it opens (avoids accidental opens)
+  const LEAVE_MS = 160; // how long after the pointer leaves the island closes again
   const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const STIFFNESS = reducedMotion ? 900 : 320;
-  const DAMPING = reducedMotion ? 60 : 26; // ~0.73 damping ratio: a touch of overshoot, settles fast
-
-  const spring = (x) => ({ x, v: 0, t: x });
-  const S = { w: spring(90), h: spring(22), y: spring(TOP) };
-  let raf = 0;
-  let lastFrame = 0;
+  // Spring: visual duration ~0.35 s with a slight overshoot. Reduced motion: short, no bounce.
+  const SPRING = reducedMotion ? { duration: 0.12, ease: 'easeOut' } : { type: 'spring', visualDuration: 0.34, bounce: 0.24 };
 
   let hovered = false; // pointer has rested on the island long enough to open it
   let pointer = false; // pointer is over the island right now
@@ -41,7 +44,6 @@ const Island = (() => {
   let autoHide = (window.islandAPI && window.islandAPI.settings.autoHide) || 'auto';
   let compactKey = null;
   let compactSince = 0;
-  let swapTimer = 0;
   let hoverTimer = 0;
   let pinTimer = 0;
 
@@ -50,25 +52,120 @@ const Island = (() => {
   const meter = h('div', { id: 'measure' });
   document.body.appendChild(meter);
   const sliverEl = h('div', { class: 'view sliver' });
+  const below = h('div', { id: 'below' });
+  document.body.appendChild(below);
+
+  // ------------------------------------------------------------------ shape
+  // The current target of the pill and of the strip under it, in CSS pixels.
+  const shape = { w: 90, h: 22, y: TOP, r: 11 };
+  let belowShape = null; // { w, h } or null
+  let shapeAnim = null;
+  let animating = false;
+  const stats = { animations: 0, lastDuration: 0 };
+
+  const radiusFor = (w, hgt, v) => (v && v.radius) || (hgt <= 48 ? hgt / 2 : 22);
 
   // The window is only as big as the island (plus room for its shadow), so it never covers anything else.
   // Before an animation it grows to fit both the old and new size; once the spring settles it is trimmed.
+  // It is never resized during the animation itself, so the pill cannot shake.
   const GUTTER = 18;
   const OVERSHOOT = 1.08;
   let lastEnvelope = '';
-  function sendEnvelope(w, hgt, y) {
-    const env = { w: Math.ceil(w + 2 * GUTTER), h: Math.ceil(y + hgt + GUTTER) };
+  function sendEnvelope(w, hgt, y, extra) {
+    const env = { w: Math.ceil(Math.max(w, extra ? extra.w : 0) + 2 * GUTTER), h: Math.ceil(y + hgt + (extra ? BELOW_GAP + extra.h : 0) + GUTTER) };
     const key = env.w + 'x' + env.h;
     if (key === lastEnvelope) return;
     lastEnvelope = key;
     API.send('island:envelope', env);
   }
 
-  function apply() {
-    el.style.width = S.w.x + 'px';
-    el.style.height = S.h.x + 'px';
-    el.style.top = S.y.x + 'px';
-    el.style.borderRadius = Math.min(S.h.x / 2, 34) + 'px';
+  function liveSize() {
+    const r = el.getBoundingClientRect();
+    return { w: r.width, h: r.height, y: r.top };
+  }
+
+  function setTarget(w, hgt, y, r, nextBelow) {
+    const now = liveSize();
+    const grow = (a, b) => Math.max(a, b) * OVERSHOOT;
+    const extra =
+      nextBelow || belowShape
+        ? { w: Math.max(nextBelow ? nextBelow.w : 0, belowShape ? belowShape.w : 0), h: Math.max(nextBelow ? nextBelow.h : 0, belowShape ? belowShape.h : 0) }
+        : null;
+    sendEnvelope(grow(now.w, w), grow(now.h, hgt), Math.max(now.y, y), extra);
+    Object.assign(shape, { w, h: hgt, y, r });
+    placeBelow(nextBelow);
+
+    if (shapeAnim) shapeAnim.stop();
+    const target = { width: w + 'px', height: hgt + 'px', top: y + 'px', borderRadius: r + 'px' };
+    if (!M) {
+      Object.assign(el.style, target);
+      settle();
+      return;
+    }
+    animating = true;
+    startFollow();
+    startShapeLoop();
+    const started = performance.now();
+    const anim = M.animate(el, target, SPRING);
+    shapeAnim = anim;
+    stats.animations++;
+    anim.then(() => {
+      if (shapeAnim !== anim) return; // a newer animation took over
+      shapeAnim = null;
+      stats.lastDuration = performance.now() - started;
+      settle();
+    });
+  }
+
+  function settle() {
+    animating = false;
+    reportShape();
+    if (belowShape) below.style.top = el.getBoundingClientRect().bottom + BELOW_GAP + 'px';
+    sendEnvelope(shape.w, shape.h, shape.y, belowShape); // trim the window to the final size
+  }
+
+  // The strip under the island (lyrics). It slides in from under the pill and fades out again.
+  let belowEl = null;
+  function placeBelow(next) {
+    const nextEl = next ? next.el : null;
+    if (nextEl !== belowEl) {
+      if (belowEl && M) {
+        const old = belowEl;
+        M.animate(below, { opacity: 0, y: -6 }, { duration: 0.1 }).then(() => old.remove());
+      } else if (belowEl) belowEl.remove();
+      belowEl = nextEl;
+      if (nextEl) {
+        below.replaceChildren(nextEl);
+        if (M) {
+          below.style.opacity = '0';
+          M.animate(below, { opacity: [0, 1], y: [-8, 0], scale: [0.96, 1] }, { ...SPRING, delay: reducedMotion ? 0 : 0.18 });
+        }
+      }
+    }
+    belowShape = next ? { w: next.w, h: next.h } : null;
+    below.style.display = next ? '' : 'none';
+    if (next) {
+      below.style.width = next.w + 'px';
+      below.style.height = next.h + 'px';
+      below.style.left = `calc(50% - ${next.w / 2}px)`; // centred without a transform, which Motion animates
+    }
+  }
+
+  // Keep the strip under the pill while the pill's height animates. The loop runs only while a strip is shown.
+  let following = false;
+  function followBelow() {
+    if (!belowShape) {
+      following = false;
+      return;
+    }
+    below.style.top = el.getBoundingClientRect().bottom + BELOW_GAP + 'px';
+    if (animating) requestAnimationFrame(followBelow);
+    else following = false;
+  }
+  function startFollow() {
+    if (following || !belowShape) return;
+    following = true;
+    requestAnimationFrame(followBelow);
   }
 
   /** Natural height of a view: panels (v.auto) are measured, small pills use their fixed height. */
@@ -79,38 +176,6 @@ const Island = (() => {
       meter.appendChild(v.el);
     }
     return Math.ceil(v.el.offsetHeight);
-  }
-
-  function step(now) {
-    const dt = Math.min(0.032, (now - lastFrame) / 1000);
-    lastFrame = now;
-    let moving = false;
-    for (const s of [S.w, S.h, S.y]) {
-      s.v += (-STIFFNESS * (s.x - s.t) - DAMPING * s.v) * dt;
-      s.x += s.v * dt;
-      if (Math.abs(s.x - s.t) > 0.15 || Math.abs(s.v) > 0.4) moving = true;
-      else {
-        s.x = s.t;
-        s.v = 0;
-      }
-    }
-    apply();
-    if (moving) raf = requestAnimationFrame(step);
-    else {
-      raf = 0;
-      sendEnvelope(S.w.t, S.h.t, S.y.t); // trim the window to the final size
-    }
-  }
-
-  function setTarget(w, hgt, y) {
-    sendEnvelope(Math.max(S.w.x, w) * OVERSHOOT, Math.max(S.h.x, hgt) * OVERSHOOT, Math.max(S.y.x, y));
-    S.w.t = w;
-    S.h.t = hgt;
-    S.y.t = y;
-    if (!raf) {
-      lastFrame = performance.now();
-      raf = requestAnimationFrame(step);
-    }
   }
 
   const expandable = () => features.filter((f) => f.view('expanded'));
@@ -137,13 +202,28 @@ const Island = (() => {
       selected = Math.min(selected, list.length - 1);
       const f = list[selected];
       const v = f.view('expanded');
-      return { key: 'x:' + f.id, el: v.el, w: v.w, h: heightOf(v) + (list.length > 1 ? FOOTER : 0), y: TOP, withDots: list.length > 1, auto: !!v.auto };
+      const hgt = heightOf(v) + (list.length > 1 ? FOOTER : 0);
+      return {
+        key: 'x:' + f.id,
+        mode: 'expanded',
+        el: v.el,
+        w: v.w,
+        h: hgt,
+        y: TOP,
+        r: radiusFor(v.w, hgt, v),
+        withDots: list.length > 1,
+        auto: !!v.auto,
+        below: v.below || null,
+      };
     }
     if (peekState && Date.now() < peekState.until) {
       compactKey = null;
       const f = peekState.feature;
       const v = f.view('peek') || f.view('expanded');
-      if (v) return { key: 'p:' + f.id, el: v.el, w: v.w, h: heightOf(v), y: TOP, auto: !!v.auto };
+      if (v) {
+        const hgt = heightOf(v);
+        return { key: 'p:' + f.id, mode: 'peek', el: v.el, w: v.w, h: hgt, y: TOP, r: radiusFor(v.w, hgt, v), auto: !!v.auto };
+      }
     }
 
     const f = bestCompact(autoHide === 'never');
@@ -158,10 +238,10 @@ const Island = (() => {
       }
       if (autoHide === 'never' || f.sticky || Date.now() - compactSince < AUTO_HIDE_MS) {
         const v = f.view('compact');
-        return { key, el: v.el, w: v.w, h: v.h, y: TOP };
+        return { key, mode: 'compact', el: v.el, w: v.w, h: v.h, y: TOP, r: radiusFor(v.w, v.h, v) };
       }
     }
-    return { key: 'sliver', el: sliverEl, w: 84, h: 5, y: 0, sliver: true };
+    return { key: 'sliver', mode: 'sliver', el: sliverEl, w: 84, h: 5, y: 0, r: 2.5, sliver: true };
   }
 
   function renderDots() {
@@ -193,8 +273,7 @@ const Island = (() => {
   function mount(v) {
     resizer.disconnect();
     if (v.auto) resizer.observe(v.el);
-    stage.style.width = v.w + 'px';
-    stage.style.height = v.h + 'px';
+    sizeStage(v);
     const kids = [v.el];
     if (v.withDots) {
       renderDots();
@@ -202,10 +281,48 @@ const Island = (() => {
     }
     stage.replaceChildren(...kids);
     el.classList.toggle('sliver', !!v.sliver);
-    // replay the entrance animation (fade + scale + staggered children)
+    el.dataset.mode = v.mode;
+    applyTint();
+    const resting = v.mode === 'compact' || v.mode === 'sliver';
+    if (resting !== lastResting) {
+      lastResting = resting;
+      API.send('surface:resting', resting); // the main process samples the page colour only while resting
+    }
+    // staggered children (lists) cascade in once the view is in
     v.el.classList.remove('enter');
     void v.el.offsetWidth;
     v.el.classList.add('enter');
+  }
+
+  let lastResting = null;
+
+  // The content box is centred with `left`, so transforms stay free for the enter animation.
+  function sizeStage(v) {
+    stage.style.width = v.w + 'px';
+    stage.style.height = v.h + 'px';
+    stage.style.left = `calc(50% - ${v.w / 2}px)`;
+  }
+
+  // Swap views: the old content disappears quickly, the new one appears as the pill reaches its size.
+  let swapToken = 0;
+  function swap(v) {
+    const token = ++swapToken;
+    if (!M) {
+      mount(v);
+      return;
+    }
+    const hadContent = stage.childElementCount > 0;
+    const out = hadContent ? M.animate(stage, { opacity: 0, scale: 0.98 }, { duration: reducedMotion ? 0.05 : 0.08, ease: 'easeIn' }) : Promise.resolve();
+    out.then(() => {
+      if (token !== swapToken) return;
+      // the same view may have changed size during the fade-out (a list opened, data arrived): use its latest size
+      mount(current && current.key === v.key ? current : v);
+      M.animate(
+        stage,
+        { opacity: [0, 1], scale: [0.96, 1], filter: ['blur(4px)', 'blur(0px)'] },
+        { duration: reducedMotion ? 0.08 : 0.24, ease: [0.2, 0.9, 0.3, 1], delay: reducedMotion ? 0 : 0.12 }
+      );
+    });
   }
 
   function render() {
@@ -217,10 +334,9 @@ const Island = (() => {
     const v = resolve();
     if (!v) return;
     if (current && current.key === v.key) {
-      if (current.w !== v.w || current.h !== v.h) {
-        setTarget(v.w, v.h, v.y);
-        stage.style.width = v.w + 'px';
-        stage.style.height = v.h + 'px';
+      if (current.w !== v.w || current.h !== v.h || (current.below && current.below.el) !== (v.below && v.below.el)) {
+        setTarget(v.w, v.h, v.y, v.r, v.below);
+        sizeStage(v);
       }
       const dotsChanged = v.withDots && dots.childElementCount !== expandable().length;
       current = v;
@@ -229,17 +345,24 @@ const Island = (() => {
     }
     const first = !current;
     current = v;
-    setTarget(v.w, v.h, v.y);
-    if (first) {
-      mount(v);
-      return;
+    setTarget(v.w, v.h, v.y, v.r, v.below);
+    if (first) mount(v);
+    else swap(v);
+  }
+
+  // Language switch (T11): marked text is already re-translated by I18N; each feature repaints the text it
+  // builds itself (relang(), or paint() by default), without resetting its state.
+  function relang() {
+    for (const f of features) {
+      try {
+        if (f.relang) f.relang();
+        else if (f.paint) f.paint();
+      } catch (err) {
+        API.send('log:error', `relang ${f.id}: ${err && err.message}`);
+      }
     }
-    stage.classList.add('out');
-    clearTimeout(swapTimer);
-    swapTimer = setTimeout(() => {
-      mount(current);
-      stage.classList.remove('out');
-    }, 110);
+    if (current && current.withDots) renderDots();
+    render();
   }
 
   function select(i) {
@@ -304,6 +427,23 @@ const Island = (() => {
     }, ms);
   }
 
+  // ------------------------------------------------------------------ hover
+  // `mouseleave` is not proof the pointer left: Chromium also fires it when the window is resized or moved
+  // under a pointer that did not move (the island re-centres itself when it grows). So before closing, the
+  // main process is asked where the cursor really is. The main process also reports a real exit that no
+  // mouse event announced (see 'island:pointer-left').
+  async function pointerReallyInside() {
+    try {
+      return (await API.call('island:pointer-inside')) === true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function reportHoverState() {
+    API.send('island:hover-state', !!(pointer || hovered));
+  }
+
   function setHover(value) {
     pointer = value;
     clearTimeout(hoverTimer);
@@ -316,15 +456,24 @@ const Island = (() => {
         hovered = true;
         el.classList.remove('hint');
         render();
+        reportHoverState();
       }, HOVER_DWELL_MS);
     } else {
-      hoverTimer = setTimeout(() => {
+      const timer = setTimeout(async () => {
         if (held) return;
+        if (await pointerReallyInside()) {
+          if (hoverTimer === timer) pointer = true; // a spurious leave: stay open
+          return;
+        }
+        if (hoverTimer !== timer) return; // the pointer came back meanwhile
         hovered = false;
         render();
-      }, 240);
+        reportHoverState();
+      }, LEAVE_MS);
+      hoverTimer = timer;
       armPinTimeout(4000);
     }
+    reportHoverState();
   }
 
   function togglePin() {
@@ -356,6 +505,64 @@ const Island = (() => {
       compactKey = null;
       render();
     }
+    if (opts.islandMode) {
+      islandMode = opts.islandMode;
+      applyTint();
+    }
+  }
+
+  // ------------------------------------------------------------------ acrylic shape
+  // With the acrylic material, Windows blurs the desktop behind the whole window. Main clips that blur to the
+  // pill (SetWindowRgn, task T15), so it needs the pill's rectangle and corner radius: on every frame while the
+  // pill animates, and once when it settles. Nothing is sent with the glass material.
+  let material = 'glass';
+  let lastShape = '';
+  let shapeLoop = false;
+  function reportShape() {
+    if (material !== 'acrylic') return;
+    const r = el.getBoundingClientRect();
+    const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+    const msg = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), radius: Math.round(radius) };
+    const key = msg.x + ',' + msg.y + ',' + msg.width + ',' + msg.height + ',' + msg.radius;
+    if (key === lastShape) return;
+    lastShape = key;
+    API.send('island:shape', msg);
+  }
+  function shapeFrame() {
+    reportShape();
+    if (animating && material === 'acrylic') requestAnimationFrame(shapeFrame);
+    else shapeLoop = false;
+  }
+  function startShapeLoop() {
+    if (shapeLoop || material !== 'acrylic') return;
+    shapeLoop = true;
+    requestAnimationFrame(shapeFrame);
+  }
+  function setMaterial(m) {
+    material = m === 'acrylic' ? 'acrylic' : 'glass';
+    lastShape = '';
+    reportShape();
+  }
+
+  // ------------------------------------------------------------------ tint ("over the page" mode)
+  // While resting (compact or the thin line) the pill takes a tone of the page under it, so it blends in.
+  // Expanded panels and alerts always use the dark glass, so their text stays readable.
+  let islandMode = (window.islandAPI && window.islandAPI.settings.islandMode) || 'overlay';
+  let tint = null;
+  function setTint(rgb) {
+    tint = rgb && [rgb.r, rgb.g, rgb.b].every(Number.isFinite) ? rgb : null;
+    applyTint();
+  }
+  function applyTint() {
+    const resting = current && (current.mode === 'compact' || current.mode === 'sliver');
+    const on = !!(tint && resting && islandMode === 'overlay');
+    el.classList.toggle('tinted', on);
+    if (!on) return;
+    // 45% page colour over the dark glass; light results switch the text to dark.
+    const mix = (c) => Math.round(c * 0.45 + 10 * 0.55);
+    const [r, g, b] = [mix(tint.r), mix(tint.g), mix(tint.b)];
+    el.style.setProperty('--tint', `rgb(${r}, ${g}, ${b})`);
+    el.classList.toggle('on-light', (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.55);
   }
 
   // Wheel over the island switches between panels (unless the wheel is over a scrollable strip).
@@ -377,8 +584,9 @@ const Island = (() => {
     togglePin();
   });
 
-  apply();
-  sendEnvelope(S.w.x, S.h.x, S.y.x);
+  Object.assign(el.style, { width: shape.w + 'px', height: shape.h + 'px', top: shape.y + 'px', borderRadius: shape.r + 'px' });
+  below.style.display = 'none';
+  sendEnvelope(shape.w, shape.h, shape.y, null);
 
   return {
     el,
@@ -390,6 +598,10 @@ const Island = (() => {
     selectFeature,
     open,
     configure,
+    relang,
+    currentKey: () => (current ? current.key : null),
+    setTint,
+    setMaterial,
     isExpanded: () => hovered || pinned,
     hold,
     selectedId: () => {
@@ -399,5 +611,19 @@ const Island = (() => {
     isSliver: () => !!(current && current.sliver),
     feature: (id) => features.find((f) => f.id === id),
     setContext: (id) => (contextPanel = id || null),
+    /** For tests and the dev preview. */
+    debug: () => ({
+      key: current && current.key,
+      mode: current && current.mode,
+      hovered,
+      pointer,
+      pinned,
+      animating,
+      shape: { ...shape },
+      below: belowShape,
+      stats: { ...stats },
+      motion: !!M,
+      reducedMotion,
+    }),
   };
 })();

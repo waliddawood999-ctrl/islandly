@@ -8,16 +8,16 @@ Island.register({
     this.count = h('span', { class: 'count' });
     this.list = h('div', { class: 'gh-list stagger scroll' });
     this.empty = h('div', { class: 'p-empty' }, h('div', { class: 'm-artist' }));
-    this.allBtn = h('button', { class: 'chip', onclick: () => API.send('open:external', 'https://github.com/notifications') }, t('openAll'));
+    this.allBtn = h('button', { class: 'chip', onclick: () => API.send('open:external', 'https://github.com/notifications') }, T('openAll'));
     this.expandedEl = h(
       'div',
       { class: 'view auto panel github' },
-      h('div', { class: 'p-head' }, h('div', { class: 'p-title-wrap' }, h('span', { class: 'gh-logo' }, html(ICONS.github)), h('div', { class: 'p-title' }, 'GitHub'), this.count), this.allBtn),
+      h('div', { class: 'p-head' }, h('div', { class: 'p-title-wrap' }, h('span', { class: 'gh-logo' }, html(ICONS.github)), h('div', { class: 'p-title' }, T('github')), this.count), this.allBtn),
       this.list,
       this.empty
     );
-    this.pTitle = h('div', { class: 'm-title' });
-    this.pSub = h('div', { class: 'm-artist' });
+    this.pTitle = h('div', { class: 'm-title', dir: 'auto' });
+    this.pSub = h('div', { class: 'm-artist', dir: 'auto' });
     this.peekEl = h('div', { class: 'view notice-view' }, h('span', { class: 'n-icon' }, html(ICONS.github)), h('div', { class: 'm-text' }, this.pTitle, this.pSub));
 
     API.on('github:update', (s) => this.set(s));
@@ -29,8 +29,8 @@ Island.register({
     this.paint();
     const fresh = s.fresh || [];
     if (fresh.length) {
-      this.pTitle.textContent = fresh.length === 1 ? fresh[0].title : t('ghNew', { n: num(fresh.length) });
-      this.pSub.textContent = fresh.length === 1 ? fresh[0].repo : fresh.map((f) => f.repo).filter((v, i, a) => a.indexOf(v) === i).join('، ');
+      this.pTitle.textContent = fresh.length === 1 ? fresh[0].title : t('ghNew', { count: fresh.length });
+      this.pSub.textContent = fresh.length === 1 ? fresh[0].repo : I18N.list([...new Set(fresh.map((f) => f.repo))]);
       Island.peek('github', 6000);
     } else {
       Island.render();
