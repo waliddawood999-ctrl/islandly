@@ -376,3 +376,41 @@
 - Native lifetime snapshots depend on the existing public Island API and timer feature fields mode/total/remaining/running/endAt; changes by Claude must preserve/update this adapter in src/main/main.js. Active break state and usage app naming remain compatible across native/Electron sessions. User-launched external applications are outside the Chromium job.
 - Local native measurements remain pending; exact laptop commands are in docs/perf.md. Real-player playback and manual mixed-DPI/multi-monitor/visual acceptance are unverified. Native visual gaps already listed above include GDI/translucency/shadow/spring differences, generic tray icon/English menu, and missing rich compact media/artwork/app labels. Claude should review those instead of treating the native approximation as a redesign.
 - Same codex/T9-perf-ram / PR #10 targeting dev. No merges/main pushes or protected UI/font/CSS edits. Full-package base 3 and single native AppBar ownership must be reconciled with the separate unmerged T3/T6/T7 PRs. T9 is in review, not declared manually accepted.
+
+## 2026-10-29 · Claude · T9 native visual polish (`claude/T9-native-visual-polish` → `codex/T9-perf-ram`)
+
+**ما تم** (`native/Islandly.cs` فقط، مع خطوط في `assets/fonts/native/`). ما لمست منطق الذاكرة أو الـ CPU أو الجلسة أو الـ pipe أو الـ AppBar.
+
+- **المقاسات من الجزيرة في Electron (T6):**
+  - الساعة 100، البطارية المنخفضة 108، المؤقت 112، الميكروفون والكاميرا 176، كلها × 32، على بعد 8px من الأعلى. الخط الرفيع 84 × 5.
+  - نصف القطر كامل.
+  - كانت قبل 138 × 36 لكل الحالات.
+- **الخامة:**
+  - **زجاج:** شبه أسود (10,10,13) مع لمعة علوية (أبيض 5% ← 0 على 38%) وحافة 0.5px.
+  - **أكريليك:** الافتراضي على ويندوز 11 (build 22000+) وحسب إعداد `material`، عبر `SetWindowCompositionAttribute` (ACCENT_ENABLE_ACRYLICBLURBEHIND) بطبقة داكنة rgba(10,10,14,.46). يرجع للزجاج على ويندوز 10.
+- **الخط:** IBM Plex Sans و IBM Plex Sans Arabic Bold.
+  - ملفات TTF رسمية بدون تعديل من IBM/plex @71f5589، مع OFL و SOURCE. اضطريت لها لأن GDI+ ما يقرأ woff2.
+  - الوقت 14px، ونقطة الساعة الخضراء مع توهج، وحلقة 20px للمؤقت والبطارية، والمؤقت الموقوف بشفافية 60%.
+  - صيغة الوقت `m:ss` أو `h:mm:ss` مثل `clock()` في الواجهة.
+- **الحركة:**
+  - نابض للحجم (visualDuration 0.34، bounce 0.24، نفس قيم Motion)، والمؤقت يشتغل أثناء تغيّر الحجم بس.
+  - تكبير 1.04 عند مرور الماوس قبل الفتح.
+  - ما فيه مؤقت جديد في الراحة.
+- **الأيقونة والقائمة:**
+  - أيقونة `assets/tray.png` بدل أيقونة النظام.
+  - القائمة والتنبيهات بالعربي والإنجليزي حسب `uiLang`/`lang`، والقائمة RTL بالعربي.
+  - نص الخصوصية مترجم: «الكاميرا قيد الاستخدام» و «الميكروفون قيد الاستخدام». القيمة الداخلية صارت `camera`/`mic` بدل النص الإنجليزي.
+
+**الأدلة**
+- CI على ويندوز (workflow_dispatch على الفرع، `2b852eb`): https://github.com/waliddawood999-ctrl/islandly/actions/runs/40815150039 . native-windows ✅ و packaged-windows ✅: يعني تجميع csc، و npm test، وقياسات overlay و reserved-bar، وفحص الحزمة.
+- **الأرقام الدقيقة ما قدرت أقراها**، لأن مضيف artifacts محجوب في بيئتي. البوابات (< 180MB و < 1% CPU) نجحت. المقارنة الدقيقة مع 39.43/31.00MB تحتاج فتح artifact `t9-native-footprint` من الرابط.
+- الذاكرة المتوقعة: ملفّي خط (448KB) محمّلة بالـ mapping، ومؤقت النابض متوقف في الراحة. إضافة صغيرة لكن **لم تُقس بدقة**.
+
+**لم يُختبر:** الشكل على ويندوز حقيقي (أكريليك فوق خلفيات مختلفة، وحدّة النص على DPI 100/150%، والحركة باليد). ما عندي شاشة ويندوز.
+
+**المتبقي (ما سويته، لأنه يحتاج إعادة تصميم لطبقة الرسم أو بيانات من الجلسة):**
+1. ظل الجزيرة: نافذة مقصوصة بـ region ما ترسم خارجها. يحتاج `UpdateLayeredWindow` بـ per-pixel alpha.
+2. لون الصفحة (`surface:tint`): مقفول افتراضياً حسب AGENTS، وما فيه أخذ عينات في الـ native.
+3. غلاف الأغنية والموجة الحية في الوضع المصغّر: يحتاجان بيانات الوسائط في الـ native.
+4. أيقونات الميكروفون والكاميرا: نقطة ملونة بدل رمز Lucide.
+5. توهج الخط الرفيع النشط.

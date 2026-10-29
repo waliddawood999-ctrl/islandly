@@ -51,6 +51,10 @@ static class Native {
     [DllImport("kernel32.dll")] public static extern bool TerminateJobObject(IntPtr job, uint code);
     [DllImport("kernel32.dll")] public static extern bool QueryInformationJobObject(IntPtr h, int type, IntPtr data, uint size, out uint returned);
     [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
+    // Acrylic blur behind the window (clipped by the window region to the pill), as in the Electron "acrylic" material.
+    [StructLayout(LayoutKind.Sequential)] public struct ACCENT { public int state, flags; public uint gradient; public int animation; }
+    [StructLayout(LayoutKind.Sequential)] public struct WINCOMPATTR { public int attribute; public IntPtr data; public int size; }
+    [DllImport("user32.dll")] public static extern int SetWindowCompositionAttribute(IntPtr h, ref WINCOMPATTR data);
 }
 
 sealed class IslandHost : Form {
@@ -90,7 +94,19 @@ sealed class IslandHost : Form {
     int breakSeconds;
     readonly List<string> pendingClipboard = new List<string>();
     ConsentWatcher consent;
-    string privacyLabel = "";
+    string privacyLabel = ""; // "camera" | "mic" | ""
+
+    // ---- look of the collapsed island: the same tokens as src/renderer/styles.css (T6/T8 design)
+    static readonly Color Accent = Color.FromArgb(167,139,250), Green = Color.FromArgb(52,211,153), Orange = Color.FromArgb(251,146,60), Red = Color.FromArgb(248,113,113);
+    readonly System.Drawing.Text.PrivateFontCollection fonts = new System.Drawing.Text.PrivateFontCollection();
+    FontFamily latinFamily, arabicFamily;
+    bool acrylic, acrylicApplied;
+    float uiScale = 1f;
+    // Size spring (Motion: visualDuration 0.34 s, bounce 0.24): runs only while the pill changes size, then stops.
+    readonly System.Windows.Forms.Timer springTimer = new System.Windows.Forms.Timer();
+    readonly Stopwatch springClock = new Stopwatch();
+    RectangleF springFrom, springTo, springNow;
+    bool hint;
 
     public IslandHost(string[] args) {
         packaged = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"IslandlyPanels.exe"));
@@ -108,21 +124,25 @@ sealed class IslandHost : Form {
         if(state.TryGetValue("clipboardPending",out pending) && pending is IEnumerable) pendingClipboard.AddRange(((IEnumerable)pending).Cast<object>().Select(x => Convert.ToString(x)).Take(30));
         Text = "Islandly Native"; Name = "IslandlyNative";
         FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true;
-        BackColor = Color.FromArgb(8,8,10); ForeColor = Color.White;
+        BackColor = Color.FromArgb(10,10,13); ForeColor = Color.White;
+        LoadFonts();
+        springTimer.Interval = 15; springTimer.Tick += delegate { SpringStep(); };
         DoubleBuffered = true; AutoScaleMode = AutoScaleMode.None;
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Expand", null, delegate { OpenPanel("expand"); });
-        menu.Items.Add("Settings", null, delegate { OpenPanel("settings"); });
-        menu.Items.Add("Command palette", null, delegate { OpenPanel("palette"); });
-        menu.Items.Add("Show / hide island", null, delegate { hidden = !hidden; Position(); });
-        menu.Items.Add("Open data folder", null, delegate { Process.Start("explorer.exe", profile); });
-        menu.Items.Add("Start with Windows", null, delegate { ToggleStartup(); });
-        menu.Items.Add("Quit", null, delegate { Close(); });
+        menu.Items.Add(L("Expand","فتح الجزيرة"), null, delegate { OpenPanel("expand"); });
+        menu.Items.Add(L("Settings","الإعدادات"), null, delegate { OpenPanel("settings"); });
+        menu.Items.Add(L("Command palette","لوحة الأوامر"), null, delegate { OpenPanel("palette"); });
+        menu.Items.Add(L("Show / hide island","إظهار / إخفاء الجزيرة"), null, delegate { hidden = !hidden; Position(); });
+        menu.Items.Add(L("Open data folder","فتح مجلد البيانات"), null, delegate { Process.Start("explorer.exe", profile); });
+        menu.Items.Add(L("Start with Windows","التشغيل مع ويندوز"), null, delegate { ToggleStartup(); });
+        menu.Items.Add(L("Quit","إغلاق Islandly"), null, delegate { Close(); });
+        if (Arabic()) menu.RightToLeft = RightToLeft.Yes;
         ContextMenuStrip = menu;
-        tray = new NotifyIcon { Text = "Islandly", Icon = SystemIcons.Application, ContextMenuStrip = menu, Visible = true };
+        tray = new NotifyIcon { Text = "Islandly", Icon = TrayIcon(), ContextMenuStrip = menu, Visible = true };
         tray.DoubleClick += delegate { OpenPanel("settings"); };
-        MouseEnter += delegate { hoverArmed = true; hoverDwell.Start(); };
-        MouseLeave += delegate { hoverArmed = false; hoverDwell.Stop(); };
+        // like the web island: it swells slightly while the pointer rests, then opens after the dwell
+        MouseEnter += delegate { hoverArmed = true; hoverDwell.Start(); hint = true; Position(); };
+        MouseLeave += delegate { hoverArmed = false; hoverDwell.Stop(); hint = false; Position(); };
         MouseClick += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) OpenPanel("expand"); };
         hoverDwell.Interval = 280; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring) OpenPanel("expand"); };
         ticker.Interval = 1000; ticker.Tick += Tick; ticker.Start();
@@ -178,7 +198,13 @@ sealed class IslandHost : Form {
         string autoHide=Setting("autoHide","auto");
         bool sliver = autoHide == "always" || autoHide == "auto" && (!TimerHasState() || clock.ElapsedMilliseconds-compactAt>=5000);
         if(privacyLabel != "" && Setting("micCamIndicator","True") != "False") sliver=false;
-        int w = (int)((sliver ? 84 : 138)*scale), height = Math.Max(4,(int)((sliver ? 5 : 36)*scale));
+        uiScale = scale;
+        ApplyMaterial();
+        // collapsed sizes of the web island: clock 100, low battery 108, timer 112, mic/camera 176 x 32; sliver 84 x 5
+        string variant = Variant();
+        int baseW = sliver ? 84 : variant == "privacy" ? 176 : variant == "timer" ? 112 : variant == "battery" ? 108 : 100;
+        float grow = hint && !sliver ? 1.04f : 1f;
+        int w = (int)Math.Round(baseW*scale*grow), height = Math.Max(4,(int)Math.Round((sliver ? 5 : 32)*scale*grow));
         if (bar) {
             var previous = abd.rect;
             abd.edge = 1; abd.rect = new Native.RECT { left = screen.Left, top = screen.Top, right = screen.Right, bottom = screen.Top + (int)(44*scale) };
@@ -186,9 +212,12 @@ sealed class IslandHost : Form {
         }
         string pos = Setting("position","center");
         int x = pos == "left" ? screen.Left+16 : pos == "right" ? screen.Right-w-16 : screen.Left+(screen.Width-w)/2;
-        SetBounds(x,screen.Top + (sliver ? 0 : (int)(8*scale)),w,height);
-        using (var shape = new GraphicsPath()) { int d = Math.Min(Height,Width); shape.AddArc(0,0,d,d,180,90); shape.AddArc(Width-d,0,d,d,270,90); shape.AddArc(Width-d,Height-d,d,d,0,90); shape.AddArc(0,Height-d,d,d,90,90); shape.CloseFigure(); var old = Region; Region = new Region(shape); if(old != null) old.Dispose(); }
-        Visible = !hide && !ready; Invalidate();
+        int y = screen.Top + (sliver ? 0 : (int)Math.Round(8*scale)) - (int)Math.Round((height - (sliver ? 5 : 32)*scale)/2f);
+        var target = new RectangleF(x,Math.Max(screen.Top,y),w,height);
+        bool show = !hide && !ready;
+        if (!show || !Visible || springNow.Width <= 0) { springTimer.Stop(); springNow = springTo = target; Place(target); }
+        else if (target != springTo) { springFrom = springNow; springTo = target; springClock.Restart(); springTimer.Start(); }
+        Visible = show; Invalidate();
     }
     Screen TargetScreen() {
         string id=Setting("monitorId",""); object maps;
@@ -202,17 +231,146 @@ sealed class IslandHost : Form {
         return Screen.PrimaryScreen;
     }
     float CreateGraphicsDpi() { try { return Native.GetDpiForWindow(Handle)/96f; } catch(EntryPointNotFoundException) { using(var g=CreateGraphics()) return g.DpiX/96f; } }
-    protected override void OnPaint(PaintEventArgs e) {
-        base.OnPaint(e); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        if (Height < 12) { using(var brush=new SolidBrush(TimerRunning() ? Color.FromArgb(167,139,250) : Color.FromArgb(76,76,76))) e.Graphics.FillRectangle(brush,ClientRectangle); return; }
-        using(var gradient=new LinearGradientBrush(ClientRectangle,Color.FromArgb(12,12,16),Color.Black,90f)) e.Graphics.FillRectangle(gradient,ClientRectangle);
-        string label = DateTime.Now.ToString("HH:mm");
-        if (TimerHasState()) { long end = Convert.ToInt64(state["endAt"]); var left = TimerRunning() ? Math.Max(0,(end-DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())/1000) : (long)Math.Ceiling(Convert.ToDouble(state["remaining"])); label = (left/60).ToString("00")+":"+(left%60).ToString("00"); }
-        if(privacyLabel != "" && Setting("micCamIndicator","True") != "False") label = privacyLabel;
-        else if(!TimerRunning() && SystemInformation.PowerStatus.BatteryChargeStatus != BatteryChargeStatus.NoSystemBattery && SystemInformation.PowerStatus.BatteryLifePercent < .2f) label = ((int)(SystemInformation.PowerStatus.BatteryLifePercent*100))+"%";
-        using(var brush = new SolidBrush(Color.FromArgb(167,139,250))) e.Graphics.FillEllipse(brush,Width*.16f,Height*.42f,Height*.16f,Height*.16f);
-        using(var font = new Font("Segoe UI",Math.Max(8,Height*.32f),FontStyle.Regular,GraphicsUnit.Pixel)) TextRenderer.DrawText(e.Graphics,label,font,new Rectangle((int)(Width*.2f),0,(int)(Width*.7f),Height),ForeColor,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
+    // ------------------------------------------------------------------ look (matches src/renderer/styles.css)
+
+    string Lang() { string v = Setting("uiLang", Setting("lang","ar")); if (v == "ar" || v == "en") return v; return System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ar" ? "ar" : "en"; }
+    bool Arabic() { return Lang() == "ar"; }
+    string L(string en, string ar) { return Arabic() ? ar : en; }
+
+    Icon TrayIcon() {
+        try { using (var png = new Bitmap(Path.Combine(root,"assets","tray.png"))) using (var small = new Bitmap(png,16,16)) return Icon.FromHandle(small.GetHicon()); }
+        catch { return SystemIcons.Application; }
     }
+
+    // IBM Plex Sans / IBM Plex Sans Arabic, the app's fonts. Unmodified TTFs in assets/fonts/native (GDI+ cannot read woff2).
+    void LoadFonts() {
+        try { fonts.AddFontFile(Path.Combine(root,"assets","fonts","native","IBMPlexSans-Bold.ttf")); } catch { }
+        try { fonts.AddFontFile(Path.Combine(root,"assets","fonts","native","IBMPlexSansArabic-Bold.ttf")); } catch { }
+        foreach (var f in fonts.Families) { if (f.Name.IndexOf("Arabic",StringComparison.OrdinalIgnoreCase) >= 0) arabicFamily = f; else if (f.Name.IndexOf("Plex",StringComparison.OrdinalIgnoreCase) >= 0) latinFamily = f; }
+    }
+    Font UiFont(float px, string text) {
+        bool arabicText = text.Any(c => c >= '؀' && c <= 'ۿ');
+        var family = arabicText ? arabicFamily : latinFamily;
+        if (family != null) return new Font(family, px, FontStyle.Bold, GraphicsUnit.Pixel);
+        return new Font("Segoe UI Semibold", px, FontStyle.Regular, GraphicsUnit.Pixel);
+    }
+
+    // material: acrylic (Windows 11 blur behind the pill, dark veil) or dark glass. Acrylic needs Windows 11 (build 22000+); otherwise glass.
+    void ApplyMaterial() {
+        bool want = Setting("material","acrylic") != "glass" && WindowsBuild() >= 22000;
+        if (want == acrylic && acrylicApplied) return;
+        acrylic = want; acrylicApplied = true;
+        var accent = new Native.ACCENT { state = want ? 4 : 0, flags = 0, gradient = 0x750E0A0A }; // veil rgba(10,10,14,.46), AABBGGRR
+        int size = Marshal.SizeOf(accent); IntPtr data = Marshal.AllocHGlobal(size);
+        try { Marshal.StructureToPtr(accent,data,false); var attr = new Native.WINCOMPATTR { attribute = 19, data = data, size = size }; Native.SetWindowCompositionAttribute(Handle,ref attr); }
+        catch { acrylic = false; }
+        finally { Marshal.FreeHGlobal(data); }
+        // with the accent, pixels left black by GDI are transparent and show the blur
+        BackColor = acrylic ? Color.Black : Color.FromArgb(10,10,13);
+    }
+    static int WindowsBuild() {
+        try { using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion")) return Convert.ToInt32(k.GetValue("CurrentBuildNumber")); }
+        catch { return 0; }
+    }
+
+    string Variant() {
+        if (privacyLabel != "" && Setting("micCamIndicator","True") != "False") return "privacy";
+        if (TimerHasState()) return "timer";
+        var power = SystemInformation.PowerStatus;
+        if (power.BatteryChargeStatus != BatteryChargeStatus.NoSystemBattery && power.PowerLineStatus != PowerLineStatus.Online && power.BatteryLifePercent <= .15f) return "battery";
+        return "clock";
+    }
+
+    void Place(RectangleF r) {
+        SetBounds((int)Math.Round(r.X),(int)Math.Round(r.Y),Math.Max(1,(int)Math.Round(r.Width)),Math.Max(1,(int)Math.Round(r.Height)));
+        using (var shape = new GraphicsPath()) { int d = Math.Min(Height,Width); shape.AddArc(0,0,d,d,180,90); shape.AddArc(Width-d,0,d,d,270,90); shape.AddArc(Width-d,Height-d,d,d,0,90); shape.AddArc(0,Height-d,d,d,90,90); shape.CloseFigure(); var old = Region; Region = new Region(shape); if(old != null) old.Dispose(); }
+        Invalidate();
+    }
+    void SpringStep() {
+        double t = springClock.Elapsed.TotalSeconds;
+        double omega = 2*Math.PI/(0.34*1.2), zeta = 1-0.24, wd = omega*Math.Sqrt(1-zeta*zeta);
+        double p = t >= 0.6 ? 1 : 1 - Math.Exp(-zeta*omega*t)*(Math.Cos(wd*t) + zeta*omega/wd*Math.Sin(wd*t));
+        Func<float,float,float> mix = (a,b) => (float)(a + (b-a)*p);
+        springNow = new RectangleF(mix(springFrom.X,springTo.X),mix(springFrom.Y,springTo.Y),mix(springFrom.Width,springTo.Width),mix(springFrom.Height,springTo.Height));
+        Place(springNow);
+        if (t >= 0.6) springTimer.Stop();
+    }
+
+    protected override void OnPaint(PaintEventArgs e) {
+        base.OnPaint(e);
+        var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+        float s = uiScale;
+        // sliver: a thin line, accent while a timer runs
+        if (Height < 12) {
+            Color line = TimerRunning() ? Accent : acrylic ? Color.FromArgb(82,255,255,255) : Color.FromArgb(88,88,92);
+            using (var brush = new SolidBrush(line)) g.FillRectangle(brush,ClientRectangle);
+            return;
+        }
+        // the pill: glass with a soft top highlight and a hairline edge
+        var rect = new RectangleF(0,0,Width,Height);
+        if (!acrylic) using (var glass = new SolidBrush(Color.FromArgb(10,10,13))) g.FillRectangle(glass,rect);
+        var top = new RectangleF(0,0,Width,Math.Max(1,Height*.38f));
+        using (var shine = new LinearGradientBrush(top,Color.FromArgb(13,255,255,255),Color.FromArgb(0,255,255,255),90f)) g.FillRectangle(shine,top);
+        using (var edge = new Pen(Color.FromArgb(26,255,255,255),Math.Max(1f,.5f*s)))
+        using (var path = Pill(new RectangleF(.5f,.5f,Width-1,Height-1))) g.DrawPath(edge,path);
+
+        string variant = Variant();
+        float cy = Height/2f;
+        if (variant == "privacy") {
+            bool cam = privacyLabel == "camera";
+            Color c = cam ? Green : Orange;
+            float d = 22*s, x0 = Arabic() ? Width - 6*s - d : 6*s;
+            using (var bg = new SolidBrush(Color.FromArgb(56,c))) g.FillEllipse(bg,x0,cy-d/2,d,d);
+            using (var dot = new SolidBrush(c)) g.FillEllipse(dot,x0+d/2-4*s,cy-4*s,8*s,8*s);
+            string text = cam ? L("Camera in use","الكاميرا قيد الاستخدام") : L("Microphone in use","الميكروفون قيد الاستخدام");
+            var area = Arabic() ? new RectangleF(12*s,0,x0-18*s,Height) : new RectangleF(x0+d+6*s,0,Width-x0-d-18*s,Height);
+            using (var font = UiFont(12*s,text)) using (var fmt = Format(Arabic() ? StringAlignment.Far : StringAlignment.Near)) using (var ink = new SolidBrush(Color.FromArgb(143,235,235,245))) {
+                if (Arabic()) fmt.FormatFlags |= StringFormatFlags.DirectionRightToLeft;
+                g.DrawString(text,font,ink,area,fmt);
+            }
+            return;
+        }
+        string label; Color mark;
+        if (variant == "timer") {
+            long end = Convert.ToInt64(state["endAt"]);
+            long left = TimerRunning() ? Math.Max(0,(end-DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())/1000) : (long)Math.Ceiling(Convert.ToDouble(state["remaining"]));
+            label = left >= 3600 ? (left/3600) + ":" + (left%3600/60).ToString("00") + ":" + (left%60).ToString("00") : (left/60) + ":" + (left%60).ToString("00"); mark = Accent; // same as clock() in lib.js
+        } else if (variant == "battery") {
+            label = ((int)Math.Round(SystemInformation.PowerStatus.BatteryLifePercent*100)) + "%"; mark = Red;
+        } else { label = DateTime.Now.ToString("HH:mm"); mark = Green; }
+
+        // [mark] label, centred as one group with an 8px gap (clock: green dot; timer/battery: 20px ring)
+        using (var font = UiFont(14*s,label)) {
+            SizeF textSize = g.MeasureString(label,font,PointF.Empty,StringFormat.GenericTypographic);
+            float markSize = variant == "clock" ? 7*s : 20*s, gap = 8*s;
+            float x = (Width - (markSize + gap + textSize.Width))/2f;
+            if (variant == "clock") {
+                using (var glow = new SolidBrush(Color.FromArgb(60,mark))) g.FillEllipse(glow,x-3*s,cy-markSize/2-3*s,markSize+6*s,markSize+6*s);
+                using (var dot = new SolidBrush(mark)) g.FillEllipse(dot,x,cy-markSize/2,markSize,markSize);
+            } else {
+                float stroke = 3*s, r = markSize - stroke;
+                var box = new RectangleF(x+stroke/2,cy-r/2,r,r);
+                using (var track = new Pen(Color.FromArgb(36,255,255,255),stroke)) g.DrawEllipse(track,box);
+                float fraction = variant == "battery" ? SystemInformation.PowerStatus.BatteryLifePercent : TimerFraction();
+                if (fraction > 0) using (var arc = new Pen(mark,stroke) { StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawArc(arc,box,-90,360*Math.Min(1f,fraction));
+            }
+            int alpha = variant == "timer" && !TimerRunning() ? 153 : 255; // paused timer: 60% like .timer-compact.paused
+            using (var ink = new SolidBrush(Color.FromArgb(alpha, variant == "battery" ? mark : Color.White)))
+                g.DrawString(label,font,ink,x+markSize+gap,cy-textSize.Height/2f,StringFormat.GenericTypographic);
+        }
+    }
+    float TimerFraction() {
+        try { double total = Convert.ToDouble(state["total"]); if (total <= 0) return 0;
+            long end = Convert.ToInt64(state["endAt"]);
+            double left = TimerRunning() ? Math.Max(0,(end-DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())/1000.0) : Convert.ToDouble(state["remaining"]);
+            return (float)(left/total);
+        } catch { return 0; }
+    }
+    static GraphicsPath Pill(RectangleF r) {
+        var p = new GraphicsPath(); float d = Math.Min(r.Width,r.Height);
+        p.AddArc(r.X,r.Y,d,d,90,180); p.AddArc(r.Right-d,r.Y,d,d,270,180); p.CloseFigure(); return p;
+    }
+    static StringFormat Format(StringAlignment align) { return new StringFormat { Alignment = align, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap }; }
     bool TimerHasState() { object remaining,total; return TimerRunning() || state.TryGetValue("remaining",out remaining) && state.TryGetValue("total",out total) && Convert.ToDouble(remaining)>0 && Convert.ToDouble(remaining)<Convert.ToDouble(total); }
     bool TimerRunning() { object running; return state.TryGetValue("running",out running) && running is bool && (bool)running; }
     void OpenPanel(string command) {
@@ -334,7 +492,7 @@ sealed class IslandHost : Form {
         if(child != null && (child.HasExited || shutdownAt > 0 && clock.ElapsedMilliseconds-shutdownAt > 1500 || !ready && clock.ElapsedMilliseconds-launchedAt > 30000)) EndSession();
         if(TimerRunning() && Convert.ToInt64(state["endAt"]) <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() && child == null) {
             state["running"] = false; state["remaining"] = 0; state["completed"] = true; SaveState();
-            System.Media.SystemSounds.Asterisk.Play(); tray.ShowBalloonTip(5000,"Islandly","Timer complete",ToolTipIcon.Info);
+            System.Media.SystemSounds.Asterisk.Play(); tray.ShowBalloonTip(5000,"Islandly",L("Time's up","انتهى المؤقت"),ToolTipIcon.Info);
         }
         Position();
         if(probe != "") {
@@ -420,7 +578,7 @@ sealed class IslandHost : Form {
         }
         int every; Int32.TryParse(Setting("breakEvery","60"),out every);
         if(!active) { if(unchecked((uint)Environment.TickCount-input.time)>=300000) breakSeconds=0; }
-        else if(every>0 && (breakSeconds+=5)>=every*60) { breakSeconds=0; tray.ShowBalloonTip(5000,"Islandly","Time for a short break",ToolTipIcon.Info); }
+        else if(every>0 && (breakSeconds+=5)>=every*60) { breakSeconds=0; tray.ShowBalloonTip(5000,"Islandly",L("Time for a short break","وقت استراحة قصيرة"),ToolTipIcon.Info); }
     }
     void ToggleStartup() {
         using(var key=Microsoft.Win32.Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")) {
@@ -482,7 +640,7 @@ sealed class ConsentWatcher : IDisposable {
     }
     void Read() {
         try { bool mic,cam; using(var m=key.OpenSubKey("microphone")) mic=Active(m,0); using(var c=key.OpenSubKey("webcam")) cam=Active(c,0);
-            update(cam ? "Camera active" : mic ? "Mic active" : "");
+            update(cam ? "camera" : mic ? "mic" : "");
         } catch { }
     }
     public void Dispose() { stopped=true; if(registration != null) registration.Unregister(null); if(key != null) key.Dispose(); if(changed != null) changed.Dispose(); }
