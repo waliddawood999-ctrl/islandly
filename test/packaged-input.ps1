@@ -9,6 +9,23 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class PanelInput {
+ [StructLayout(LayoutKind.Sequential,Size=104)] struct StartupInfo { public uint cb; }
+ [StructLayout(LayoutKind.Sequential)] struct ProcessInfo { public IntPtr process,thread; public uint pid,tid; }
+ [DllImport("kernel32.dll",EntryPoint="CreateProcessW",ExactSpelling=true,CharSet=CharSet.Unicode,SetLastError=true)]
+ static extern bool CreateProcess(string app,StringBuilder command,IntPtr pa,IntPtr ta,bool inherit,uint flags,IntPtr environment,string cwd,ref StartupInfo startup,out ProcessInfo process);
+ [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetThreadErrorMode(uint mode,out uint previous);
+ [DllImport("kernel32.dll")] static extern bool TerminateProcess(IntPtr process,uint exit);
+ [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+ public static int ReferenceLaunchError(string executable) {
+  uint previous; if(!SetThreadErrorMode(0x8003,out previous)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+  try {
+   var startup=new StartupInfo();startup.cb=104;ProcessInfo process;
+   bool started=CreateProcess(executable,new StringBuilder("\""+executable+"\""),IntPtr.Zero,IntPtr.Zero,false,0x08000404,IntPtr.Zero,System.IO.Path.GetDirectoryName(executable),ref startup,out process);
+   int error=Marshal.GetLastWin32Error();
+   if(started){TerminateProcess(process.process,1);CloseHandle(process.thread);CloseHandle(process.process);throw new InvalidOperationException("Malformed fixture unexpectedly launched");}
+   return error;
+  }finally{uint ignored;SetThreadErrorMode(previous,out ignored);}
+ }
  delegate bool WindowCallback(IntPtr window,IntPtr data);
  [DllImport("user32.dll")] static extern bool EnumWindows(WindowCallback callback,IntPtr data);
  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window,out uint pid);
@@ -72,20 +89,24 @@ try {
   Wait-Until { (Status).phase -eq 'idle' -and @((Status).processes).Count -eq 1 } "$action complete shutdown" 12
   Write-Output "PACKAGED REAL INPUT PASS: $action"
  }
- # A real CreateProcessW failure preserves Win32 error 193 through cleanup and retries only once.
+ # Compare the host's preserved error with a direct API reference: Windows can return 193 or 216 for this malformed image.
  $runtime=Join-Path $stage 'IslandlyPanels.exe'; Move-Item $runtime "$runtime.hold"
  [IO.File]::WriteAllText($runtime,'not a Windows PE executable')
+ $expectedError=[PanelInput]::ReferenceLaunchError($runtime)
+ if($expectedError -notin @(193,216)){throw "Unexpected malformed-image reference error: $expectedError"}
+ Write-Output "DIRECT CREATEPROCESS REFERENCE: win32=$expectedError"
  Point-ToIsland; [PanelInput]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [PanelInput]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
  Wait-Until { (Get-Content "$profile/native-panels.log" -Raw) -match 'launch-failed' } 'failure logging'
  Move-Away; Start-Sleep -Seconds 4
  $failures=([regex]::Matches((Get-Content "$profile/native-panels.log" -Raw),'launch-failed')).Count
  if($failures -ne 2){throw "Expected one initial failure and one bounded retry, got $failures"}
- if((Get-Content "$profile/native-panels.log" -Raw) -notmatch 'win32=193'){throw 'Original CreateProcessW error was not preserved through cleanup'}
+ $failedLines=@(Get-Content "$profile/native-panels.log" | Where-Object {$_ -match 'launch-failed'})
+ if(@($failedLines | Where-Object {$_ -notmatch "win32=$expectedError(?:\D|$)"}).Count -ne 0){throw 'Original CreateProcessW error did not match the direct API reference through cleanup'}
  Remove-Item $runtime; Move-Item "$runtime.hold" $runtime
  $before=(Status).launchCount; Point-ToIsland; [PanelInput]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [PanelInput]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
  Wait-Until { $s=Status; $s.phase -eq 'panel' -and $s.launchCount -gt $before } 'recovery after restoring runtime'
  Move-Away; Probe-Command 'close'; Wait-Until { (Status).phase -eq 'idle' } 'final shutdown' 12
- Write-Output 'PACKAGED RECOVERY PASS: real CreateProcessW error 193 preserved, one retry, no process leak, subsequent user action succeeds'
+ Write-Output "PACKAGED RECOVERY PASS: direct-reference CreateProcessW error $expectedError preserved, one retry, no process leak, subsequent user action succeeds"
 } finally {
  New-Item 'out/input-diagnostics' -ItemType Directory -Force | Out-Null
  Copy-Item "$profile/*.log" 'out/input-diagnostics' -ErrorAction SilentlyContinue
