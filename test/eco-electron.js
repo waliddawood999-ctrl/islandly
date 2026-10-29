@@ -39,7 +39,7 @@ app.whenReady().then(async () => {
   global.__islandly.palette.toggle();
   const palette = global.__islandly.palette.win;
   await until(() => palette.webContents.executeJavaScript('typeof paletteAPI !== "undefined"').catch(() => false));
-  await palette.webContents.executeJavaScript("window.paletteSettings=[]; window.paletteEco=[]; paletteAPI.on('settings:update', v=>paletteSettings.push(v)); paletteAPI.on('eco:changed', v=>paletteEco.push(v));");
+  await palette.webContents.executeJavaScript("window.paletteSettings=[]; window.paletteEco=[]; paletteAPI.on('settings:update', v=>paletteSettings.push(v)); paletteAPI.on('eco:changed', v=>paletteEco.push(v)); void 0;");
   await run("window.ecoEvents=[]; settingsAPI.on('eco:changed', v=>ecoEvents.push(v)); settingsAPI.set({ecoMode:false})");
   await until(() => run('ecoEvents.some(v=>v.eco===false)'));
   await until(() => palette.webContents.executeJavaScript('paletteEco.some(v=>v.eco===false) && paletteSettings.some(v=>v.ecoMode===false)'));

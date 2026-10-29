@@ -152,6 +152,7 @@
 | `fontPairing` | `'plex'` \| `'manrope'` \| `'jakarta'` (مخفي في الإعدادات) | `'plex'` | T8 |
 | `motion` | `'full'` \| `'reduced'` \| `'off'` | `'full'` | T14 |
 | `ecoMode` | boolean | `false` | T9/T14 |
+| `ecoAuto` | boolean | `false` | T14 (Codex backend; Claude UI) |
 | `islandMode` | `'overlay'` \| `'appbar'` | `'overlay'` | T6/T7 |
 | `material` | `'glass'` \| `'acrylic'` | `'glass'` | T6 |
 | `shortcuts` | string (أسماء تطبيقات مفصولة بفاصلة) | `'Edge, File Explorer, Calculator, Notepad'` | T6 |
@@ -766,3 +767,9 @@
 - ecoAuto contract key: boolean, default false; effective Eco = ecoMode OR (ecoAuto AND on battery). settings:update contains stored/manual ecoMode and ecoAuto. eco:changed {eco} is effective state, including battery-auto, now also delivered to palette on transitions and every show. No additional battery-reason field promised; eco && !stored ecoMode denotes auto activation.
 - Palette preload now permits settings:update and eco:changed with unsubscribe. palette:shown includes lang, uiLang, digits, motion, and ecoMode (effective Eco for presentation, not the stored manual toggle). PR #19 already refreshes motion from this show payload. Its UI still needs Claude to consume live event changes while a palette remains open; backend cannot add those UI listeners. No renderer changes made.
 - Tests: npm test PASS (exit0), including T19 workload state independent of CPU, update payload parity, exact host PID totals/label, preload allowed events/unsubscribe/blocked perf events, and actual Palette.toggle fresh motion/effective Eco payload. Real Electron perf tests now assert active in both get/update; Windows perf workflow enabled for the T18 PR target. Windows CI results tracked in PR metadata; no laptop/manual Windows acceptance claimed. Frozen T18 EXE identity inputs untouched.
+
+### T19 complete task supersedes partial fragments
+
+- Full task explicitly requires codex/T19-contracts from/into T18. Earlier provisional PR22/branch name is superseded, closed without merge; replacement draft PR uses the required name.
+- Native host type is now native-host (label host retained), included in totalMB exactly once. This supersedes the earlier label-only clarification. ecoAuto added directly to §1 settings table with boolean/default false/T14 owner; this user-requested table correction is the narrow exception to append-only logging, prior log entries retained.
+- All four items have regression coverage, including documented ecoAuto ownership/default parity. Add T18 target to native/guard/identity workflows so both native modes remeasure on this task. No native source/compiler/EXE pin or packaging identity changes; runtime fixes are JS-only. Final head, all CI status and raw idle results recorded in draft PR metadata after CI.

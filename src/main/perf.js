@@ -13,7 +13,7 @@ class PerformanceMonitor {
     const processes = this.app.getAppMetrics().map((p) => ({ type: types[p.type] || 'other', pid: p.pid,
       mb: round(p.memory.workingSetSize / 1024), cpu: p.cpu.percentCPUUsage, label: labels.get(p.pid) || null }));
     const children = [...this.children(), ...(this.host ? this.host.pids().map((pid) => ({ pid, type: 'powershell' })) : [])];
-    if (this.nativeOwnerPid) children.push({ pid: this.nativeOwnerPid, type: 'other', label: 'host' });
+    if (this.nativeOwnerPid) children.push({ pid: this.nativeOwnerPid, type: 'native-host', label: 'host' });
     const distinctChildren = [...new Map(children.map((p) => [p.pid, p])).values()];
     for (const child of distinctChildren) {
       if (processes.some((p) => p.pid === child.pid)) continue;

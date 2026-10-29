@@ -21,6 +21,7 @@ assert.equal(monitor.get().state, 'idle', 'CPU activity must not classify a work
 assert.equal(monitor.get().totalMB, 50);
 assert.equal(monitor.get().processes.filter(p => p.pid === 2).length, 1);
 assert.equal(monitor.get().processes.find(p => p.pid === 2).label, 'host');
+assert.equal(monitor.get().processes.find(p => p.pid === 2).type, 'native-host');
 active = true; cpu = 0;
 assert.equal(monitor.get().state, 'active', 'a low-CPU settings panel remains active');
 monitor.watch(win, true); tick();
@@ -59,3 +60,8 @@ assert.equal(sent[0][0], 'palette:shown'); assert.equal(sent[0][1].motion, 'off'
 assert.equal(sent[0][1].digits, 'arab'); assert.equal(sent[1][1].eco, true);
 eco = false; motion = 'full'; palette.toggle(); assert.equal(sent[2][1].ecoMode, false); assert.equal(sent[2][1].motion, 'full');
 console.log('T19 perf workload state, native host accounting, palette preload events and live show payload passed');
+
+// Documented ownership/default stay aligned with the actual backend defaults.
+const handoff = fs.readFileSync(path.join(__dirname, '../docs/HANDOFF.md'), 'utf8');
+assert.match(handoff, /\| `ecoAuto` \| boolean \| `false` \| T14 \(Codex backend; Claude UI\) \|/);
+assert.equal(require('../src/main/services/store').ECO_DEFAULTS.ecoAuto, false);
