@@ -8,6 +8,7 @@ const DEFAULTS = {
   monitorId: '', // Existing T1/T7 display-selection contract; primary fallback.
   islandMode: 'overlay', // Existing T6/T7 contract: overlay | appbar; native owner reserves the strip.
   ...ISLAMIC_DEFAULTS,
+  material: require('./services/store').MATERIAL_DEFAULT,
   lang: 'ar', // 'auto' | 'ar' | 'en'
   autoHide: 'auto', // 'auto' (shrink after a few seconds) | 'never' | 'always' (thin line until hovered)
   position: 'center', // 'center' | 'left' | 'right'
@@ -30,7 +31,6 @@ const DEFAULTS = {
   micCamIndicator: true,
   workspaces: '', // one per line: Name: path-or-url | path-or-url
   islandMode: 'overlay', // 'overlay' (floats over the page, tinted to match) | 'appbar' (reserved strip, never covers windows)
-  material: 'glass', // 'glass' (dark translucent pill) | 'acrylic' (Windows 11 blur behind the window, experimental)
   shortcuts: 'Edge, File Explorer, Calculator, Notepad', // app shortcuts in the clock panel
   hasAiKey: false,
   hasGithubToken: false,
@@ -47,6 +47,7 @@ function init() {
   file = path.join(app.getPath('userData'), 'settings.json');
   try {
     data = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+    if (!['acrylic', 'glass'].includes(data.material)) data.material = DEFAULTS.material;
   } catch (_) {
     /* first run */
   }
@@ -61,6 +62,7 @@ function set(patch) {
   const prev = data;
   data = { ...data }; // keeps data.secrets
   for (const key of Object.keys(DEFAULTS)) {
+    if (key === 'material' && !['acrylic', 'glass'].includes(patch[key])) continue;
     if (!(key in patch)) continue;
     if (key === 'prayerIqamaMinutes') {
       if (patch[key] && typeof patch[key] === 'object' && !Array.isArray(patch[key])) {

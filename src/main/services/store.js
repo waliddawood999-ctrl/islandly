@@ -26,6 +26,6 @@ function jsonStore(name, fallback) {
   };
 }
 
-// Shared defaults live here for the v0.5 backend contract; settings.js uses the same values.
 const ISLAMIC_DEFAULTS = require('./prayer-defaults');
-module.exports = { jsonStore, ISLAMIC_DEFAULTS };
+const MATERIAL_DEFAULT = 'acrylic';
+module.exports = { jsonStore, ISLAMIC_DEFAULTS, MATERIAL_DEFAULT };

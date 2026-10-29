@@ -38,6 +38,7 @@ const { Palette, openTarget } = require('./palette');
 const { Surface } = require('./surface');
 const apps = require('./services/apps');
 const win32 = require('./win32');
+const { Material } = require('./material');
 const cities = require('./cities');
 
 const isDev = process.argv.includes('--dev');
@@ -56,6 +57,7 @@ process.on('unhandledRejection', (err) => logError('main (promise)', err));
 
 let win = null;
 let tray = null;
+let material = null;
 let settingsWin = null;
 let userHidden = false;
 let envelope = { w: 160, h: 60 }; // the size the island needs right now, in CSS pixels (reported by the renderer)
@@ -125,6 +127,7 @@ function positionWindow() {
   const pos = settings.get().position;
   const x = pos === 'left' ? bounds.x + 16 : pos === 'right' ? bounds.x + bounds.width - width - 16 : Math.round(bounds.x + (bounds.width - width) / 2);
   win.setBounds({ x, y: bounds.y, width, height });
+  if (material) material.resized();
 }
 
 function applyVisibility() {
@@ -188,14 +191,7 @@ async function shortcutList() {
 }
 
 /** Window material: 'acrylic' asks Windows 11 to blur what is behind the window (experimental with a transparent window). */
-function applyMaterial() {
-  if (!win || win.isDestroyed() || process.platform !== 'win32' || typeof win.setBackgroundMaterial !== 'function') return;
-  try {
-    win.setBackgroundMaterial(settings.get().material === 'acrylic' ? 'acrylic' : 'none');
-  } catch (err) {
-    logError('background material', err);
-  }
-}
+function applyMaterial() { if (material) material.apply(settings.get().material); }
 
 function createWindow() {
   win = new BrowserWindow({
@@ -219,6 +215,20 @@ function createWindow() {
     },
   });
 
+  material = new Material({ window: win, native: win32, zoom,
+    dpi: () => screen.getDisplayMatching(win.getBounds()).scaleFactor,
+    initialRect: { x: 0, y: 0, width: envelope.w, height: envelope.h, radius: envelope.h / 2 },
+    publish: (state) => {
+      for (const target of [win, settingsWin]) {
+        if (target && !target.isDestroyed()) {
+          target.webContents.send('material:changed', state);
+          target.webContents.send('settings:update', { ...settings.get(), materialEffective: state.material });
+        }
+      }
+    },
+  });
+  material.apply(settings.get().material);
+  win.on('resize', () => material.resized());
   positionWindow();
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -229,6 +239,8 @@ function createWindow() {
     push('eco:changed', { eco: settings.get().ecoMode });
     if (prayerLive) push('prayer:state', prayerLive.get());
     win.webContents.setZoomFactor(zoom());
+    material.resized();
+    material.publish(material.state());
   });
   win.webContents.on('render-process-gone', (_e, d) => logError('renderer gone', JSON.stringify(d)));
   win.webContents.on('preload-error', (_e, p, err) => logError('preload', p, err));
@@ -256,6 +268,7 @@ function openSettings() {
   });
   settingsWin.webContents.on('did-finish-load', () => settingsWin.webContents.send('eco:changed', { eco: settings.get().ecoMode }));
   settingsWin.on('closed', () => { perf?.stop(); settingsWin = null; });
+  settingsWin.webContents.on('did-finish-load', () => material.publish(material.state()));
   settingsWin.setMenu(null);
   settingsWin.loadFile(path.join(info.root, 'src', 'settings', 'index.html'));
 }
@@ -352,7 +365,13 @@ function registerIpc() {
   const isIsland = e => !!win && !win.isDestroyed() && e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame;
   const isSettings = e => !!settingsWin && !settingsWin.isDestroyed() && e.sender === settingsWin.webContents && e.senderFrame === settingsWin.webContents.mainFrame;
   registerIslamicIpc({ ipcMain, isIsland, isSettings, settings, prayer: () => prayerLive, quran });
-  ipcMain.on('settings:get', (e) => (e.returnValue = settings.get()));
+  const owns = (e, target) => target && !target.isDestroyed() && e.sender === target.webContents && e.senderFrame === target.webContents.mainFrame;
+  ipcMain.handle('material:get', (e) => {
+    if (!owns(e, win) && !owns(e, settingsWin)) throw new Error('unauthorized material sender');
+    return material.state();
+  });
+  ipcMain.on('island:shape', (e, rect) => { if (owns(e, win)) material.shape(rect); });
+  ipcMain.on('settings:get', (e) => (e.returnValue = { ...settings.get(), materialEffective: material ? material.state().material : 'glass' }));
   ipcMain.on('island:envelope', (e, env) => {
     if (!isIsland(e) || !env || !Number.isFinite(env.w) || !Number.isFinite(env.h)) return;
     envelope = { w: Math.max(40, Math.min(1200, env.w)), h: Math.max(10, Math.min(800, env.h)) };
@@ -590,7 +609,7 @@ app.whenReady().then(() => {
     if (now.scale !== prev.scale) surface.setBarHeight((8 + 32 + 4) * zoom());
     if (now.material !== prev.material) applyMaterial();
     if (now.shortcuts !== prev.shortcuts) shortcutList().then((list) => push('shortcuts:update', list));
-    const publicSettings = settings.get();
+    const publicSettings = { ...settings.get(), materialEffective: material.state().material };
     push('settings:update', publicSettings);
     for (const target of [settingsWin, palette?.win]) if (target && !target.isDestroyed()) target.webContents.send('settings:update', publicSettings);
     if (now.ecoMode !== prev.ecoMode) {
