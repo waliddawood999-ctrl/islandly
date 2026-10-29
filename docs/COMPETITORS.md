@@ -79,3 +79,71 @@ Legend: **Behind** · **Equal** · **Ahead** (relative to the best documented co
 6. "Dynamic Island for Windows? What Exists in 2026": https://notchy.dev/dynamic-island-windows/ ◦ (search snippet only); Windows Central coverage: https://www.windowscentral.com/software-apps/want-your-pc-to-be-a-bit-more-like-a-mac-the-dynamic-island-for-windows-just-got-a-big-update ◦; Microsoft Store listing: https://apps.microsoft.com/detail/9pgr4zg2sxw0 ◦
 7. Windows BiDi guidance: https://learn.microsoft.com/en-au/windows/apps/design/globalizing/design-for-bidi-text
 8. NotchNook comparisons: https://notchly.vercel.app/compare/notchly-vs-notchnook ◦ (third-party, pricing unverified)
+
+---
+
+# Update 2 (2026-10-29): recent competitors, requested features, complaints
+
+## Honest scope of this update
+
+The brief for this update came from **recent X/Twitter posts. This session cannot read X** (search and fetch tools return web pages, not posts), so the post-derived parts (the "most requested" and "top complaints" lists below) are **the requester's summary, not independently verified**. What I could verify is only what each product's own public page, store listing or repo says (Product Hunt, App Store, GitHub, secondary listing sites), found by web search. Where a name could not be matched to any product, it says so rather than guessing. As before, nothing was installed or run, and `◦` marks facts taken from a search snippet or secondary listing.
+
+## New entries
+
+| App | Platform / price | What the public listing says | Found? |
+|---|---|---|---|
+| **rammcodes' free Windows island** | Windows, free (per the brief) | Nothing under that name or handle in any web result; the free Windows options that do appear are WinIsland, Notchify, Isle Notch (free tier), Cosmic-light, rajsriv's PyQt6 island [9] | **Not found.** Cannot compare features; ask Walid for the link or post |
+| **Tomte** [10]◦ | Windows 11, free, MIT; Microsoft Store, winget, GitHub | Draws nothing until the pointer reaches the top edge, a hotkey is pressed or a file is dragged up; then a shelf for files, current media, a note and shortcuts. Described as a top-edge panel, not a permanent notch | Yes (Product Hunt launch post only) |
+| **Nusa Dynamic Island** [11]◦ | Windows 10/11 | Collapsed bar at the top that expands on cursor; system notifications, music controls, tools. The article notes new apps often get false antivirus warnings | Yes (one Slovak-language article; no official page found) |
+| **Notchzy** [12]◦ | Windows 11 / 10 2004+, one-time purchase | Pill UI with media controls, focus timers and notifications | Yes (listing site only) |
+| **Claude Code approval islands** [13] | **macOS only** in every result (Vibe Island, Vibe Notch, Atoll, AgentNotch, Claude Pulse, CodexIsland, LimitWatch) | Approve/deny Claude Code and Codex permission prompts from the notch, show the 5-hour and weekly usage limits with reset countdowns, jump to the right terminal. Mechanism: hooks in `~/.claude/hooks/` talking to the app over a Unix socket; some batch-approve "safe" tools. Vibe Island is listed at $20, closed source; AgentNotch is free, local-only | Yes; **no Windows equivalent found** |
+| **Droppy** (macOS) [14]◦ | macOS; listings conflict ($6.99 on Gumroad vs free MIT on GitHub) | Notch file shelf, a floating "basket" summoned by jiggling the mouse while dragging, clipboard history with OCR, media player; works as a pill on Macs without a notch | Yes |
+| **Isleta** (macOS) | n/a | No product by that name; closest are **Isle/Isle Notch** (paid, module hub opened by hovering the notch) and **Islet** [15]◦ | **Not found** |
+| **Halo** | n/a | No notch/island app by that name in any result; related Mac apps listed: NotchNook, DynamicNotch (free, HUDs for brightness/volume), DynamicHorizon ($12.99), Landing, NotchBox [16]◦ | **Not found** |
+| **DynamicLake** (macOS) [17]◦ | macOS | Drag-and-drop file handling, customisable widgets, messaging-app notifications, answering FaceTime/iPhone calls from the island | Yes |
+
+## What users ask for and complain about (requester's list), and Islandly's position
+
+| Request / complaint | Islandly today | Verdict |
+|---|---|---|
+| Auto-hide/shrink when covering tabs or menus | Auto-hide (shrink after 5 s / thin line / never), **AppBar mode reserves the strip so nothing is covered**, overlay mode | **Ahead**: AppBar is the only structural answer in this list; smart per-app avoidance is still missing → Codex |
+| Fullscreen behaviour | Hides in full screen (`hideFullscreen` setting) in both modes | **Equal** (PILLAR also hides) |
+| File shelf (drag and drop) | Shelf panel, drag out, image actions | **Equal**; Droppy's jiggle basket and Tomte's "drag a file to the top edge" are missing → Codex (drag detection) |
+| Clipboard history | Text-only, memory-only, pinning | **Equal** (Droppy adds OCR; we stay text-only by privacy rule) |
+| Focus/Pomodoro timer | Focus / Break / Timer / Stopwatch, ring, native timer surviving panel close | **Equal** |
+| Synced lyrics | Lyrics strip under the island | **Equal** |
+| Claude/Codex approvals and usage limits | None | **Behind**; high value, but needs a local hook channel (a new port/socket) → **Codex + security review**, locked by default (CLAUDE.md privacy rule) |
+| Calendar with "Join meeting" | iCal feed, Join button on peek and list, resting pill before a meeting | **Equal** (already built) |
+| Charging animation | One-shot bolt pop and glow on plug-in (this PR), plug/unplug peek, ETA, "unplug at 80 %" tip | **Equal → Ahead** after this PR |
+| Volume / brightness overlays | Brightness slider and volume buttons in the system panel; no pop-up HUD | **Behind** → Codex (needs a system volume/brightness change event) |
+| Unsigned-app / antivirus warnings | NSIS installer and ZIP in review (T16); **signing not decided** | **Behind** until signed → Walid/Codex, not UI |
+| Battery drain | Native idle host, no Electron while idle, Eco mode, live RAM panel | **Ahead** on paper; the new eyes feature is opt-in and cost-designed for this reason |
+| Hard-to-find settings | Settings now also reachable from a gear in the footer of **every** expanded panel (this PR), plus tray, clock-panel tile, calendar empty state; section navigator inside Settings | **Behind → fixed** |
+
+**Where Islandly is clearly different (not matched by anything found):** Arabic-first UI with complete RTL; prayer times, Hijri calendar and Quran player; **two placement modes** (overlay and AppBar); the lowest documented idle footprint with measured numbers (`docs/perf.md`).
+
+## Re-ranked improvement plan (by user value to the requester's list)
+
+| Rank | Item | Why | Status / owner |
+|---|---|---|---|
+| 1 | Covering tabs/menus and fullscreen | Top complaint; AppBar + auto-hide already answer it, now explained better (Settings preview shows the reserved strip) | Done (UI). **Smart avoidance per app: Codex** |
+| 2 | Unsigned / antivirus warnings | Top complaint; blocks installs | **Codex + Walid** (signing decision, T16) |
+| 3 | Settings findable | Complaint; cheap | **Done:** footer gear on every panel + navigator (T19) |
+| 4 | Claude/Codex approvals + usage limit | Most distinctive new request; macOS-only today, so a first on Windows | **Codex** (hook socket, locked by default, security review); UI panel afterwards |
+| 5 | Charging animation | Requested, small | **Done** (T19) |
+| 6 | Volume/brightness HUD | Requested | **Codex** (system change events) |
+| 7 | Drag-to-top-edge / jiggle shelf | Tomte, Droppy | **Codex** (global drag detection) |
+| 8 | Floating mode, liquid expand, idle eyes | Polish and personality, battery-safe if opt-in | **Spec + prototype done** (`docs/MOTION_SPEC.md`); native → **Codex** |
+| 9 | Focus timer, join meeting, lyrics, shelf, clipboard | Already built | none |
+
+## Sources (update 2)
+
+9. Free Windows islands in the search results: https://github.com/rajsriv/dynamic-island-for-windows, https://alternativeto.net/software/winisland/about/, https://toolradar.com/tools/isle-notch
+10. Tomte (Product Hunt): https://www.producthunt.com/products/tomte
+11. Nusa Dynamic Island (touchit.sk): https://touchit.sk/dynamic-island-po-vzore-ios-je-tu-aj-pre-windows/933565/
+12. Notchzy listing: https://huntscreens.com/products/notchzy
+13. Claude Code/Codex notch apps: https://dev.to/krisying/i-turned-my-macbooks-notch-into-a-control-center-for-ai-coding-agents-2o57, https://vibeisland.app/claude-code/, https://github.com/Kumario1/agentNotch, https://github.com/rutmehta/Atoll, https://claudepulse-5bw.pages.dev/, https://raw.githubusercontent.com/ericjypark/codex-island/main/README.md
+14. Droppy: https://iordv.gumroad.com/l/Droppy, https://www.producthunt.com/products/droppy-4
+15. Isle / Islet: https://alternativeto.net/software/isle/about/, https://www.hunted.space/product/islet-2
+16. DynamicNotch and other Mac notch apps: https://github.com/jackson-storm/dynamicnotch, https://www.bgr.com/tech/this-app-transforms-your-macbook-notch-into-a-useful-dynamic-island/
+17. DynamicLake: https://alternativeto.net/news/2025/5/dynamiclake-introduces-support-for-facetime-iphone-calls-in-the-dynamic-island-and-more

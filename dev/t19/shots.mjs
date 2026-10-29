@@ -172,7 +172,8 @@ async function islandDots(lang, mode) {
   await page.addInitScript(({ lang, mode, data }) => {
     const handlers = {};
     window.__emit = (ch, d) => handlers[ch] && handlers[ch](d);
-    window.islandAPI = { settings: { uiLang: lang, lang, autoHide: 'never', material: 'glass', islandMode: mode, motion: 'full', prayerAlerts: true }, call: (ch) => Promise.resolve(data[ch] ?? null), send() {}, on: (ch, cb) => (handlers[ch] = cb), pathsForFiles: () => [] };
+    window.islandAPI = { settings: { uiLang: lang, lang, autoHide: 'never', material: 'glass', islandMode: mode, motion: 'full', prayerAlerts: true }, call: (ch) => Promise.resolve(data[ch] ?? null), send: (ch) => window.__sent.push(ch), on: (ch, cb) => (handlers[ch] = cb), pathsForFiles: () => [] };
+    window.__sent = [];
     navigator.getBattery = () => Promise.resolve({ level: 0.82, charging: true, chargingTime: 2400, dischargingTime: Infinity, addEventListener() {} });
   }, { lang, mode, data });
   await page.goto('file://' + path.join(src, 'renderer', 'index.html'));
@@ -188,6 +189,21 @@ async function islandDots(lang, mode) {
     for (let i = 1; i < rects.length; i++) if (rects[i].left < rects[i - 1].right + 2 && rects[i].right > rects[i - 1].left) overlap = !(Math.abs(rects[i].left - rects[i - 1].right) >= 2) || overlap;
     return { dots, overlap, n: rects.length };
   });
+  const gear = await page.evaluate(() => {
+    const g = document.querySelector('.dots-gear');
+    if (!g) return null;
+    const r = g.getBoundingClientRect();
+    const isl = document.querySelector('#island').getBoundingClientRect();
+    const dots = [...document.querySelectorAll('.dot')].map((d) => d.getBoundingClientRect());
+    const gap = document.documentElement.dir === 'rtl' ? Math.min(...dots.map((d) => d.left)) - r.right : r.left - Math.max(...dots.map((d) => d.right));
+    return { inside: r.left >= isl.left && r.right <= isl.right && r.bottom <= isl.bottom, gap, label: g.getAttribute('aria-label'), w: r.width };
+  });
+  if (!gear) problems.push(`island-dots-${lang}-${mode}: no settings gear`);
+  else {
+    if (!gear.inside) problems.push(`island-dots-${lang}-${mode}: gear leaves the island`);
+    if (gear.gap < 8) problems.push(`island-dots-${lang}-${mode}: gear crowds the dots (gap ${gear.gap.toFixed(1)})`);
+    if (!gear.label) problems.push(`island-dots-${lang}-${mode}: gear has no label`);
+  }
   if (info.n < 2) problems.push(`island-dots-${lang}-${mode}: fewer than two dots`);
   if (info.overlap) problems.push(`island-dots-${lang}-${mode}: dots crowd each other`);
   if (info.dots.some((d) => !d.label)) problems.push(`island-dots-${lang}-${mode}: dot without a label`);
@@ -196,8 +212,54 @@ async function islandDots(lang, mode) {
   const ring = await page.evaluate(() => { const e = document.activeElement; return !!e && e.matches('button') && getComputedStyle(e).outlineStyle !== 'none'; });
   if (!ring) problems.push(`island-dots-${lang}-${mode}: no visible focus ring`);
   await page.screenshot({ path: path.join(out, `island-dots-${lang}-${mode}.png`), clip: { x: 0, y: 0, width: 600, height: 280 } });
+  await page.evaluate(() => (window.__sent = []));
+  await page.locator('.dots-gear').click();
+  if (!(await page.evaluate(() => window.__sent.some((m) => m === 'settings:open')))) problems.push(`island-dots-${lang}-${mode}: gear click did not send settings:open`);
   await page.close();
   return { lang, mode, ...info, ring };
+}
+
+async function battery(lang, mode) {
+  const page = await browser.newPage({ viewport: { width: 600, height: 330 }, deviceScaleFactor: 2 });
+  watch(page);
+  await page.addInitScript(({ lang, mode }) => {
+    const handlers = {};
+    window.islandAPI = { settings: { uiLang: lang, lang, autoHide: 'never', material: 'glass', islandMode: mode, motion: 'full' }, call: () => Promise.resolve(null), send() {}, on: (ch, cb) => (handlers[ch] = cb), pathsForFiles: () => [] };
+    const listeners = {};
+    const b = { level: 0.82, charging: false, chargingTime: 2400, dischargingTime: 14000, addEventListener: (e, f) => ((listeners[e] = listeners[e] || []).push(f)) };
+    window.__plug = (on) => { b.charging = on; (listeners.chargingchange || []).forEach((f) => f()); };
+    navigator.getBattery = () => Promise.resolve(b);
+  }, { lang, mode });
+  await page.goto('file://' + path.join(src, 'renderer', 'index.html'));
+  await page.addStyleTag({ content: 'body { background: linear-gradient(135deg, #2b2350, #141a2e) !important; }' });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { Island.open('battery'); });
+  await page.waitForTimeout(700);
+  await page.evaluate(() => window.__plug(true));
+  await page.waitForTimeout(300);
+  const mid = await page.evaluate(() => ({ zap: document.querySelectorAll('.zap').length, running: document.getAnimations().filter((a) => a.effect && a.effect.getComputedTiming().iterations !== Infinity && a.playState === 'running').length }));
+  if (!mid.zap) problems.push(`battery-${lang}-${mode}: no charging animation class`);
+  await page.screenshot({ path: path.join(out, `battery-zap-${lang}-${mode}.png`), clip: { x: 0, y: 0, width: 600, height: 230 } });
+  await page.waitForTimeout(1500);
+  const after = await page.evaluate(() => ({ zap: document.querySelectorAll('.zap').length, infinite: document.getAnimations().filter((a) => a.effect && a.effect.getComputedTiming().iterations === Infinity).length }));
+  if (after.zap) problems.push(`battery-${lang}-${mode}: charging animation did not end`);
+  const bad = await page.evaluate(() => {
+    const isl = document.querySelector('#island').getBoundingClientRect();
+    const bad = [];
+    for (const e of document.querySelectorAll('#island .view *')) { const r = e.getBoundingClientRect(); if (r.width && (r.left < isl.left - 1 || r.right > isl.right + 1 || r.bottom > isl.bottom + 1)) bad.push(e.tagName + '.' + e.className); }
+    const t = document.querySelector('.b-pct').getBoundingClientRect(), st = document.querySelector('.b-state').getBoundingClientRect();
+    if (t.right > st.left + 0.5 && t.left < st.right - 0.5 && document.documentElement.dir === 'ltr') bad.push('percent overlaps state');
+    return bad;
+  });
+  for (const b of bad) problems.push(`battery-${lang}-${mode}: ${b}`);
+  // motion Reduced: the animation is dropped
+  await page.evaluate(() => { document.documentElement.dataset.motion = 'reduced'; window.__plug(false); window.__plug(true); });
+  await page.waitForTimeout(150);
+  const red = await page.evaluate(() => [...document.querySelectorAll('.zap')].map((e) => getComputedStyle(e).animationName));
+  if (red.some((n) => n !== 'none')) problems.push(`battery-${lang}-${mode}: charging animation still runs in Reduced`);
+  await page.close();
+  return { lang, mode, mid, after };
 }
 
 async function palette(lang) {
@@ -226,6 +288,8 @@ report.push(await settings('ar', 'overlay', { digits: 'arab', scale: 1, material
 const sheets = [await previewSheet('ar'), await previewSheet('en')];
 const dots = [];
 for (const lang of ['ar', 'en']) for (const mode of ['overlay', 'appbar']) dots.push(await islandDots(lang, mode));
+const batt = [];
+for (const lang of ['ar', 'en']) for (const mode of ['overlay', 'appbar']) batt.push(await battery(lang, mode));
 await palette('ar');
 await palette('en');
 console.log('SETTINGS');
@@ -233,6 +297,7 @@ for (const r of report) console.log(`  ${r.name.padEnd(34)} chipAfterJump="${r.s
 console.log('PREVIEW SHEETS', sheets.flat().length, 'shots');
 console.log('ISLAND DOTS');
 for (const d of dots) console.log(`  ${d.lang}-${d.mode} dots=${d.n} overlap=${d.overlap} focusRing=${d.ring} hitArea=${d.dots[0].hit.join('x')}`);
+console.log('BATTERY ZAP'); for (const b of batt) console.log(`  ${b.lang}-${b.mode} zapClassMid=${b.mid.zap} afterEnd=${b.after.zap} infinite=${b.after.infinite}`);
 console.log('page errors:', errors.length ? errors : 'none');
 console.log('network requests outside file/data:', network.length ? network : 'none');
 console.log('LAYOUT PROBLEMS:', problems.length ? '\n  ' + problems.join('\n  ') : 'none');

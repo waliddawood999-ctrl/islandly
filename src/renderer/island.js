@@ -264,7 +264,9 @@ const Island = (() => {
           'data-interactive': '1',
           onclick: () => select(i),
         })
-      )
+      ),
+      // Settings are always one click away from any open panel (T19)
+      h('button', { class: 'dots-gear', title: t('settings'), 'aria-label': t('settings'), 'data-interactive': '1', onclick: () => API.send('settings:open') }, html(ICONS.gear))
     );
   }
 
