@@ -28,7 +28,7 @@ const Island = (() => {
   const BELOW_GAP = 8; // gap between the island and the strip under it
   const AUTO_HIDE_MS = 5000;
   const HOVER_DWELL_MS = 280; // pointer must rest on the island before it opens (avoids accidental opens)
-  const LEAVE_MS = 160; // how long after the pointer leaves the island closes again
+  const LEAVE_MS = 24; // how long after the pointer leaves the island closes again
   let reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Spring: visual duration ~0.35 s with a slight overshoot. Reduced motion: short, no bounce.
   let motionOff = false;

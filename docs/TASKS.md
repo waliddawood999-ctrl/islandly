@@ -32,7 +32,7 @@
 
 | T19 | Main/preload contract gaps from Claude PR #19 | Codex | `codex/T19-contracts` | T18, PR #19 contract review | review | Claude | Draft PR to T18; npm test PASS; explicit perf state, host label, palette events and Eco documentation |
 
-| T20 | Laptop launch/hover/hotkey/material fixes; compositor motion, portrait adaptive grid and visual QA (items 1–9) | Codex | `codex/T20-laptop-fixes` | T19 | doing | Claude | User explicitly authorizes native and renderer/layout/CSS changes for this task; no merges |
+| T20 | Laptop launch/hover/hotkey/material fixes; compositor motion, portrait adaptive grid and visual QA (items 1–9) | Codex | `codex/T20-laptop-fixes` | T19 | review | Claude | Draft PR #24 into T19; local npm test and24-shot geometry/adaptive audit pass; Windows CI pending |
 
 ## Backlog (0.6 و 0.7)
 

@@ -1,6 +1,7 @@
 // Actual Electron/Windows compositor timing, local fixture, not hardware/SAC acceptance.
 const {app,BrowserWindow}=require('electron');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{execFileSync}=require('node:child_process');
+app.on('window-all-closed',()=>{});
 const dpi=process.env.T20_DPI||'1';app.commandLine.appendSwitch('force-device-scale-factor',dpi);
 const root=path.resolve(__dirname,'..'),out=path.join(root,'out/t20');fs.mkdirSync(out,{recursive:true});
 const baseline=fs.mkdtempSync(path.join(os.tmpdir(),'T20-before-'));

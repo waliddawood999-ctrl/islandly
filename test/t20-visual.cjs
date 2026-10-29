@@ -38,6 +38,18 @@ const root=path.resolve(__dirname,'..'), out=path.join(root,'dev/t20');
   await page.screenshot({path:path.join(out,`${version}-${lang}-${mode}-${dpi*100}.png`)});
   audit.push({version,lang,mode,dpi,errors,...geometry});
   if(version==='after'&&(geometry.collisions.length||errors.length))throw Error(JSON.stringify(audit.at(-1)));
+  if(version==='after' && dpi===1) {
+   const adaptive=await page.evaluate(async()=>{
+    window.__emit('media:update',{type:'media',active:true,title:'A wide media title',artist:'Fixture',playing:false,position:10,duration:180,sentAt:Date.now(),trackChanged:false});
+    Island.open('music'); await Island.whenPainted();
+    const wide=Island.debug().shape.w;
+    Island.open('clock');await Island.whenPainted();const narrow=Island.debug().shape.w;
+    Island.configure({workArea:{width:320,height:400}});await Island.whenPainted();const small=Island.debug().shape;
+    return {wide,narrow,small};
+   });
+   if(adaptive.wide<=adaptive.narrow || adaptive.narrow!==360 || adaptive.small.w>284 || adaptive.small.h>374)throw Error('Adaptive bounds failure: '+JSON.stringify(adaptive));
+   audit.at(-1).adaptive=adaptive;
+  }
   await ctx.close();
  }
  fs.writeFileSync(path.join(out,'geometry.json'),JSON.stringify(audit,null,2));
