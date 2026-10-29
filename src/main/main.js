@@ -518,6 +518,7 @@ app.on('window-all-closed', () => {
 // Native host owns the collapsed window and shortcuts; Electron owns existing panels only.
 // Calls the existing public Island API at the lifetime boundary; no UI source or IPC contract changes.
 function startNativeSession() {
+  logError('native session initializing');
   const fs = require('node:fs');
   const stateFile = path.join(app.getPath('userData'), 'native-session.json');
   let closingPanel = false;
@@ -550,6 +551,7 @@ function startNativeSession() {
     command, quit: () => app.quit(),
     busy: () => (!closingPanel && nativeExpanded) || !!settingsWin?.isVisible() || !!palette.win?.isVisible(),
     restore: async () => {
+      logError('native renderer ready, restoring');
       let saved;
       try { saved = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch (_) { saved = null; }
       if (saved) {
@@ -570,7 +572,9 @@ function startNativeSession() {
           if (saved.selected) Island.selectFeature(saved.selected);
         })()`);
       }
+      logError('native opening command', process.env.ISLANDLY_NATIVE_COMMAND);
       await command(process.env.ISLANDLY_NATIVE_COMMAND || 'expand');
+      logError('native command opened');
       // Include first panel layout/paint rather than counting process spawn as panel readiness.
       await new Promise(resolve => setTimeout(resolve, 350));
     },

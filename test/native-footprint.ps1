@@ -26,7 +26,12 @@ $hostProcess = Start-Process $exe -ArgumentList @('--root',"`"$root`"",'--profil
 $owned = [System.Collections.Generic.HashSet[int]]::new()
 function Read-Status {
     if ($hostProcess.HasExited) { throw "Native host exited: $($hostProcess.ExitCode)" }
-    $status = Get-Content "$probe/status.json" -Raw | ConvertFrom-Json
+    $status = $null
+    for ($retry=0; $retry -lt 20; $retry++) {
+        try { $status = Get-Content "$probe/status.json" -Raw | ConvertFrom-Json; break }
+        catch [System.IO.IOException] { Start-Sleep -Milliseconds 15 }
+    }
+    if ($null -eq $status) { throw 'Could not read native ownership status after bounded retries' }
     foreach ($p in $status.processes) { [void]$owned.Add([int]$p.pid) }
     return $status
 }
@@ -88,7 +93,7 @@ try {
     if (!$result.acceptanceUnder180) { throw 'Idle RAM acceptance failed: must be below 180 MB before and after opening panels' }
 } finally {
     if (Test-Path "$probe/status.json") { Write-Output ('LAST STATUS: ' + (Get-Content "$probe/status.json" -Raw)) }
-    foreach ($log in @('native-panels.log','error.log')) { if (Test-Path "$profile/$log") { Write-Output "$log :"; Get-Content "$profile/$log" | Select-Object -Last 35 } }
+    foreach ($log in @('native-panels.log','error.log','native-boot.log')) { if (Test-Path "$profile/$log") { Write-Output "$log :"; Get-Content "$profile/$log" | Select-Object -Last 35 } }
     if (!$hostProcess.HasExited) { Command 'exit'; if (!$hostProcess.WaitForExit(10000)) { $hostProcess.Kill(); throw 'Native host did not exit gracefully' } }
     foreach ($id in $owned) { if (Get-Process -Id $id -ErrorAction SilentlyContinue) { throw "Owned PID $id survived application shutdown" } }
     if ($Mode -eq 'reserved-bar') {

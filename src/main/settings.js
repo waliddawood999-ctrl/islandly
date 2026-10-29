@@ -4,7 +4,7 @@ const { app } = require('electron');
 
 const DEFAULTS = {
   ecoMode: false,
-  islandMode: 'overlay', // Native host owns the reserved-bar AppBar while Electron is absent.
+  islandMode: 'overlay', // Existing T6/T7 contract: overlay | appbar; native owner reserves the strip.
   lang: 'ar', // 'auto' | 'ar' | 'en'
   autoHide: 'auto', // 'auto' (shrink after a few seconds) | 'never' | 'always' (thin line until hovered)
   position: 'center', // 'center' | 'left' | 'right'

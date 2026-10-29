@@ -3,6 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+if (process.env.ISLANDLY_NATIVE_PROFILE) {
+  app.setPath('userData', process.env.ISLANDLY_NATIVE_PROFILE);
+  fs.appendFileSync(path.join(app.getPath('userData'), 'native-boot.log'), 'bootstrap entered\n');
+}
 
 const baseRoot = path.join(__dirname, '..', '..');
 const basePkg = JSON.parse(fs.readFileSync(path.join(baseRoot, 'package.json'), 'utf8'));

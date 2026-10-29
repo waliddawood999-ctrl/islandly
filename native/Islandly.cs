@@ -35,6 +35,7 @@ static class Native {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT rect);
     [DllImport("user32.dll")] public static extern int GetClassName(IntPtr h, StringBuilder text, int count);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern uint RegisterWindowMessage(string name);
     [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct STARTUPINFO { public int cb; public string reserved, desktop, title; public int x,y,w,h,xChars,yChars,fill,flags; public short show,reservedBytes; public IntPtr reservedPtr,input,output,error; }
     [StructLayout(LayoutKind.Sequential)] public struct PROCESSINFO { public IntPtr process,thread; public int pid,tid; }
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcess(string app, StringBuilder command, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr environment, string directory, ref STARTUPINFO startup, out PROCESSINFO info);
@@ -68,6 +69,8 @@ sealed class IslandHost : Form {
     Native.APPBARDATA abd;
     DateTime settingsStamp;
     int launchCount;
+    uint taskbarCreated;
+    bool barBlocked;
     long lastBackground;
     int breakSeconds;
     readonly List<string> pendingClipboard = new List<string>();
@@ -125,6 +128,8 @@ sealed class IslandHost : Form {
         Native.RegisterHotKey(Handle,2,0x4003,0x20);
         Native.RegisterHotKey(Handle,3,0x4003,0x50);
         Native.RegisterHotKey(Handle,4,0x4003,0x53);
+        taskbarCreated=Native.RegisterWindowMessage("TaskbarCreated");
+        RecoverBar();
         Native.AddClipboardFormatListener(Handle);
         consent = new ConsentWatcher(delegate(string label) { if(!closing) { privacyLabel = label; Position(); } });
         Position();
@@ -140,13 +145,14 @@ sealed class IslandHost : Form {
     }
     void Position() {
         if (closing || !IsHandleCreated) return;
-        bool reserved = (modeOverride == "" ? Setting("islandMode","overlay") : modeOverride) == "reserved-bar";
+        string mode=modeOverride == "" ? Setting("islandMode","overlay") : modeOverride;
+        bool reserved = !barBlocked && (mode == "appbar" || mode == "reserved-bar");
         bool hide = hidden || Fullscreen();
         bool wantBar = reserved && !hide;
         if (wantBar != bar) {
-            if (bar) Native.SHAppBarMessage(1,ref abd);
+            if (bar) RemoveBar();
             bar = wantBar;
-            if (bar) { abd = new Native.APPBARDATA(); abd.cbSize = Marshal.SizeOf(abd); abd.hWnd = Handle; abd.callback = 0x8001; Native.SHAppBarMessage(0,ref abd); }
+            if (bar) { abd = new Native.APPBARDATA(); abd.cbSize = Marshal.SizeOf(abd); abd.hWnd = Handle; abd.callback = 0x8001; MarkBar(); if(Native.SHAppBarMessage(0,ref abd).ToUInt64() == 0) { bar=false; DeleteBarMarker(); } }
         }
         float scale; if (!Single.TryParse(Setting("scale","0.8"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture,out scale)) scale = .8f;
         scale = Math.Max(.5f, Math.Min(2f,scale)) * CreateGraphicsDpi();
@@ -157,7 +163,7 @@ sealed class IslandHost : Form {
         if (bar) {
             var previous = abd.rect;
             abd.edge = 1; abd.rect = new Native.RECT { left = screen.Left, top = screen.Top, right = screen.Right, bottom = screen.Top + (int)(44*scale) };
-            Native.SHAppBarMessage(2,ref abd); abd.rect.bottom = abd.rect.top + (int)(44*scale); if(previous.left != abd.rect.left || previous.right != abd.rect.right || previous.top != abd.rect.top || previous.bottom != abd.rect.bottom) Native.SHAppBarMessage(3,ref abd);
+            Native.SHAppBarMessage(2,ref abd); abd.rect.bottom = abd.rect.top + (int)(44*scale); if(previous.left != abd.rect.left || previous.right != abd.rect.right || previous.top != abd.rect.top || previous.bottom != abd.rect.bottom) { MarkBar(); Native.SHAppBarMessage(3,ref abd); }
         }
         string pos = Setting("position","center");
         int x = pos == "left" ? screen.Left+16 : pos == "right" ? screen.Right-w-16 : screen.Left+(screen.Width-w)/2;
@@ -168,7 +174,8 @@ sealed class IslandHost : Form {
     float CreateGraphicsDpi() { using(var g = CreateGraphics()) return g.DpiX/96f; }
     protected override void OnPaint(PaintEventArgs e) {
         base.OnPaint(e); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        if (Height < 12) return;
+        if (Height < 12) { using(var brush=new SolidBrush(TimerRunning() ? Color.FromArgb(167,139,250) : Color.FromArgb(76,76,76))) e.Graphics.FillRectangle(brush,ClientRectangle); return; }
+        using(var gradient=new LinearGradientBrush(ClientRectangle,Color.FromArgb(12,12,16),Color.Black,90f)) e.Graphics.FillRectangle(gradient,ClientRectangle);
         string label = DateTime.Now.ToString("HH:mm");
         if (TimerRunning()) { long end = Convert.ToInt64(state["endAt"]); var left = Math.Max(0,(end-DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())/1000); label = (left/60).ToString("00")+":"+(left%60).ToString("00"); }
         if(privacyLabel != "") label = privacyLabel;
@@ -288,6 +295,29 @@ sealed class IslandHost : Form {
         var data = new { hostPid=Process.GetCurrentProcess().Id, phase=child == null ? "idle" : ready ? "panel" : "starting", averageNotApplicable=true, totalMB=total, processes=processes, launchCount=launchCount, latenciesMs=latencies.ToArray(), appBar=bar, appBarTop=abd.rect.top, appBarBottom=abd.rect.bottom, stateAgeMs=clock.ElapsedMilliseconds-stateWrittenAt, command=lastCommand };
         string file=Path.Combine(probe,"status.json"); try { File.WriteAllText(file+".tmp",json.Serialize(data)); if(File.Exists(file)) File.Replace(file+".tmp",file,null); else File.Move(file+".tmp",file); } catch(IOException) {}
     }
+    void DeleteBarMarker() { try { File.Delete(Path.Combine(profile,"native-appbar-marker.json")); } catch {} }
+    void MarkBar() {
+        var data=new { pid=Process.GetCurrentProcess().Id, start=Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks.ToString(), edge=1,
+            left=abd.rect.left,top=abd.rect.top,right=abd.rect.right,bottom=abd.rect.bottom, hwnd=Handle.ToInt64().ToString() };
+        string file=Path.Combine(profile,"native-appbar-marker.json"); File.WriteAllText(file,json.Serialize(data));
+    }
+    void RemoveBar() { if(Native.SHAppBarMessage(1,ref abd).ToUInt64() != 0) DeleteBarMarker(); }
+    void RecoverBar() {
+        string file=Path.Combine(profile,"native-appbar-marker.json"); if(!File.Exists(file)) return;
+        try {
+            var old=json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file));
+            try { using(var process=Process.GetProcessById(Convert.ToInt32(old["pid"]))) {
+                if(process.StartTime.ToUniversalTime().Ticks.ToString() == Convert.ToString(old["start"])) { barBlocked=true; return; }
+            } } catch(ArgumentException) {}
+            // Never REMOVE a saved HWND: it may have been recycled. Use our fresh live window.
+            var recovery=new Native.APPBARDATA(); recovery.cbSize=Marshal.SizeOf(recovery); recovery.hWnd=Handle; recovery.callback=0x8001; recovery.edge=1;
+            if(Native.SHAppBarMessage(0,ref recovery).ToUInt64() == 0) { barBlocked=true; return; }
+            try {
+                recovery.rect=new Native.RECT { left=Convert.ToInt32(old["left"]),top=Convert.ToInt32(old["top"]),right=Convert.ToInt32(old["right"]),bottom=Convert.ToInt32(old["bottom"]) };
+                if(recovery.rect.right>recovery.rect.left && recovery.rect.bottom>recovery.rect.top) { Native.SHAppBarMessage(2,ref recovery); Native.SHAppBarMessage(3,ref recovery); }
+            } finally { if(Native.SHAppBarMessage(1,ref recovery).ToUInt64() != 0) DeleteBarMarker(); else barBlocked=true; }
+        } catch { barBlocked=true; }
+    }
     void BackgroundTick() {
         var input=new Native.LASTINPUT(); input.size=(uint)Marshal.SizeOf(input);
         bool active=Native.GetLastInputInfo(ref input) && unchecked((uint)Environment.TickCount-input.time)<60000;
@@ -319,6 +349,7 @@ sealed class IslandHost : Form {
         }
     }
     protected override void WndProc(ref Message m) {
+        if(taskbarCreated != 0 && m.Msg == taskbarCreated) { bar=false; DeleteBarMarker(); Position(); }
         if(m.Msg == 0x031D && child == null && Setting("clipboard","True") != "False") {
             try { if(Clipboard.ContainsText()) { string text=Clipboard.GetText(); if(text.Length > 5000) text=text.Substring(0,5000);
                 if(text != "") { pendingClipboard.Remove(text); pendingClipboard.Add(text); while(pendingClipboard.Count > 30) pendingClipboard.RemoveAt(0); state["clipboardPending"]=pendingClipboard.ToArray(); SaveState(); }
@@ -331,7 +362,7 @@ sealed class IslandHost : Form {
     void Cleanup() {
         if(closing) return; closing=true; ticker.Stop();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= DisplayChanged;
-        if(bar) { Native.SHAppBarMessage(1,ref abd); bar=false; }
+        if(bar) { RemoveBar(); bar=false; }
         for(int i=1;i<=4;i++) Native.UnregisterHotKey(Handle,i);
         Native.RemoveClipboardFormatListener(Handle); if(consent != null) consent.Dispose();
         Send("quit"); EndSession(); tray.Visible=false; tray.Dispose(); ticker.Dispose();

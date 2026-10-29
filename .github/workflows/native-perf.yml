@@ -2,8 +2,6 @@ name: T9 native idle and on-demand panels
 on:
   pull_request:
     branches: [dev]
-  push:
-    branches: [codex/T9-perf-ram]
   workflow_dispatch:
 permissions:
   contents: read
