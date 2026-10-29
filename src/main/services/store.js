@@ -28,4 +28,5 @@ function jsonStore(name, fallback) {
 
 const ISLAMIC_DEFAULTS = require('./prayer-defaults');
 const MATERIAL_DEFAULT = 'acrylic';
-module.exports = { jsonStore, ISLAMIC_DEFAULTS, MATERIAL_DEFAULT };
+const ECO_DEFAULTS = { ecoMode: false, ecoAuto: false, motion: 'full' };
+module.exports = { ECO_DEFAULTS, jsonStore, ISLAMIC_DEFAULTS, MATERIAL_DEFAULT };

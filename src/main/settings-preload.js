@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('settingsAPI', {
   prayer: () => ipcRenderer.invoke('prayer:get'),
   hijri: () => ipcRenderer.invoke('hijri:get'),
   material: () => ipcRenderer.invoke('material:get'),
+  watchPerf: (on) => { if (typeof on === 'boolean') ipcRenderer.send('perf:watch', on); },
   get: () => ipcRenderer.sendSync('settings:get'),
   set: (patch) => ipcRenderer.invoke('settings:set', patch),
   info: () => ipcRenderer.invoke('app:info'),

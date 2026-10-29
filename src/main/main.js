@@ -39,6 +39,7 @@ const { Surface } = require('./surface');
 const apps = require('./services/apps');
 const win32 = require('./win32');
 const { Material } = require('./material');
+const { EcoController } = require('./eco');
 const cities = require('./cities');
 
 const isDev = process.argv.includes('--dev');
@@ -58,6 +59,9 @@ process.on('unhandledRejection', (err) => logError('main (promise)', err));
 let win = null;
 let tray = null;
 let material = null;
+let ecoController;
+let effectiveEco = false, powerSuspended = false;
+let startupEco = false;
 let settingsWin = null;
 let userHidden = false;
 let envelope = { w: 160, h: 60 }; // the size the island needs right now, in CSS pixels (reported by the renderer)
@@ -101,8 +105,8 @@ const isIsland = e => !!win && !win.isDestroyed() && e.sender === win.webContent
 const isSettings = e => !!settingsWin && !settingsWin.isDestroyed() && e.sender === settingsWin.webContents && e.senderFrame === settingsWin.webContents.mainFrame;
 function applyActivityPolicy() {
   if (!clipboardHistory || !bluetooth || !sysinfo || !tracker) return;
-  const next = activityPolicy({ hidden: userHidden, fullscreen: fullscreenActive && settings.get().hideFullscreen, expanded: expanded(),
-    eco: settings.get().ecoMode, clipboard: settings.get().clipboard, tracking: settings.get().timeTracking });
+  const next = activityPolicy({ hidden: userHidden || powerSuspended, fullscreen: fullscreenActive && settings.get().hideFullscreen, expanded: expanded(),
+    eco: effectiveEco, clipboard: settings.get().clipboard, tracking: settings.get().timeTracking });
   if (!policy || next.clipboard !== policy.clipboard || next.clipboardMs !== policy.clipboardMs) next.clipboard ? clipboardHistory.start(next.clipboardMs) : clipboardHistory.stop();
   if (!policy || next.bluetooth !== policy.bluetooth) next.bluetooth ? bluetooth.start() : bluetooth.stop();
   sysinfo.watch(next.system && systemRequested);
@@ -236,7 +240,7 @@ function createWindow() {
   win.once('ready-to-show', () => applyVisibility());
   win.webContents.on('did-finish-load', () => {
     markBootOk();
-    push('eco:changed', { eco: settings.get().ecoMode });
+    push('eco:changed', { eco: effectiveEco });
     if (prayerLive) push('prayer:state', prayerLive.get());
     win.webContents.setZoomFactor(zoom());
     material.resized();
@@ -266,7 +270,7 @@ function openSettings() {
       sandbox: true,
     },
   });
-  settingsWin.webContents.on('did-finish-load', () => settingsWin.webContents.send('eco:changed', { eco: settings.get().ecoMode }));
+  settingsWin.webContents.on('did-finish-load', () => settingsWin.webContents.send('eco:changed', { eco: effectiveEco }));
   settingsWin.on('closed', () => { perf?.stop(); settingsWin = null; });
   settingsWin.webContents.on('did-finish-load', () => material.publish(material.state()));
   settingsWin.setMenu(null);
@@ -473,6 +477,9 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
   settings.init();
+  let onBattery = false;
+  try { onBattery = powerMonitor.isOnBatteryPower(); } catch (_) {}
+  startupEco = effectiveEco = !!(settings.get().ecoMode || (settings.get().ecoAuto && onBattery));
   createWindow();
   if (!nativeManaged) createTray();
   registerIpc();
@@ -507,10 +514,12 @@ app.whenReady().then(() => {
   if (settings.get().updates) updater.start();
 
   weather = new Weather(() => push('today:update', todayState()));
+  weather.setPaused(startupEco);
   weather.configure(prayer.location(settings.get()), settings.get().weather);
   scheduleMidnight();
 
   sysinfo = new SysInfo((sample) => push('system:sample', sample));
+  sysinfo.setPaused(startupEco);
 
   breaks = new Breaks(() => push('break:due', {}));
   breaks.configure(settings.get().breakEvery);
@@ -531,6 +540,7 @@ app.whenReady().then(() => {
       push('github:update', state);
     }
   );
+  github.setPaused(startupEco);
   github.start();
 
   palette = new Palette({
@@ -570,6 +580,11 @@ app.whenReady().then(() => {
   });
 
   applyActivityPolicy();
+  ecoController = new EcoController({ powerMonitor, settings: settings.get,
+    apply: ({ eco, suspended }) => { effectiveEco = eco; powerSuspended = suspended; applyActivityPolicy(); if (suspended) perf.stop(); },
+    publish: (state) => { push('eco:changed', state); if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('eco:changed', state); },
+  });
+  ecoController.start();
   const send = (cmd) => push('shortcut', cmd);
   if (!nativeManaged) {
   globalShortcut.register('Control+Alt+I', () => send('toggle'));
@@ -612,11 +627,7 @@ app.whenReady().then(() => {
     const publicSettings = { ...settings.get(), materialEffective: material.state().material };
     push('settings:update', publicSettings);
     for (const target of [settingsWin, palette?.win]) if (target && !target.isDestroyed()) target.webContents.send('settings:update', publicSettings);
-    if (now.ecoMode !== prev.ecoMode) {
-      const payload = { eco: now.ecoMode };
-      push('eco:changed', payload);
-      if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('eco:changed', payload);
-    }
+    ecoController.update();
     applyActivityPolicy();
     if (now.lang !== prev.lang && win) win.webContents.reload();
     buildTrayMenu();
@@ -635,6 +646,7 @@ process.on('exit', stopNativeServices);
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  if (ecoController) ecoController.stop();
   [prayerLive, media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks, tracker, privacy, github, palette, surface].forEach((m) => m && m.stop && m.stop());
   clearInterval(hoverPoll);
   clearTimeout(midnightTimer);
