@@ -721,3 +721,5 @@
 - New real-input harness initially stopped before any input because Process.MainWindowHandle excludes the island's tool window. Locate the actual visible island by EnumWindows/PID/title instead, then use OS pointer/button/key APIs. The profile diagnostic artifact is uploaded on failure. Laptop exception stack/exact path requested to distinguish process-creation, pipe and OS-policy/provider failure.
 
 - Strengthened the failure injection to an existing invalid PE executable: this reaches CreateProcessW and must preserve native error 193 through cleanup (rather than merely testing a File.Exists guard). Expect exactly one retry, then restore the real executable and prove the next real click opens a panel. This diagnoses the confirmed last-error clobbering defect without claiming the laptop's original underlying API error was 193.
+
+- Real OS hover reaches and launches the panel in CI. Corrected its diagnostic origin from click to hover so the regression verifies the actual handler accurately; activation-source assertions remain enabled. Re-running all checks and packaged failure/recovery coverage on this revision.

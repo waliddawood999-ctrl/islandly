@@ -132,7 +132,7 @@ sealed class IslandHost : Form {
         MouseEnter += delegate { hoverArmed = true; hoverDwell.Start(); };
         MouseLeave += delegate { hoverArmed = false; hoverDwell.Stop(); };
         MouseClick += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) OpenPanel("expand","click"); };
-        hoverDwell.Interval = 280; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring) OpenPanel("expand","click"); };
+        hoverDwell.Interval = 280; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring) OpenPanel("expand","hover"); };
         launchRetry.Interval=1500;
         launchRetry.Tick+=delegate { launchRetry.Stop(); string requested=retryCommand; retryCommand=""; if(requested!="") OpenPanel(requested,"retry",true); };
         ticker.Interval = 1000; ticker.Tick += Tick; ticker.Start();
