@@ -29,12 +29,19 @@ if ($Smoke) {
 $exe = if ($Executable) { [IO.Path]::GetFullPath($Executable) } else { Join-Path $root 'native/bin/Islandly.exe' }
 $hostProcess = Start-Process $exe -ArgumentList @('--root',"`"$root`"",'--profile',"`"$profile`"",'--probe-dir',"`"$probe`"",'--mode',$Mode) -PassThru
 $owned = [System.Collections.Generic.HashSet[int]]::new()
+function Read-SharedJson([string]$File) {
+    $sharing = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+    $stream = [IO.FileStream]::new($File, [IO.FileMode]::Open, [IO.FileAccess]::Read, $sharing)
+    $reader = [IO.StreamReader]::new($stream)
+    try { return ($reader.ReadToEnd() | ConvertFrom-Json) }
+    finally { $reader.Dispose() }
+}
 function Read-Status {
     if ($hostProcess.HasExited) { throw "Native host exited: $($hostProcess.ExitCode)" }
     $status = $null
     for ($retry=0; $retry -lt 20; $retry++) {
-        try { $status = Get-Content "$probe/status.json" -Raw | ConvertFrom-Json; break }
-        catch [System.IO.IOException] { Start-Sleep -Milliseconds 15 }
+        try { $status = Read-SharedJson "$probe/status.json"; break }
+        catch { Start-Sleep -Milliseconds 15 }
     }
     if ($null -eq $status) { throw 'Could not read native ownership status after bounded retries' }
     foreach ($p in $status.processes) { [void]$owned.Add([int]$p.pid) }
@@ -112,7 +119,7 @@ try {
     Write-Output "NATIVE FOOTPRINT: idle $($idle.averageMB) MB; panel $($panel.averageMB) MB; after-close $($afterClose.averageMB) MB; panel latency $($result.panelOpenLatencyMs -join ', ') ms"
     if (!$result.acceptanceUnder180) { throw 'Idle RAM acceptance failed: must be below 180 MB before and after opening panels' }
 } finally {
-    if (Test-Path "$probe/status.json") { Write-Output ('LAST STATUS: ' + (Get-Content "$probe/status.json" -Raw)) }
+    try { if (!$hostProcess.HasExited -and (Test-Path "$probe/status.json")) { Write-Output ('LAST STATUS: ' + ((Read-Status) | ConvertTo-Json -Compress -Depth 5)) } } catch { Write-Output 'Final status unavailable; continuing cleanup' }
     foreach ($log in @('native-panels.log','error.log','native-boot.log')) { if (Test-Path "$profile/$log") { Write-Output "$log :"; Get-Content "$profile/$log" | Select-Object -Last 35 } }
     if (!$hostProcess.HasExited) { Command 'exit'; if (!$hostProcess.WaitForExit(10000)) { $hostProcess.Kill(); throw 'Native host did not exit gracefully' } }
     foreach ($id in $owned) { if (Get-Process -Id $id -ErrorAction SilentlyContinue) { throw "Owned PID $id survived application shutdown" } }
