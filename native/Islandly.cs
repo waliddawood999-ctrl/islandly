@@ -63,13 +63,13 @@ sealed class IslandHost : Form {
     int launchCount;
     public IslandHost(string[] args) {
         packaged = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"IslandlyPanels.exe"));
-        root = Arg(args,"--root", packaged ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"resources/app") : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"../.."))));
+        root = Arg(args,"--root", packaged ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"resources/app") : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"../..")));
         electron = Arg(args,"--electron", packaged ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"IslandlyPanels.exe") : Path.Combine(root,"node_modules/electron/dist/electron.exe"));
         profile = Arg(args,"--profile", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"islandly"));
         probe = Arg(args,"--probe-dir", "");
         modeOverride = Arg(args,"--mode", "");
         Directory.CreateDirectory(profile);
-        if (probe != "") Directory.CreateDirectory(probe);
+        if (probe != "") { Directory.CreateDirectory(probe); measuring = true; }
         ReadSettings();
         try { state = json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(profile,"native-session.json"))); } catch { }
         Text = "Islandly Native"; Name = "IslandlyNative";

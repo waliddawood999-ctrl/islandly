@@ -4,12 +4,23 @@ param([string]$Output = "$PSScriptRoot/../native-perf-result.json", [ValidateSet
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Add-Type -AssemblyName System.Windows.Forms
-$beforeWorkArea = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class WorkAreaProbe {
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int left,top,right,bottom; }
+    [DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint action,uint param,out RECT rect,uint flags);
+    public static string Current() { RECT r; if(!SystemParametersInfo(48,0,out r,0)) throw new Exception("SPI_GETWORKAREA failed"); return r.left+","+r.top+","+r.right+","+r.bottom; }
+    public static int Top() { RECT r; SystemParametersInfo(48,0,out r,0); return r.top; }
+}
+'@
+$beforeWorkArea = [WorkAreaProbe]::Current()
 $probe = Join-Path ([IO.Path]::GetTempPath()) ('islandly-native-probe-' + [Guid]::NewGuid())
 $profile = Join-Path $probe 'profile'
 New-Item -ItemType Directory -Path $profile -Force | Out-Null
 # Same optional feature settings as the prior Electron controls; separate disposable profile.
-@{ weather=$false; updates=$false; icsUrl=''; breakEvery=0; timeTracking=$false; prayerAlerts=$false; hideFullscreen=$false; islandMode=$Mode } | ConvertTo-Json | Set-Content "$profile/settings.json" -Encoding UTF8
+$initialSettings = @{ weather=$false; updates=$false; icsUrl=''; breakEvery=0; timeTracking=$false; prayerAlerts=$false; hideFullscreen=$false; islandMode=$Mode } | ConvertTo-Json
+[IO.File]::WriteAllText("$profile/settings.json",$initialSettings,[Text.UTF8Encoding]::new($false))
 $exe = Join-Path $root 'native/bin/Islandly.exe'
 $hostProcess = Start-Process $exe -ArgumentList @('--root',"`"$root`"",'--profile',"`"$profile`"",'--probe-dir',"`"$probe`"",'--mode',$Mode) -PassThru
 $owned = [System.Collections.Generic.HashSet[int]]::new()
@@ -53,8 +64,8 @@ try {
     if ($Mode -eq 'reserved-bar') {
         if (!$initial.appBar) { throw 'Native AppBar not registered' }
         # Use a fresh Screen collection; do not trust a cached WorkingArea after SHAppBarMessage.
-        $workArea = [System.Windows.Forms.Screen]::AllScreens[0].WorkingArea
-        if ($workArea.Top -lt $initial.appBarBottom) { throw "Reserved top work area not applied: $workArea" }
+        $workArea = [WorkAreaProbe]::Current()
+        if ([WorkAreaProbe]::Top() -lt $initial.appBarBottom) { throw "Reserved top work area not applied: $workArea" }
     }
     $idle = Samples 'idle'
     Command 'settings'
@@ -79,7 +90,7 @@ try {
     if (!$hostProcess.HasExited) { Command 'exit'; if (!$hostProcess.WaitForExit(10000)) { $hostProcess.Kill(); throw 'Native host did not exit gracefully' } }
     foreach ($id in $owned) { if (Get-Process -Id $id -ErrorAction SilentlyContinue) { throw "Owned PID $id survived application shutdown" } }
     if ($Mode -eq 'reserved-bar') {
-        $workArea = [System.Windows.Forms.Screen]::AllScreens[0].WorkingArea
+        $workArea = [WorkAreaProbe]::Current()
         if ($workArea -ne $beforeWorkArea) { throw "AppBar work area not restored: before $beforeWorkArea; after $workArea" }
     }
     Write-Output "Raw profile/logs retained for diagnosis: $probe"
