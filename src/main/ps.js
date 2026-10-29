@@ -1,4 +1,5 @@
 const path = require('path');
+const { track } = require('./owned-processes');
 const { spawn, execFile } = require('child_process');
 
 const SCRIPTS = path.join(__dirname, 'scripts');
@@ -9,16 +10,16 @@ const isWindows = process.platform === 'win32';
 function runOnce(name, timeout = 15000, args = []) {
   if (!isWindows) return Promise.resolve('');
   return new Promise((resolve) => {
-    execFile('powershell.exe', [...ARGS, path.join(SCRIPTS, name), ...args.map(String)], { windowsHide: true, timeout }, (err, stdout) =>
+    track(execFile('powershell.exe', [...ARGS, path.join(SCRIPTS, name), ...args.map(String)], { windowsHide: true, timeout }, (err, stdout) =>
       resolve(err ? '' : String(stdout).trim())
-    );
+    ), 'powershell');
   });
 }
 
 /** Start a long-lived script. Returns the child process, or null when not on Windows. */
 function spawnScript(name) {
   if (!isWindows) return null;
-  return spawn('powershell.exe', [...ARGS, path.join(SCRIPTS, name)], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+  return track(spawn('powershell.exe', [...ARGS, path.join(SCRIPTS, name)], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] }), 'powershell');
 }
 
 module.exports = { runOnce, spawnScript, isWindows };

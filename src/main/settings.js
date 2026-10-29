@@ -3,6 +3,7 @@ const path = require('path');
 const { app } = require('electron');
 
 const DEFAULTS = {
+  ...require('./services/store').ECO_DEFAULTS,
   lang: 'ar', // 'auto' | 'ar' | 'en'
   autoHide: 'auto', // 'auto' (shrink after a few seconds) | 'never' | 'always' (thin line until hovered)
   position: 'center', // 'center' | 'left' | 'right'
@@ -39,6 +40,8 @@ function init() {
   file = path.join(app.getPath('userData'), 'settings.json');
   try {
     data = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+    for (const key of ['ecoMode', 'ecoAuto']) if (typeof data[key] !== 'boolean') data[key] = DEFAULTS[key];
+    if (!['full', 'reduced', 'off'].includes(data.motion)) data.motion = DEFAULTS.motion;
   } catch (_) {
     /* first run */
   }
@@ -53,6 +56,7 @@ function set(patch) {
   const prev = data;
   data = { ...data }; // keeps data.secrets
   for (const key of Object.keys(DEFAULTS)) {
+    if (key === 'motion' && !['full', 'reduced', 'off'].includes(patch[key])) continue;
     if (key in patch && typeof patch[key] === typeof DEFAULTS[key]) data[key] = patch[key];
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });

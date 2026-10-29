@@ -1,5 +1,5 @@
 const path = require('path');
-const { app, BrowserWindow, screen, ipcMain, Tray, Menu, globalShortcut, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, Tray, Menu, globalShortcut, nativeImage, shell, powerMonitor } = require('electron');
 const settings = require('./settings');
 const { MediaBridge } = require('./media');
 const { ClipboardHistory } = require('./clipboard');
@@ -20,6 +20,8 @@ const { PrivacyWatcher } = require('./services/privacy');
 const { GitHubWatcher } = require('./services/github');
 const { Palette } = require('./palette');
 const win32 = require('./win32');
+const { EcoController } = require('./eco');
+const { PerformanceMonitor } = require('./perf');
 const cities = require('./cities');
 
 const isDev = process.argv.includes('--dev');
@@ -36,6 +38,8 @@ process.on('unhandledRejection', (err) => logError('main (promise)', err));
 
 let win = null;
 let tray = null;
+let ecoController, perfMonitor;
+let startupEco = false;
 let settingsWin = null;
 let userHidden = false;
 let envelope = { w: 160, h: 60 }; // the size the island needs right now, in CSS pixels (reported by the renderer)
@@ -120,6 +124,7 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     markBootOk();
     win.webContents.setZoomFactor(zoom());
+    if (ecoController) push('eco:changed', ecoController.state());
   });
   win.webContents.on('render-process-gone', (_e, d) => logError('renderer gone', JSON.stringify(d)));
   win.webContents.on('preload-error', (_e, p, err) => logError('preload', p, err));
@@ -144,6 +149,9 @@ function openSettings() {
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+  settingsWin.webContents.on('did-finish-load', () => {
+    if (ecoController) settingsWin.webContents.send('eco:changed', ecoController.state());
   });
   settingsWin.setMenu(null);
   settingsWin.loadFile(path.join(info.root, 'src', 'settings', 'index.html'));
@@ -236,6 +244,12 @@ async function stashFromExplorer() {
 }
 
 function registerIpc() {
+  const ownsSettings = (e) => settingsWin && !settingsWin.isDestroyed() && e.sender === settingsWin.webContents && e.senderFrame === settingsWin.webContents.mainFrame;
+  ipcMain.handle('perf:get', (e) => {
+    if (!ownsSettings(e)) throw new Error('unauthorized performance sender');
+    return perfMonitor.get();
+  });
+  ipcMain.on('perf:watch', (e, on) => { if (ownsSettings(e) && typeof on === 'boolean') perfMonitor.watch(settingsWin, on); });
   ipcMain.on('settings:get', (e) => (e.returnValue = settings.get()));
   ipcMain.on('island:envelope', (_e, env) => {
     if (!env || !Number.isFinite(env.w) || !Number.isFinite(env.h)) return;
@@ -327,6 +341,9 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
   settings.init();
+  let onBattery = false;
+  try { onBattery = powerMonitor.isOnBatteryPower(); } catch (_) {}
+  startupEco = !!(settings.get().ecoMode || (settings.get().ecoAuto && onBattery));
   createWindow();
   createTray();
   registerIpc();
@@ -338,6 +355,7 @@ app.whenReady().then(() => {
   media.start();
 
   clipboardHistory = new ClipboardHistory((list) => push('clipboard:update', list));
+  clipboardHistory.setEco(startupEco);
   if (settings.get().clipboard) clipboardHistory.start();
 
   shelf = new Shelf((list) => push('shelf:update', list));
@@ -350,16 +368,19 @@ app.whenReady().then(() => {
   calendar.configure(settings.get().icsUrl);
 
   bluetooth = new BluetoothWatcher((devices) => push('bluetooth:update', devices));
+  bluetooth.setPaused(startupEco);
   bluetooth.start();
 
   updater = new Updater((version) => push('update:ready', { version }));
   if (settings.get().updates) updater.start();
 
   weather = new Weather(() => push('today:update', todayState()));
+  weather.setPaused(startupEco);
   weather.configure(prayer.location(settings.get()), settings.get().weather);
   scheduleMidnight();
 
   sysinfo = new SysInfo((sample) => push('system:sample', sample));
+  sysinfo.setPaused(startupEco);
 
   breaks = new Breaks(() => push('break:due', {}));
   breaks.configure(settings.get().breakEvery);
@@ -380,6 +401,7 @@ app.whenReady().then(() => {
       push('github:update', state);
     }
   );
+  github.setPaused(startupEco);
   github.start();
 
   palette = new Palette({
@@ -402,6 +424,24 @@ app.whenReady().then(() => {
       push('foreground', fg);
     },
   });
+
+  perfMonitor = new PerformanceMonitor({ app, windows: () => ({ island: win, settings: settingsWin, palette: palette && palette.win }),
+    children: require('./owned-processes').list, metric: require('./process-metrics').processMetrics });
+  ecoController = new EcoController({ powerMonitor, settings: settings.get,
+    apply: ({ eco, suspended }) => {
+      const paused = eco || suspended;
+      clipboardHistory.setEco(eco);
+      if (suspended || !settings.get().clipboard) clipboardHistory.stop(); else clipboardHistory.start();
+      if (fsWatcher.setEco) fsWatcher.setEco(eco);
+      for (const optional of [bluetooth, weather, github, sysinfo]) optional.setPaused(paused);
+      if (suspended) perfMonitor.stop();
+    },
+    publish: (state) => {
+      push('eco:changed', state);
+      if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('eco:changed', state);
+    },
+  });
+  ecoController.start();
 
   const send = (cmd) => push('shortcut', cmd);
   globalShortcut.register('Control+Alt+I', () => send('toggle'));
@@ -433,7 +473,9 @@ app.whenReady().then(() => {
         push('privacy:update', privacy.state);
       }
     }
+    ecoController.update();
     push('settings:update', now);
+    if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('settings:update', now);
     if (now.lang !== prev.lang && win) win.webContents.reload();
     buildTrayMenu();
   });
@@ -445,6 +487,8 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  if (ecoController) ecoController.stop();
+  if (perfMonitor) perfMonitor.stop();
   [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks, tracker, privacy, github, palette].forEach((m) => m && m.stop && m.stop());
   clearTimeout(midnightTimer);
 });

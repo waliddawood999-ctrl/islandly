@@ -26,4 +26,5 @@ function jsonStore(name, fallback) {
   };
 }
 
-module.exports = { jsonStore };
+const ECO_DEFAULTS = { ecoMode: false, ecoAuto: false, motion: 'full' };
+module.exports = { jsonStore, ECO_DEFAULTS };

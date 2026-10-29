@@ -7,7 +7,7 @@ const BASE = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAcce
 
 function query(device) {
   return new Promise((resolve) => {
-    execFile('reg.exe', ['query', BASE + device, '/s'], { windowsHide: true, timeout: 4000 }, (err, out) => resolve(err ? '' : String(out)));
+    require('../owned-processes').track(execFile('reg.exe', ['query', BASE + device, '/s'], { windowsHide: true, timeout: 4000 }, (err, out) => resolve(err ? '' : String(out))), 'other');
   });
 }
 
