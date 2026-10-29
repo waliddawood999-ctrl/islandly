@@ -28,12 +28,13 @@ app.whenReady().then(async()=>{
    const frames=[],inputs=[],inputDetails=[];const sleep=ms=>new Promise(r=>setTimeout(r,ms));
    for(let cycle=0;cycle<12;cycle++){
     if(cycle===6 && !window.__t20PinOnly){Island.setHover(false);if(Island.isExpanded())Island.togglePin();await sleep(500);}
-    const previous=Island.el.getBoundingClientRect();const oldOpacity=getComputedStyle(Island.el).opacity;const start=performance.now();let last=start,first=null;
+    const visual=document.getElementById('island-surface')||Island.el;
+    const previous=visual.getBoundingClientRect();const oldOpacity=getComputedStyle(Island.el).opacity;const start=performance.now();let last=start,first=null;
     if(cycle<6 || window.__t20PinOnly) Island.togglePin(); else Island.setHover(cycle%2===0);
     const jsMs=performance.now()-start;let maxFrame=0;
     await new Promise(resolve=>{function frame(now){
      if(last!==start){frames.push(now-last);maxFrame=Math.max(maxFrame,now-last);}last=now;
-     const rect=Island.el.getBoundingClientRect();if(first===null&&(Math.abs(rect.width-previous.width)>.1||Math.abs(rect.height-previous.height)>.1||getComputedStyle(Island.el).opacity!==oldOpacity))first=performance.now()-start;
+     const rect=visual.getBoundingClientRect();if(first===null&&(Math.abs(rect.width-previous.width)>.1||Math.abs(rect.height-previous.height)>.1||getComputedStyle(Island.el).opacity!==oldOpacity))first=performance.now()-start;
      if(now-start<450)requestAnimationFrame(frame);else resolve();
     }requestAnimationFrame(frame)});
     inputDetails.push({cycle,jsMs,first,maxFrame});

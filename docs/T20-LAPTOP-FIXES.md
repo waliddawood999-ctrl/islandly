@@ -6,7 +6,7 @@ The T18 host C7A5F599 and exact758E panels were accepted by SAC on Walid's lapto
 
 The launch worker keeps the collapsed island responsive during OS reputation scanning. A120-second first-ready window starts after ResumeThread,60 seconds after an earlier successful session. There is no automatic Electron prewarming or new resident process. The OS first-run scan can still take tens of seconds; loading feedback is immediate rather than a false promise of a warm launch time.
 
-Expanded card defaults360×440CSS pixels.16px padding,12px grid gaps and a separate pagination row replace absolute overlap-prone placement. Media can grow to460px; all content caps560px and clamps to work area. Wide/long content scrolls inside a rounded card. Both-pills acrylic clip remains, including lyrics. GPU compositor transforms/opacity replace dimension/top/filter animations; native HWND geometry changes only at transition boundaries.
+Expanded card defaults360×440CSS pixels.16px padding,12px grid gaps and a separate pagination row replace absolute overlap-prone placement. Media can grow to460px; all content caps560px and clamps to work area. Wide/long content scrolls inside a rounded card. Both-pills acrylic clip remains, including lyrics. A retained compositor backdrop moves independently of unscaled text; its largest texture is reused for the panel session. GPU transforms/opacity replace dimension/top/filter animations; native HWND geometry changes only at transition boundaries.
 
 ## Evidence
 

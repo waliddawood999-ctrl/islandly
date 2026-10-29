@@ -20,6 +20,8 @@
 const Island = (() => {
   const el = $('#island');
   const stage = $('#content');
+  const face = h('div', { id: 'island-surface', 'aria-hidden': 'true' });
+  el.prepend(face);
   const features = [];
   const M = window.Motion || null;
 
@@ -28,7 +30,7 @@ const Island = (() => {
   const BELOW_GAP = 8; // gap between the island and the strip under it
   const AUTO_HIDE_MS = 5000;
   const HOVER_DWELL_MS = 280; // pointer must rest on the island before it opens (avoids accidental opens)
-  const LEAVE_MS = 8; // how long after the pointer leaves the island closes again
+  const LEAVE_MS = 0; // how long after the pointer leaves the island closes again
   let reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Spring: visual duration ~0.35 s with a slight overshoot. Reduced motion: short, no bounce.
   let motionOff = false;
@@ -61,6 +63,7 @@ const Island = (() => {
   // The current target of the pill and of the strip under it, in CSS pixels.
   const shape = { w: 90, h: 22, y: TOP, r: 11 };
   let belowShape = null; // { w, h } or null
+  let rasterWidth = 90, rasterHeight = 22;
   let shapeAnim = null;
   let animating = false;
   const stats = { animations: 0, lastDuration: 0 };
@@ -71,7 +74,6 @@ const Island = (() => {
   // Before an animation it grows to fit both the old and new size; once the spring settles it is trimmed.
   // It is never resized during the animation itself, so the pill cannot shake.
   const GUTTER = 18;
-  const OVERSHOOT = 1.08;
   let lastEnvelope = '';
   function sendEnvelope(w, hgt, y, extra) {
     const env = { w: Math.ceil(Math.max(w, extra ? extra.w : 0) + 2 * GUTTER), h: Math.ceil(y + hgt + (extra ? BELOW_GAP + extra.h : 0) + GUTTER) };
@@ -82,7 +84,7 @@ const Island = (() => {
   }
 
   function liveSize() {
-    const r = el.getBoundingClientRect();
+    const r = face.getBoundingClientRect();
     return { w: r.width, h: r.height, y: r.top };
   }
 
@@ -92,14 +94,16 @@ const Island = (() => {
     Object.assign(shape, { w, h: hgt, y, r });
     placeBelow(nextBelow);
     if (shapeAnim) shapeAnim.stop();
-    // FLIP: one layout at the destination, then compositor transform/opacity only.
-    const rasterW = Math.max(now.w, w), rasterH = Math.max(now.h, hgt);
-    Object.assign(el.style, { width: rasterW + 'px', height: rasterH + 'px', top: y + 'px', borderRadius: r + 'px' });
+    // Retain the largest backdrop texture. Content stays unscaled; only the face transforms.
+    rasterWidth = Math.max(rasterWidth, now.w, w); rasterHeight = Math.max(rasterHeight, now.h, hgt);
+    const rasterW = rasterWidth, rasterH = rasterHeight;
+    Object.assign(el.style, { width: Math.max(now.w,w) + 'px', height: Math.max(now.h,hgt) + 'px', top: y + 'px', borderRadius: r + 'px' });
+    Object.assign(face.style, { width: rasterW + 'px', height: rasterH + 'px', borderRadius: `${r*rasterW/w}px / ${r*rasterH/hgt}px`, transform: `translateX(-50%) scale(${w/rasterW}, ${hgt/rasterH})` });
     if (motionOff || !el.animate) { settle(); return; }
     animating = true;
-    el.style.willChange = 'transform';
+    face.style.willChange = 'transform';
     const started = performance.now();
-    const animation = el.animate([
+    const animation = face.animate([
       { transform: `translateX(-50%) translateY(${now.y-y}px) scale(${now.w/rasterW}, ${now.h/rasterH})` },
       { transform: `translateX(-50%) translateY(0px) scale(${w/rasterW}, ${hgt/rasterH})` },
     ], { duration: reducedMotion ? 100 : 180, easing: 'cubic-bezier(.2,.9,.3,1)' });
@@ -113,7 +117,7 @@ const Island = (() => {
     startShapeLoop(); reportShape();
     animation.finished.then(() => {
       if (shapeAnim !== anim) return;
-      shapeAnim = null; el.style.willChange = '';
+      shapeAnim = null; face.style.willChange = '';
       stats.lastDuration = performance.now() - started;
       settle();
     }).catch(() => {});
@@ -123,7 +127,7 @@ const Island = (() => {
     animating = false;
     Object.assign(el.style, { width: shape.w + 'px', height: shape.h + 'px', top: shape.y + 'px', borderRadius: shape.r + 'px' });
     reportShape();
-    if (belowShape) below.style.top = el.getBoundingClientRect().bottom + BELOW_GAP + 'px';
+    if (belowShape) below.style.top = face.getBoundingClientRect().bottom + BELOW_GAP + 'px';
     sendEnvelope(shape.w, shape.h, shape.y, belowShape); // trim the window to the final size
   }
 
@@ -522,8 +526,9 @@ const Island = (() => {
   let shapeLoop = false;
   function reportShape() {
     if (material !== 'acrylic') return;
-    const r = el.getBoundingClientRect();
-    const radius = (parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0) * Math.min(r.width / el.offsetWidth, r.height / el.offsetHeight);
+    const r = face.getBoundingClientRect();
+    const radii = getComputedStyle(face).borderTopLeftRadius.split(' ').map(parseFloat);
+    const radius = Math.min((radii[0] || 0) * r.width / face.offsetWidth, (radii[1] || radii[0] || 0) * r.height / face.offsetHeight);
     const msg = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), radius: Math.round(radius) };
     msg.secondary = null;
     if (belowShape && below.style.display !== 'none') {
@@ -592,6 +597,7 @@ const Island = (() => {
   });
 
   Object.assign(el.style, { width: shape.w + 'px', height: shape.h + 'px', top: shape.y + 'px', borderRadius: shape.r + 'px' });
+  Object.assign(face.style, { width: shape.w + 'px', height: shape.h + 'px', borderRadius: shape.r + 'px' });
   below.style.display = 'none';
   sendEnvelope(shape.w, shape.h, shape.y, null);
 
