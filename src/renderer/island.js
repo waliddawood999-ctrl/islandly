@@ -340,7 +340,7 @@ const Island = (() => {
     const v = resolve();
     if (!v) return;
     if (current && current.key === v.key) {
-      if (current.w !== v.w || current.h !== v.h || (current.below && current.below.el) !== (v.below && v.below.el)) {
+      if (current.w !== v.w || current.h !== v.h || (current.below && current.below.el) !== (v.below && v.below.el) || (current.below && current.below.w) !== (v.below && v.below.w) || (current.below && current.below.h) !== (v.below && v.below.h)) {
         setTarget(v.w, v.h, v.y, v.r, v.below);
         sizeStage(v);
       }

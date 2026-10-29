@@ -23,14 +23,18 @@ class Material {
   }
   state() { return { material: this.effective, supported: this.supported }; }
   region(rect, force = false) {
+    if (this.applyingRegion) return true;
     const rects = [rect, ...(rect.secondary ? [rect.secondary] : [])];
     const converted = rects.map((part) => physicalRect(part, this.zoom(), this.dpi()));
     if (converted.some((part) => !part)) return false;
     const key = JSON.stringify(converted);
     if (!force && key === this.key) return true;
-    if (!this.native.setPillRegion(this.window.getNativeWindowHandle(), (converted.length === 1 ? converted[0] : converted))) return false;
-    this.key = key;
-    return true;
+    this.applyingRegion = true;
+    try {
+      if (!this.native.setPillRegion(this.window.getNativeWindowHandle(), (converted.length === 1 ? converted[0] : converted))) return false;
+      this.key = key;
+      return true;
+    } finally { this.applyingRegion = false; }
   }
   fallback() {
     this.supported = false;

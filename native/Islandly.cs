@@ -219,6 +219,9 @@ sealed class IslandHost : Form {
         return Screen.PrimaryScreen;
     }
     float CreateGraphicsDpi() { try { return Native.GetDpiForWindow(Handle)/96f; } catch(EntryPointNotFoundException) { using(var g=CreateGraphics()) return g.DpiX/96f; } }
+    protected override void OnPaintBackground(PaintEventArgs e) {
+        if(nativeAcrylic) e.Graphics.Clear(Color.Black); else base.OnPaintBackground(e);
+    }
     protected override void OnPaint(PaintEventArgs e) {
         base.OnPaint(e); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         if (Height < 12) { using(var brush=new SolidBrush(TimerRunning() ? Color.FromArgb(167,139,250) : Color.FromArgb(76,76,76))) e.Graphics.FillRectangle(brush,ClientRectangle); return; }

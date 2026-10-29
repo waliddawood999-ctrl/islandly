@@ -173,7 +173,7 @@ app.whenReady().then(() =>
 
     await step('stays open while the pointer rests and the window resizes under it (no phantom mouseleave)', async () => {
       // start from the small resting pill, as a user would
-      await js('Island.configure({ autoHide: "never" }); 0');
+      await js('Island.configure({ autoHide: "never", islandMode: "overlay" }); 0');
       xmouse('move', 5, 400);
       await waitFor('resting', async () => !(await js('Island.isExpanded()')), 6000);
       await sleep(900);
@@ -233,7 +233,7 @@ app.whenReady().then(() =>
     });
 
     await step('"over the page" tint applies only while resting', async () => {
-      await js('Island.configure({ autoHide: "never" }); 0');
+      await js('Island.configure({ autoHide: "never", islandMode: "overlay" }); 0');
       win.webContents.send('surface:tint', { r: 240, g: 240, b: 244 });
       await waitFor('tinted while resting', () => js(`document.getElementById('island').classList.contains('tinted')`), 3000).catch(async (e) => {
         throw new Error(e.message + ' ' + JSON.stringify(await js('({ ...Island.debug(), cls: document.getElementById("island").className })')));
@@ -242,6 +242,7 @@ app.whenReady().then(() =>
       await waitFor('not tinted when open', async () => !(await js(`document.getElementById('island').classList.contains('tinted')`)), 3000);
       await js('Island.togglePin(); Island.configure({ autoHide: "auto" }); 0');
       win.webContents.send('surface:tint', null);
+      await js('Island.configure({islandMode:' + JSON.stringify(process.env.ISLANDLY_E2E_MODE || 'overlay') + '}); 0');
       await sleep(600);
     });
 

@@ -28,6 +28,7 @@ let count = f.calls.length; f.m.shape(rect); assert.equal(f.calls.length, count,
 f.m.resized(); assert.equal(f.calls.length, count + 1, 'resize reapplies region');
 f.m.apply('glass'); assert.deepEqual(f.calls.slice(-2), ['none', null]);
 f.m.apply('acrylic'); assert.equal(f.m.state().material, 'acrylic');
+f.native.setPillRegion = () => { f.m.resized(); return true; }; f.m.resized();
 f.native.setPillRegion = () => false; f.m.resized(); assert.deepEqual(f.m.state(), { material: 'glass', supported: false });
 f = fixture(); f.window.setBackgroundMaterial = () => { throw new Error('DWM failure'); }; f.m.apply('acrylic'); assert.equal(f.m.state().supported, false);
 for (const [platform, release] of [['linux', '6.1'], ['win32', '10.0.19045'], ['win32', 'bad']]) {

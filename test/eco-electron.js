@@ -1,3 +1,4 @@
+require('./electron-diagnostics');
 // Runs the real main process and unchanged preloads/UI on Windows CI.
 const assert = require('assert/strict');
 const fs = require('fs'), os = require('os'), path = require('path');
