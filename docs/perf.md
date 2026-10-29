@@ -171,3 +171,14 @@ Measured source **b697ca391cda01ac89a056ee30b1382c62083275**, [native guard work
 | AppBar | 40.66 / 42.76 | 0.522% | 423.06 | 30.48 / 36.37 | 0.443% | 1383 / 718 | 4572 |
 
 Both modes pass all idle RAM samples <180 MB and mean idle CPU <1% before and after close. Packaged launch verification and exact laptop reproduction steps are in [T17-LAUNCH-VERIFY.md](T17-LAUNCH-VERIFY.md). The old host reads last-error after cleanup; the laptop's error 0/87 does not identify the underlying failure. The legacy host opens on the Windows Server runner with packaged defaults, so the original hardware failure is not claimed reproduced.
+
+### T17 packaged recovery validated — cf89cc2
+
+Source **cf89cc21ff5bfa9924464932157e731d09b2316e**, [contracts/UI/native guards 40882272509](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40882272509): every job passes. [Packaged Windows job](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40882272649/job/123476637877) passes real hover/click/Ctrl+Alt+I, each complete shutdown, exact direct-reference Win32 error216 preservation, one retry, restored-runtime click recovery and native-only final state. Thread-scoped loader error mode prevents the malformed-image fixture from blocking CreateProcessW on a system error dialog. The original laptop failure remains unconfirmed; this fixture's216 is not asserted to be Walid's original error.
+
+| Mode | Idle RAM avg / peak MB | Idle CPU | Settings RAM avg MB | After-close RAM avg / peak MB | After-close CPU | Cold settings / expanded ms | Full shutdown ms |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Overlay | 40.12 / 42.27 | 0.467% | 415.10 | 27.82 / 34.61 | 0.285% | 1544 / 686 | 4554 |
+| AppBar | 40.66 / 42.80 | 0.626% | 417.28 | 28.59 / 35.46 | 0.469% | 1456 / 732 | 4556 |
+
+Same method and inventory as above, with all idle samples native-only and <180MB; both CPU means <1%. Raw [overlay](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40882272509/artifacts/12900328957) / [AppBar](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40882272509/artifacts/12901117314) reports. [Validated Windows ZIP artifact](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40882272649/artifacts/12901307086) contains Islandly-native-win64.zip, 141.75MB (optional100MB goal not met). This artifact replaces the pre-fix preview for laptop confirmation; extract both ZIP layers and run Islandly.exe. [Input/error logs](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40882272649/artifacts/12901446679). No manual laptop confirmation claimed.

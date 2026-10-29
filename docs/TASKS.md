@@ -26,7 +26,7 @@
 | T15 | أكريليك بشكل الحبة: كشف الدعم (ويندوز 11) والرجوع للزجاج الداكن، `material:get`/`material:changed`، القيمة الافتراضية `material: 'acrylic'`، وقص التغبيش على شكل الحبة بـ `SetWindowRgn` من `island:shape` (العقد §2.11 ومواصفة T15 في `HANDOFF.md`) | Codex | `codex/T15-acrylic-pill` | T6 | review | Claude | PR #16 draft; npm test Linux/Windows pass; CI 40834486202 SUCCESS; real HWND region mean 0.064ms; T6/T9 integration and manual visuals pending |
 | T16 | Windows NSIS installer, portable ZIP and stable GitHub Releases | Codex | `codex/T16-windows-installer` | T1 accepted by Walid | review | Claude | PR #7; Linux npm test pass; Windows installer CI 40735233961 SUCCESS (tests, Electron update flow, NSIS/ZIP, native pruning, artifact upload); manual Windows pending |
 
-| T17 | Integration of PRs #2/#3/#4/#6/#10/#12/#14/#16/#17; no dev/main merge | Codex | `codex/T17-integration` | listed PRs | review | Claude | Draft PR #18; conflict inventory in docs/T17-INTEGRATION.md; native guards 40.17/40.67MB; full CI/build validation ongoing |
+| T17 | Integration of PRs #2/#3/#4/#6/#10/#12/#14/#16/#17; no dev/main merge | Codex | `codex/T17-integration` | listed PRs | review | Claude | Draft PR #18; conflict inventory in docs/T17-INTEGRATION.md; cf89cc2 packaged real-input/error recovery pass; idle 40.12/40.66MB; laptop launch confirmation pending |
 
 ## Backlog (0.6 و 0.7)
 
