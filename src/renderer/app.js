@@ -74,6 +74,7 @@
     }
     Island.configure({ autoHide: s.autoHide, islandMode: s.islandMode });
     applyMaterial(s.materialEffective || s.material); // materialEffective: what main actually applied (contract §2.11)
+    document.documentElement.dataset.fonts = s.fontPairing || 'plex';
     Island.render();
   });
 

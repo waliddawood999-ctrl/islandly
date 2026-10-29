@@ -1,0 +1,37 @@
+/* Shared typography for the island, the settings window and the command palette.
+   One composite family per pairing (assets/fonts/<id>/fonts.css): Arabic characters take the Arabic font,
+   everything else the Latin one, chosen per character by unicode-range, even inside one line.
+   Default: IBM Plex Sans Arabic + IBM Plex Sans. The pairing is the hidden setting `fontPairing`; the other
+   pairings exist for comparison in dev/fonts/ only and fall back to Plex if their files are not loaded. */
+@import url('./plex/fonts.css');
+
+:root {
+  --font-ui: 'Islandly Plex';
+  /* only for glyphs our fonts do not have (emoji, a few symbols) */
+  --font-fallback: 'Segoe UI Symbol', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+  --font: var(--font-ui), 'Islandly Plex', var(--font-fallback);
+  --font-display: var(--font);
+  /* Arabic needs more room for its ascenders, descenders and marks than Latin at the same size */
+  --lh: 1.38;
+}
+html[data-fonts='manrope'] {
+  --font-ui: 'Islandly Manrope';
+}
+html[data-fonts='jakarta'] {
+  --font-ui: 'Islandly Jakarta';
+}
+html:lang(ar) {
+  --lh: 1.55;
+}
+
+html,
+body {
+  font-family: var(--font);
+  line-height: var(--lh);
+  font-kerning: normal;
+  font-optical-sizing: auto;
+}
+/* numbers that change in place (clocks, timers, countdowns) keep a fixed width so they do not jitter */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}

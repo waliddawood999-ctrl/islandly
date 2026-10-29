@@ -13,8 +13,7 @@
   /* the pill: near-black glass. With the acrylic window material the desktop shows through it, blurred. */
   --glass: rgba(12, 12, 15, 0.84);
   --glass-solid: rgba(10, 10, 12, 0.94);
-  --font: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', Inter, Tahoma, system-ui, sans-serif;
-  --font-display: 'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', Inter, Tahoma, system-ui, sans-serif;
+  /* fonts: assets/fonts/typography.css (--font, --font-display, --lh) */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -143,7 +142,7 @@ html.acrylic #below { background: var(--glass-solid); }
 /* generic list panel (clipboard, calendar, shelf) */
 .panel { flex-direction: column; align-items: stretch; justify-content: flex-start; padding: 14px 18px 0; gap: 8px; }
 .p-head { display: flex; align-items: center; justify-content: space-between; height: 28px; flex: none; }
-.p-title { font-family: var(--font-display); font-size: 15px; font-weight: 700; letter-spacing: 0.1px; }
+.p-title { font-family: var(--font-display); font-size: 15px; font-weight: 700; }
 .p-title-wrap { display: flex; align-items: center; gap: 8px; }
 .count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--card-hover); font-size: 12px; font-weight: 700; display: grid; place-items: center; color: #d5d8e8; }
 .count:empty { display: none; }
@@ -279,7 +278,7 @@ html.acrylic #below { background: var(--glass-solid); }
 .battery-expanded { padding: 16px 22px 0; gap: 20px; align-items: flex-start; }
 .b-text { flex: 1; min-width: 0; }
 .b-row { display: flex; align-items: baseline; gap: 10px; }
-.b-pct { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.b-pct { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .b-state { font-size: 14px; font-weight: 700; color: var(--muted); }
 .b-eta { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .tip { display: inline-block; margin-top: 8px; padding: 4px 13px; border-radius: 14px; background: rgba(52, 211, 153, 0.16); color: var(--green); font-size: 12px; font-weight: 700; }
@@ -287,14 +286,14 @@ html.acrylic #below { background: var(--glass-solid); }
 .dev { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px; border-radius: 13px; background: var(--card); font-size: 12px; font-weight: 600; color: #d5d8e8; max-width: 180px; }
 .dev svg { width: 14px; height: 14px; flex: none; }
 .dev-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dev b { color: var(--green); font-weight: 800; }
+.dev b { color: var(--green); font-weight: 700; }
 
 /* ---------- clipboard ---------- */
 .cl-list { display: flex; flex-direction: column; gap: 6px; }
 .cl-row { position: relative; display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 6px 0 12px; border-radius: 20px; background: var(--card); cursor: pointer; transition: background 0.15s; overflow: hidden; }
 .cl-row:hover { background: var(--card-hover); }
 .cl-row.pinned { box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.35); }
-.k { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 800; }
+.k { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; }
 .k.url { background: rgba(96, 165, 250, 0.22); color: var(--blue); }
 .k.email { background: rgba(244, 114, 182, 0.22); color: #f472b6; }
 .k.phone { background: rgba(52, 211, 153, 0.22); color: var(--green); }
@@ -304,7 +303,7 @@ html.acrylic #below { background: var(--glass-solid); }
 .cl-text { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .icon-btn.pin.on { color: var(--amber); }
 .icon-btn.pin.on svg { fill: var(--amber); }
-.copied-flag { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(52, 211, 153, 0.92); color: #00110a; font-weight: 800; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity 0.12s; }
+.copied-flag { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(52, 211, 153, 0.92); color: #00110a; font-weight: 700; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity 0.12s; }
 .cl-row.copied .copied-flag { opacity: 1; }
 
 /* ---------- shelf ---------- */
@@ -329,20 +328,20 @@ html.acrylic #below { background: var(--glass-solid); }
 .cal-list { display: flex; flex-direction: column; gap: 6px; }
 .cal-row { display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 8px 0 14px; border-radius: 24px; background: var(--card); }
 .cal-time { flex: none; width: 54px; line-height: 1.15; }
-.cal-time b { display: block; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cal-time b { display: block; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .cal-time small { font-size: 11px; color: var(--muted); font-weight: 600; }
 .cal-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- today ---------- */
 .td-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.td-date { font-size: 16px; font-weight: 800; }
+.td-date { font-size: 16px; font-weight: 700; }
 .wx { text-align: end; flex: none; }
 .wx-row { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
 .wx-icon { font-size: 22px; line-height: 1; }
-.wx-temp { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.wx-temp { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .np { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-radius: 20px; background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(251, 191, 36, 0.06)); }
-.np-name { font-size: 16px; font-weight: 800; color: #fde68a; }
-.np-in { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; color: #fde68a; }
+.np-name { font-size: 16px; font-weight: 700; color: #fde68a; }
+.np-in { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; color: #fde68a; }
 .pr-row { display: flex; gap: 6px; }
 .pr { flex: 1; text-align: center; padding: 7px 2px; border-radius: 14px; background: var(--card); transition: background 0.2s; }
 .pr small { display: block; font-size: 11px; color: var(--muted); font-weight: 600; }
@@ -403,7 +402,7 @@ html.acrylic #below { background: var(--glass-solid); }
 .gh-list::-webkit-scrollbar { display: none; }
 .gh-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 12px; background: var(--card); text-align: start; transition: background 0.15s; }
 .gh-row:hover { background: var(--card-hover); }
-.gh-type { width: 26px; height: 26px; border-radius: 8px; background: rgba(167, 139, 250, 0.2); color: #d9ccff; display: grid; place-items: center; font-size: 11px; font-weight: 800; flex: none; }
+.gh-type { width: 26px; height: 26px; border-radius: 8px; background: rgba(167, 139, 250, 0.2); color: #d9ccff; display: grid; place-items: center; font-size: 11px; font-weight: 700; flex: none; }
 .gh-text { display: flex; flex-direction: column; min-width: 0; }
 .gh-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gh-repo { font-size: 11px; color: var(--muted); text-align: start; }
@@ -425,5 +424,5 @@ html.acrylic #below { background: var(--glass-solid); }
 /* ---------- shelf image actions */
 .sh-acts { display: flex; gap: 3px; justify-content: center; margin-top: 3px; opacity: 0; transition: opacity 0.15s; }
 .sh-item:hover .sh-acts { opacity: 1; }
-.sh-act { font-size: 9.5px; font-weight: 800; padding: 1px 5px; border-radius: 6px; background: rgba(96, 165, 250, 0.22); color: #bcd7ff; }
+.sh-act { font-size: 9.5px; font-weight: 700; padding: 1px 5px; border-radius: 6px; background: rgba(96, 165, 250, 0.22); color: #bcd7ff; }
 .sh-act:hover { background: rgba(96, 165, 250, 0.4); }

@@ -261,6 +261,8 @@ const LANG = (() => {
 
 document.documentElement.lang = LANG;
 document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
+// font pairing (hidden setting): plex (default), manrope, jakarta. See assets/fonts/typography.css.
+document.documentElement.dataset.fonts = (window.islandAPI && window.islandAPI.settings.fontPairing) || 'plex';
 
 const t = (key, vars) => {
   let s = STRINGS[LANG][key] || STRINGS.ar[key] || key;
