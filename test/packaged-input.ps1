@@ -72,18 +72,20 @@ try {
   Wait-Until { (Status).phase -eq 'idle' -and @((Status).processes).Count -eq 1 } "$action complete shutdown" 12
   Write-Output "PACKAGED REAL INPUT PASS: $action"
  }
- # Missing runtime is recoverable, creates diagnostics before child startup, and retries only once.
+ # A real CreateProcessW failure preserves Win32 error 193 through cleanup and retries only once.
  $runtime=Join-Path $stage 'IslandlyPanels.exe'; Move-Item $runtime "$runtime.hold"
+ [IO.File]::WriteAllText($runtime,'not a Windows PE executable')
  Point-ToIsland; [PanelInput]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [PanelInput]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
  Wait-Until { (Get-Content "$profile/native-panels.log" -Raw) -match 'launch-failed' } 'failure logging'
  Move-Away; Start-Sleep -Seconds 4
  $failures=([regex]::Matches((Get-Content "$profile/native-panels.log" -Raw),'launch-failed')).Count
  if($failures -ne 2){throw "Expected one initial failure and one bounded retry, got $failures"}
- Move-Item "$runtime.hold" $runtime
+ if((Get-Content "$profile/native-panels.log" -Raw) -notmatch 'win32=193'){throw 'Original CreateProcessW error was not preserved through cleanup'}
+ Remove-Item $runtime; Move-Item "$runtime.hold" $runtime
  $before=(Status).launchCount; Point-ToIsland; [PanelInput]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [PanelInput]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
  Wait-Until { $s=Status; $s.phase -eq 'panel' -and $s.launchCount -gt $before } 'recovery after restoring runtime'
  Move-Away; Probe-Command 'close'; Wait-Until { (Status).phase -eq 'idle' } 'final shutdown' 12
- Write-Output 'PACKAGED RECOVERY PASS: logged failure, one retry, no process leak, subsequent user action succeeds'
+ Write-Output 'PACKAGED RECOVERY PASS: real CreateProcessW error 193 preserved, one retry, no process leak, subsequent user action succeeds'
 } finally {
  New-Item 'out/input-diagnostics' -ItemType Directory -Force | Out-Null
  Copy-Item "$profile/*.log" 'out/input-diagnostics' -ErrorAction SilentlyContinue
