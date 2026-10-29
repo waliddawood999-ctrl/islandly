@@ -27,9 +27,9 @@ app.whenReady().then(async()=>{
   const timing=await run(`(async()=>{
    const frames=[],inputs=[],inputDetails=[];const sleep=ms=>new Promise(r=>setTimeout(r,ms));
    for(let cycle=0;cycle<12;cycle++){
-    if(cycle===6){Island.setHover(false);if(Island.isExpanded())Island.togglePin();await sleep(500);}
+    if(cycle===6 && !window.__t20PinOnly){Island.setHover(false);if(Island.isExpanded())Island.togglePin();await sleep(500);}
     const previous=Island.el.getBoundingClientRect();const oldOpacity=getComputedStyle(Island.el).opacity;const start=performance.now();let last=start,first=null;
-    if(cycle<6) Island.togglePin(); else Island.setHover(cycle%2===0);
+    if(cycle<6 || window.__t20PinOnly) Island.togglePin(); else Island.setHover(cycle%2===0);
     const jsMs=performance.now()-start;let maxFrame=0;
     await new Promise(resolve=>{function frame(now){
      if(last!==start){frames.push(now-last);maxFrame=Math.max(maxFrame,now-last);}last=now;
