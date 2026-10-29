@@ -3,6 +3,8 @@
 # Works from Linux or macOS; needs node, npm, python3 (for zip) and internet access.
 #   scripts/package-win.sh [output-zip]
 set -euo pipefail
+# Native Win32 entry point is compiled on Windows; never silently ship Electron as the idle owner.
+: "${ISLANDLY_NATIVE_EXE:?Set ISLANDLY_NATIVE_EXE to the Windows-built native/bin/Islandly.exe (or use npm run package:native on Windows)}"
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="${1:-$root/Islandly-win64.zip}"
@@ -19,6 +21,8 @@ npm install --no-save --ignore-scripts --no-audit --no-fund "electron@$electron_
 npx --yes @electron/packager . Islandly --platform=win32 --arch=x64 --out="$work/out" --overwrite --asar=false \
   --ignore="^/dev$" --ignore="^/test$" --ignore="^/scripts$" --ignore="^/\.git" >/dev/null
 
+mv "$work/out/Islandly-win32-x64/Islandly.exe" "$work/out/Islandly-win32-x64/IslandlyPanels.exe"
+cp "$ISLANDLY_NATIVE_EXE" "$work/out/Islandly-win32-x64/Islandly.exe"
 app="$work/out/Islandly-win32-x64/resources/app"
 # keep only production packages; anything else in node_modules is build tooling
 for d in "$app/node_modules"/*; do

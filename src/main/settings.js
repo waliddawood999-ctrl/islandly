@@ -3,6 +3,9 @@ const path = require('path');
 const { app } = require('electron');
 
 const DEFAULTS = {
+  ecoMode: false,
+  monitorId: '', // Existing T1/T7 display-selection contract; primary fallback.
+  islandMode: 'overlay', // Existing T6/T7 contract: overlay | appbar; native owner reserves the strip.
   lang: 'ar', // 'auto' | 'ar' | 'en'
   autoHide: 'auto', // 'auto' (shrink after a few seconds) | 'never' | 'always' (thin line until hovered)
   position: 'center', // 'center' | 'left' | 'right'

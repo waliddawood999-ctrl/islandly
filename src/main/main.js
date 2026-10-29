@@ -1,6 +1,20 @@
 const path = require('path');
 const { app, BrowserWindow, screen, ipcMain, Tray, Menu, globalShortcut, nativeImage, shell } = require('electron');
+const nativeManaged = process.env.ISLANDLY_NATIVE_SESSION === '1';
+if (nativeManaged && process.env.ISLANDLY_NATIVE_PROFILE) app.setPath('userData', process.env.ISLANDLY_NATIVE_PROFILE);
+const { NativeSession } = require('./native-session');
+if (nativeManaged) {
+  // User-launched applications must survive closing our Chromium Job Object.
+  shell.openExternal = async target => { const error = await nativeSession.external('url', target); if (error) throw Error(error); };
+  shell.openPath = target => nativeSession.external('path', target);
+  shell.showItemInFolder = target => { nativeSession.external('reveal', target); };
+}
+let nativeSession, nativeExpanded = true;
+Menu.setApplicationMenu(null); // A widget has no application menu; avoid creating one at startup.
 const settings = require('./settings');
+const { PerformanceMonitor } = require('./perf');
+const { activityPolicy } = require('./activity-policy');
+const commandHost = require('./ps').host;
 const { MediaBridge } = require('./media');
 const { ClipboardHistory } = require('./clipboard');
 const { Shelf } = require('./shelf');
@@ -42,7 +56,11 @@ let envelope = { w: 160, h: 60 }; // the size the island needs right now, in CSS
 let fullscreenActive = false;
 let foregroundApp = { app: '', title: '' };
 let media, clipboardHistory, shelf, calendar, bluetooth, updater, fsWatcher, weather, sysinfo, breaks, midnightTimer;
-let palette, tracker, privacy, github;
+let palette, tracker, privacy, github, perf;
+let systemRequested = false;
+let surfaceResting = null;
+const expanded = () => surfaceResting === null ? envelope.h > 150 : !surfaceResting;
+let policy = null;
 const notesStore = jsonStore('notes.json', { todos: [] });
 
 function todayState() {
@@ -66,6 +84,22 @@ const push = (channel, payload) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 };
 
+
+const isIsland = e => !!win && !win.isDestroyed() && e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame;
+const isSettings = e => !!settingsWin && !settingsWin.isDestroyed() && e.sender === settingsWin.webContents && e.senderFrame === settingsWin.webContents.mainFrame;
+function applyActivityPolicy() {
+  if (!clipboardHistory || !bluetooth || !sysinfo || !tracker) return;
+  const next = activityPolicy({ hidden: userHidden, fullscreen: fullscreenActive && settings.get().hideFullscreen, expanded: expanded(),
+    eco: settings.get().ecoMode, clipboard: settings.get().clipboard, tracking: settings.get().timeTracking });
+  if (!policy || next.clipboard !== policy.clipboard || next.clipboardMs !== policy.clipboardMs) next.clipboard ? clipboardHistory.start(next.clipboardMs) : clipboardHistory.stop();
+  if (!policy || next.bluetooth !== policy.bluetooth) next.bluetooth ? bluetooth.start() : bluetooth.stop();
+  sysinfo.watch(next.system && systemRequested);
+  if (!policy || next.tracking !== policy.tracking) next.tracking ? tracker.start() : tracker.stop();
+  if (!policy || next.networkPaused !== policy.networkPaused) [weather, calendar, github].forEach(service => service?.setPaused(next.networkPaused));
+  fsWatcher?.setIntervalMs?.(next.foregroundMs);
+  policy = next;
+}
+
 // ---------------------------------------------------------------- window
 
 const zoom = () => Number(settings.get().scale) || 0.8;
@@ -73,7 +107,8 @@ const zoom = () => Number(settings.get().scale) || 0.8;
 /** Size the window to the island's envelope and keep it anchored at the top of the primary display. */
 function positionWindow() {
   if (!win || win.isDestroyed()) return;
-  const { bounds } = screen.getPrimaryDisplay();
+  const display = screen.getAllDisplays().find(d => String(d.id) === settings.get().monitorId) || screen.getPrimaryDisplay();
+  const { bounds } = display;
   const z = zoom();
   const width = Math.min(bounds.width, Math.ceil(envelope.w * z));
   const height = Math.min(bounds.height, Math.ceil(envelope.h * z));
@@ -87,6 +122,7 @@ function applyVisibility() {
   const hide = userHidden || (settings.get().hideFullscreen && fullscreenActive);
   if (hide && win.isVisible()) win.hide();
   if (!hide && !win.isVisible()) win.showInactive();
+  applyActivityPolicy();
   buildTrayMenu();
 }
 
@@ -108,7 +144,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      backgroundThrottling: false,
+      backgroundThrottling: true,
     },
   });
 
@@ -119,6 +155,7 @@ function createWindow() {
   win.once('ready-to-show', () => applyVisibility());
   win.webContents.on('did-finish-load', () => {
     markBootOk();
+    push('eco:changed', { eco: settings.get().ecoMode });
     win.webContents.setZoomFactor(zoom());
   });
   win.webContents.on('render-process-gone', (_e, d) => logError('renderer gone', JSON.stringify(d)));
@@ -145,11 +182,15 @@ function openSettings() {
       sandbox: true,
     },
   });
+  settingsWin.webContents.on('did-finish-load', () => settingsWin.webContents.send('eco:changed', { eco: settings.get().ecoMode }));
+  settingsWin.on('closed', () => { perf?.stop(); settingsWin = null; });
   settingsWin.setMenu(null);
   settingsWin.loadFile(path.join(info.root, 'src', 'settings', 'index.html'));
 }
 
 // ---------------------------------------------------------------- tray
+
+function nativeHostPath() { return app.isPackaged ? path.join(path.dirname(process.execPath), 'Islandly.exe') : path.join(info.baseRoot, 'native', 'bin', 'Islandly.exe'); }
 
 function trayMenuTemplate() {
   const s = settings.get();
@@ -190,12 +231,12 @@ function trayMenuTemplate() {
       {
         label: 'التشغيل مع ويندوز',
         type: 'checkbox',
-        checked: app.getLoginItemSettings().openAtLogin,
-        click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }),
+        checked: app.getLoginItemSettings(nativeManaged ? { path: nativeHostPath() } : undefined).openAtLogin,
+        click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked, ...(nativeManaged ? { path: nativeHostPath() } : {}) }),
       },
       { type: 'separator' },
       { label: `Islandly ${info.version}`, enabled: false },
-      { label: 'خروج', click: () => app.quit() },
+      { label: 'خروج', click: () => { nativeSession?.send('exit'); app.quit(); } },
   ];
 }
 
@@ -237,12 +278,18 @@ async function stashFromExplorer() {
 
 function registerIpc() {
   ipcMain.on('settings:get', (e) => (e.returnValue = settings.get()));
-  ipcMain.on('island:envelope', (_e, env) => {
-    if (!env || !Number.isFinite(env.w) || !Number.isFinite(env.h)) return;
+  ipcMain.on('island:envelope', (e, env) => {
+    if (!isIsland(e) || !env || !Number.isFinite(env.w) || !Number.isFinite(env.h)) return;
     envelope = { w: Math.max(40, Math.min(1200, env.w)), h: Math.max(10, Math.min(800, env.h)) };
     positionWindow();
+    applyActivityPolicy();
   });
-  ipcMain.on('system:watch', (_e, on) => sysinfo.watch(!!on));
+  ipcMain.on('surface:resting', (e, resting) => { if (isIsland(e) && typeof resting === 'boolean') { surfaceResting = resting; applyActivityPolicy(); } });
+  ipcMain.on('system:watch', (e, on) => {
+    if (isIsland(e) && typeof on === 'boolean') { systemRequested = on; applyActivityPolicy(); }
+  });
+  ipcMain.handle('perf:get', e => { if (!isSettings(e)) throw Error('Unauthorized IPC sender'); return perf.get(); });
+  ipcMain.on('perf:watch', (e, on) => { if (isSettings(e) && typeof on === 'boolean') perf.watch(settingsWin, on); });
   // The island only accepts keyboard focus while the to-do panel is on screen; it must never steal focus otherwise.
   ipcMain.on('island:focusable', (_e, on) => {
     if (!win || win.isDestroyed()) return;
@@ -261,14 +308,14 @@ function registerIpc() {
   ipcMain.on('open:external', (_e, url) => openExternal(url));
   ipcMain.on('settings:open', openSettings);
   ipcMain.on('menu:show', () => Menu.buildFromTemplate(trayMenuTemplate()).popup({ window: win }));
-  ipcMain.on('app:quit', () => app.quit());
+  ipcMain.on('app:quit', () => { nativeSession?.send('exit'); app.quit(); });
   ipcMain.on('shelf:drag', (e, ids) => {
     const paths = shelf.pathsFor(ids);
     if (!paths.length) return;
     e.sender.startDrag({ files: paths, icon: shelf.iconFor(paths[0]).isEmpty() ? nativeImage.createFromPath(asset('tray.png')) : shelf.iconFor(paths[0]) });
   });
 
-  ipcMain.handle('media:caps', () => media.capabilities());
+  ipcMain.handle('media:caps', () => media.capabilities(expanded() && !userHidden && !fullscreenActive));
   ipcMain.handle('clipboard:list', () => clipboardHistory.list());
   ipcMain.handle('clipboard:copy', (_e, id, as) => clipboardHistory.copy(id, as));
   ipcMain.handle('clipboard:pin', (_e, id) => clipboardHistory.pin(id));
@@ -295,6 +342,7 @@ function registerIpc() {
   ipcMain.handle('calendar:get', () => ({ status: calendar.status, events: calendar.last || [] }));
   ipcMain.handle('update:check', () => updater.check());
   ipcMain.handle('update:apply', () => {
+    if (nativeManaged) { nativeSession.send('restart'); app.quit(); return; }
     app.relaunch();
     app.quit();
   });
@@ -328,7 +376,7 @@ app.on('second-instance', () => {
 app.whenReady().then(() => {
   settings.init();
   createWindow();
-  createTray();
+  if (!nativeManaged) createTray();
   registerIpc();
 
   media = new MediaBridge((payload) => {
@@ -338,7 +386,7 @@ app.whenReady().then(() => {
   media.start();
 
   clipboardHistory = new ClipboardHistory((list) => push('clipboard:update', list));
-  if (settings.get().clipboard) clipboardHistory.start();
+  // Clipboard policy is applied once services are ready.
 
   shelf = new Shelf((list) => push('shelf:update', list));
   shelf.load();
@@ -350,7 +398,7 @@ app.whenReady().then(() => {
   calendar.configure(settings.get().icsUrl);
 
   bluetooth = new BluetoothWatcher((devices) => push('bluetooth:update', devices));
-  bluetooth.start();
+  // Bluetooth is requested only while the island is expanded (applyActivityPolicy).
 
   updater = new Updater((version) => push('update:ready', { version }));
   if (settings.get().updates) updater.start();
@@ -389,7 +437,10 @@ app.whenReady().then(() => {
     openSettings,
   });
 
-  if (process.env.ISLANDLY_TEST) global.__islandly = { palette, shelf, tracker, openSettings };
+  perf = new PerformanceMonitor({ app, host: commandHost, nativeOwnerPid: nativeManaged ? process.ppid : null, windows: () => ({ island: win, settings: settingsWin, palette: palette?.win }) });
+  applyActivityPolicy();
+
+  if (process.env.ISLANDLY_TEST) global.__islandly = { palette, shelf, tracker, openSettings, cleanup: stopNativeServices };
 
   fsWatcher = watchForeground({
     onFullscreen: (active) => {
@@ -403,20 +454,24 @@ app.whenReady().then(() => {
     },
   });
 
+  applyActivityPolicy();
   const send = (cmd) => push('shortcut', cmd);
+  if (!nativeManaged) {
   globalShortcut.register('Control+Alt+I', () => send('toggle'));
   globalShortcut.register('Control+Alt+P', () => send('pomodoro'));
   globalShortcut.register('Control+Alt+S', stashFromExplorer);
   if (!globalShortcut.register('Control+Alt+Space', () => palette.toggle())) logError('shortcut Ctrl+Alt+Space is taken by another app');
+  }
 
   settings.onChange((now, prev) => {
-    if (now.position !== prev.position) positionWindow();
+    nativeSession?.send('settings');
+    if (now.position !== prev.position || now.monitorId !== prev.monitorId) positionWindow();
     if (now.scale !== prev.scale && win) {
       win.webContents.setZoomFactor(zoom());
       positionWindow();
     }
     if (now.icsUrl !== prev.icsUrl) calendar.configure(now.icsUrl);
-    if (now.clipboard !== prev.clipboard) now.clipboard ? clipboardHistory.start() : clipboardHistory.stop();
+
     if (now.hideFullscreen !== prev.hideFullscreen) applyVisibility();
     const locKeys = ['city', 'lat', 'lng', 'prayerMethod', 'madhab', 'weather'];
     if (locKeys.some((k) => now[k] !== prev[k])) {
@@ -424,7 +479,7 @@ app.whenReady().then(() => {
       push('today:update', todayState());
     }
     if (now.breakEvery !== prev.breakEvery) breaks.configure(now.breakEvery);
-    if (now.timeTracking !== prev.timeTracking) now.timeTracking ? tracker.start() : tracker.stop();
+
     if (now.micCamIndicator !== prev.micCamIndicator) {
       if (now.micCamIndicator) privacy.start();
       else {
@@ -433,23 +488,125 @@ app.whenReady().then(() => {
         push('privacy:update', privacy.state);
       }
     }
-    push('settings:update', now);
+    const publicSettings = settings.get();
+    push('settings:update', publicSettings);
+    for (const target of [settingsWin, palette?.win]) if (target && !target.isDestroyed()) target.webContents.send('settings:update', publicSettings);
+    if (now.ecoMode !== prev.ecoMode) {
+      const payload = { eco: now.ecoMode };
+      push('eco:changed', payload);
+      if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('eco:changed', payload);
+    }
+    applyActivityPolicy();
     if (now.lang !== prev.lang && win) win.webContents.reload();
     buildTrayMenu();
   });
 
+  if (nativeManaged) startNativeSession();
   screen.on('display-metrics-changed', positionWindow);
   screen.on('display-added', positionWindow);
   screen.on('display-removed', positionWindow);
 });
 
+function stopNativeServices() { privacy?.stop(); media?.stop(); perf?.stop(); commandHost.shutdown(true); }
+app.on('render-process-gone', () => { if (nativeManaged) app.quit(); });
+app.on('before-quit', () => { nativeSession?.stop(); stopNativeServices(); });
+process.on('exit', stopNativeServices);
+
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks, tracker, privacy, github, palette].forEach((m) => m && m.stop && m.stop());
   clearTimeout(midnightTimer);
+  perf?.stop();
+  commandHost.shutdown();
 });
 
 // Having this listener stops Electron from quitting when the settings window closes; only the tray menu quits.
 app.on('window-all-closed', () => {
   if (!win || win.isDestroyed()) app.quit();
 });
+
+
+// Native host owns the collapsed window and shortcuts; Electron owns existing panels only.
+// Calls the existing public Island API at the lifetime boundary; no UI source or IPC contract changes.
+function startNativeSession() {
+  logError('native session initializing');
+  const fs = require('node:fs');
+  const stateFile = path.join(app.getPath('userData'), 'native-session.json');
+  let closingPanel = false, nativeActions = 0;
+  const connection = require('node:net').createConnection('\\\\.\\pipe\\' + process.env.ISLANDLY_NATIVE_PIPE);
+  connection.on('error', err => { logError('native pipe', err); app.quit(); });
+  const renderer = script => win.webContents.executeJavaScript(script);
+  const command = async action => {
+    try {
+      closingPanel = false;
+      if (action === 'settings') {
+        openSettings();
+        if (settingsWin.webContents.isLoading()) await new Promise(resolve => settingsWin.once('ready-to-show', resolve));
+      } else if (action === 'palette') {
+        palette.toggle();
+        if (palette.win?.webContents.isLoading()) await new Promise(resolve => palette.win.webContents.once('did-finish-load', resolve));
+      } else if (action === 'stash') {
+        nativeActions++;
+        try { await stashFromExplorer(); } finally { nativeActions--; }
+      }
+      else if (action === 'close') {
+        settingsWin?.close(); palette.hide();
+        await renderer("Island.setHover(false); if (Island.isExpanded()) Island.togglePin();");
+        closingPanel = true;
+        nativeExpanded = false;
+        win.hide();
+      } else {
+        const cmd = action === 'pomodoro' ? 'pomodoro' : 'toggle';
+        push('shortcut', cmd);
+        applyVisibility();
+      }
+    } catch (err) { logError('native command', err); }
+  };
+  nativeSession = new NativeSession({
+    input: connection, output: connection,
+    command, quit: () => app.quit(),
+    busy: () => (!closingPanel && nativeExpanded) || !!settingsWin?.isVisible() || !!palette.win?.isVisible() || nativeActions > 0,
+    restore: async () => {
+      logError('native renderer ready, restoring');
+      let saved;
+      try { saved = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch (_) { saved = null; }
+      if (saved) {
+        if (Number.isFinite(saved.breakActive)) breaks.active = Math.max(0, saved.breakActive);
+        clipboardHistory.items = Array.isArray(saved.clipboard) ? saved.clipboard.slice(0, 100) : [];
+        clipboardHistory.seq = Math.max(0, ...clipboardHistory.items.map(x => Number(x.id) || 0)) + 1;
+        for (const text of saved.clipboardPending || []) if (typeof text === 'string') clipboardHistory.add(text);
+        await renderer(`(() => {
+          const saved = ${JSON.stringify(saved)};
+          const timer = Island.feature('timer');
+          if (timer && ['focus','rest'].includes(saved.mode) && Number.isFinite(saved.total) && saved.total > 0) {
+            timer.mode = saved.mode; timer.total = saved.total;
+            timer.remaining = Math.max(0, Number(saved.remaining) || 0);
+            if (saved.running) timer.remaining = Math.max(0, (saved.endAt - Date.now()) / 1000);
+            if (saved.completed || saved.running && timer.remaining <= 0) timer.finish();
+            else if (saved.running) timer.start();
+            else timer.paint();
+          }
+          if (saved.selected) Island.selectFeature(saved.selected);
+        })()`);
+      }
+      logError('native opening command', process.env.ISLANDLY_NATIVE_COMMAND);
+      await command(process.env.ISLANDLY_NATIVE_COMMAND || 'expand');
+      logError('native command opened');
+      // Include first panel layout/paint rather than counting process spawn as panel readiness.
+      await new Promise(resolve => setTimeout(resolve, 350));
+    },
+    capture: async () => {
+      const snapshot = await renderer(`(() => {
+        const timer = Island.feature('timer');
+        return { mode: timer.mode, total: timer.total, remaining: timer.remaining, running: timer.running,
+          endAt: timer.endAt, selected: Island.selectedId(), expanded: Island.isExpanded() };
+      })()`);
+      nativeExpanded = snapshot.expanded;
+      return { ...snapshot, breakActive: breaks.active, clipboard: clipboardHistory.items, clipboardPending: [],
+        monitors: screen.getAllDisplays().map(d => ({ id: String(d.id), ...screen.dipToScreenPoint({ x: d.bounds.x, y: d.bounds.y }) })) };
+    },
+  });
+  const loaded = () => nativeSession.loaded().catch(err => { logError('native load', err); app.quit(); });
+  if (win.webContents.isLoadingMainFrame()) win.webContents.once('did-finish-load', loaded);
+  else loaded();
+}

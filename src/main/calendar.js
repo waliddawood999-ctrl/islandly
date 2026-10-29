@@ -1,5 +1,4 @@
 const { net } = require('electron');
-const { upcomingEvents } = require('./ics');
 
 const REFRESH_MS = 10 * 60 * 1000;
 const LOOKAHEAD_MS = 3 * 24 * 3600 * 1000;
@@ -25,7 +24,7 @@ class CalendarFeed {
       return;
     }
     this.refresh();
-    this.timer = setInterval(() => this.refresh(), REFRESH_MS);
+    this.timer = this.paused ? null : setInterval(() => this.refresh(), REFRESH_MS);
   }
 
   async refresh() {
@@ -35,13 +34,20 @@ class CalendarFeed {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const text = await res.text();
       const now = Date.now();
-      const events = upcomingEvents(text, now - 3600 * 1000, now + LOOKAHEAD_MS).filter((e) => !e.allDay).slice(0, 25);
+      const events = require('./ics').upcomingEvents(text, now - 3600 * 1000, now + LOOKAHEAD_MS).filter((e) => !e.allDay).slice(0, 25);
       this.status = 'ok';
       this.onChange({ status: 'ok', events });
     } catch (_) {
       this.status = 'error';
       this.onChange({ status: 'error', events: [] });
     }
+  }
+
+  setPaused(paused) {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    clearInterval(this.timer); this.timer = null;
+    if (!paused && this.url) this.timer = this.paused ? null : setInterval(() => this.refresh(), REFRESH_MS);
   }
 
   stop() {
