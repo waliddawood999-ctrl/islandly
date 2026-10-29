@@ -463,3 +463,9 @@
 ### T14 PR #17 first CI follow-up
 
 - Draft PR: https://github.com/waliddawood999-ctrl/islandly/pull/17. First Windows run 40835696386 passed full npm test but the new integration harness failed selecting its settings HWND: Electron 45 does not expose the old preload property in getLastWebPreferences. Fixed harness selection to use the new BrowserWindow ID created by the real openSettings action, without modifying production/UI code or weakening assertions. Rerun pending.
+
+### T14 backend verification — PR #17
+
+- Code 0b1fb194e34f92987f60f14e56f2861512c3eba2: https://github.com/waliddawood999-ctrl/islandly/actions/runs/40835854331 **SUCCESS**. Full npm test passes on Linux and Windows. Real Windows Electron main/preloads pass full process totals, directly measured tracked PowerShell memory, Eco off/on events, five-second subscribed updates and no further updates after unsubscribe or settings hide. Log ends REAL IPC PASS.
+- Battery/AC/suspend/resume policy and poller transitions were verified with controlled power events/unit clocks; physical battery-hardware testing is not claimed. No native-idle benchmark or sub-180MB claim is made for this old dev checkout. T9 native-owner reconciliation and Claude's motion/RAM UI remain integration work.
+- Manual Windows confirmation after prerequisites are combined: npm test; npx electron test/eco-electron.js for actual IPC; enable ecoAuto and unplug/reconnect AC, confirm manual ecoMode remains on across AC changes; use the settings performance subscription while visible, then hide/close it and confirm updates stop. No protected UI changes, merges or main pushes.
