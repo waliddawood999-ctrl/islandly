@@ -464,6 +464,7 @@ app.whenReady().then(() => {
   }
 
   settings.onChange((now, prev) => {
+    nativeSession?.send('settings');
     if (now.position !== prev.position || now.monitorId !== prev.monitorId) positionWindow();
     if (now.scale !== prev.scale && win) {
       win.webContents.setZoomFactor(zoom());

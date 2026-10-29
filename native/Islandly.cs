@@ -58,6 +58,7 @@ sealed class IslandHost : Form {
     readonly bool packaged;
     readonly JavaScriptSerializer json = new JavaScriptSerializer();
     readonly System.Windows.Forms.Timer ticker = new System.Windows.Forms.Timer();
+    readonly System.Windows.Forms.Timer hoverDwell = new System.Windows.Forms.Timer();
     readonly Stopwatch clock = Stopwatch.StartNew();
     static readonly Dictionary<string,string> FriendlyNames = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase) {
         {"chrome","Chrome"},{"msedge","Edge"},{"firefox","Firefox"},{"code","VS Code"},{"explorer","File Explorer"},
@@ -75,7 +76,7 @@ sealed class IslandHost : Form {
     IntPtr job;
     NotifyIcon tray;
     bool ready, bar, closing, hidden, measuring, hoverArmed;
-    long launchedAt, readyAt, shutdownAt, hoverAt, stateWrittenAt;
+    long launchedAt, readyAt, shutdownAt, stateWrittenAt;
     string lastCommand = "";
     string modeOverride;
     Native.APPBARDATA abd;
@@ -120,10 +121,11 @@ sealed class IslandHost : Form {
         ContextMenuStrip = menu;
         tray = new NotifyIcon { Text = "Islandly", Icon = SystemIcons.Application, ContextMenuStrip = menu, Visible = true };
         tray.DoubleClick += delegate { OpenPanel("settings"); };
-        MouseEnter += delegate { hoverArmed = true; hoverAt = clock.ElapsedMilliseconds; };
-        MouseLeave += delegate { hoverArmed = false; };
+        MouseEnter += delegate { hoverArmed = true; hoverDwell.Start(); };
+        MouseLeave += delegate { hoverArmed = false; hoverDwell.Stop(); };
         MouseClick += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) OpenPanel("expand"); };
-        ticker.Interval = 250; ticker.Tick += Tick; ticker.Start();
+        hoverDwell.Interval = 280; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring) OpenPanel("expand"); };
+        ticker.Interval = 1000; ticker.Tick += Tick; ticker.Start();
         FormClosed += delegate { Cleanup(); };
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += DisplayChanged;
     }
@@ -214,7 +216,7 @@ sealed class IslandHost : Form {
     bool TimerHasState() { object remaining,total; return TimerRunning() || state.TryGetValue("remaining",out remaining) && state.TryGetValue("total",out total) && Convert.ToDouble(remaining)>0 && Convert.ToDouble(remaining)<Convert.ToDouble(total); }
     bool TimerRunning() { object running; return state.TryGetValue("running",out running) && running is bool && (bool)running; }
     void OpenPanel(string command) {
-        hoverArmed = false;
+        hoverArmed = false; hoverDwell.Stop();
         if (child != null) { if (ready) Send(command); return; }
         if (!File.Exists(electron)) { tray.ShowBalloonTip(5000,"Islandly","Panel runtime missing. Run npm ci or reinstall the full package.",ToolTipIcon.Error); return; }
         state["breakActive"]=breakSeconds/60.0; SaveState();
@@ -299,6 +301,7 @@ sealed class IslandHost : Form {
             Send("shell-result:"+id+":"+Convert.ToBase64String(Encoding.UTF8.GetBytes(error)));
             return;
         }
+        if(line == "ISLANDLY:settings:") { ReadSettings(); Position(); return; }
         if(line == "ISLANDLY:ready:") { ready = true; readyAt = clock.ElapsedMilliseconds; latencies.Enqueue(readyAt-launchedAt); Position(); Status(); }
         if(line == "ISLANDLY:idle:") { shutdownAt = clock.ElapsedMilliseconds; }
         if(line == "ISLANDLY:restart:") { EndSession(); OpenPanel("settings"); return; }
@@ -329,7 +332,6 @@ sealed class IslandHost : Form {
         ReadSettings();
         if(clock.ElapsedMilliseconds-lastBackground >= 5000) { lastBackground=clock.ElapsedMilliseconds; if(child == null) BackgroundTick(); }
         if(child != null && (child.HasExited || shutdownAt > 0 && clock.ElapsedMilliseconds-shutdownAt > 1500 || !ready && clock.ElapsedMilliseconds-launchedAt > 30000)) EndSession();
-        if(hoverArmed && !measuring && clock.ElapsedMilliseconds-hoverAt >= 280) OpenPanel("expand");
         if(TimerRunning() && Convert.ToInt64(state["endAt"]) <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() && child == null) {
             state["running"] = false; state["remaining"] = 0; state["completed"] = true; SaveState();
             System.Media.SystemSounds.Asterisk.Play(); tray.ShowBalloonTip(5000,"Islandly","Timer complete",ToolTipIcon.Info);
@@ -438,13 +440,13 @@ sealed class IslandHost : Form {
         base.WndProc(ref m);
     }
     void Cleanup() {
-        if(closing) return; closing=true; ticker.Stop();
+        if(closing) return; closing=true; ticker.Stop(); hoverDwell.Stop();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= DisplayChanged;
         if(bar) { RemoveBar(); bar=false; }
         for(int i=1;i<=4;i++) Native.UnregisterHotKey(Handle,i);
         Native.RemoveClipboardFormatListener(Handle); if(consent != null) consent.Dispose();
         state["breakActive"]=breakSeconds/60.0; SaveState();
-        Send("quit"); EndSession(); tray.Visible=false; tray.Dispose(); ticker.Dispose();
+        Send("quit"); EndSession(); tray.Visible=false; tray.Dispose(); ticker.Dispose(); hoverDwell.Dispose();
     }
 }
 sealed class ConsentWatcher : IDisposable {

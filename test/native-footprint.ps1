@@ -122,6 +122,7 @@ try {
     $result | ConvertTo-Json -Depth 12 | Set-Content $Output -Encoding UTF8
     Write-Output "NATIVE FOOTPRINT: idle $($idle.averageMB) MB; panel $($panel.averageMB) MB; after-close $($afterClose.averageMB) MB; panel latency $($result.panelOpenLatencyMs -join ', ') ms; shutdown $shutdownMs ms; idle CPU $($idle.averageCPU)%"
     if (!$result.acceptanceUnder180) { throw 'Idle RAM acceptance failed: must be below 180 MB before and after opening panels' }
+    if ($idle.averageCPU -ge 1 -or $afterClose.averageCPU -ge 1) { throw 'Native idle CPU must remain below 1 percent before and after opening panels' }
 } finally {
     try { if (!$hostProcess.HasExited -and (Test-Path "$probe/status.json")) { Write-Output ('LAST STATUS: ' + ((Read-Status) | ConvertTo-Json -Compress -Depth 5)) } } catch { Write-Output 'Final status unavailable; continuing cleanup' }
     foreach ($log in @('native-panels.log','error.log','native-boot.log')) { if (Test-Path "$profile/$log") { Write-Output "$log :"; Get-Content "$profile/$log" | Select-Object -Last 35 } }
