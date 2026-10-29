@@ -3,6 +3,8 @@ const TIME_ZONE = 'Asia/Riyadh';
 const OFFSET = 3 * 60 * 60 * 1000; // Riyadh civil time: UTC+03, no DST in the supported contemporary calendar.
 const AR = ['محرم','صفر','ربيع الأول','ربيع الآخر','جمادى الأولى','جمادى الآخرة','رجب','شعبان','رمضان','شوال','ذو القعدة','ذو الحجة'];
 const EN = ['Muharram','Safar','Rabi al-Awwal','Rabi al-Thani','Jumada al-Ula','Jumada al-Akhirah','Rajab','Sha\u2019ban','Ramadan','Shawwal','Dhu al-Qadah','Dhu al-Hijjah'];
+// Persist the exact Intl calendar output as month boundaries, avoiding a cold ICU formatter on every app launch.
+const monthTable = require('./hijri-months.json');
 let formatter;
 const dates = new Map();
 function civil(date = new Date()) {
@@ -28,12 +30,20 @@ function occasion(month, day, g) {
   return null;
 }
 function get(date = new Date(), showOccasions = true) {
-  formatter ||= new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { timeZone: TIME_ZONE, year: 'numeric', month: 'numeric', day: 'numeric' });
   const g = civil(date), key = `${g.year}-${g.month}-${g.day}`;
   let value = dates.get(key);
   if (!value) {
-    const parts = Object.fromEntries(formatter.formatToParts(date).map(p => [p.type, p.value]));
-    value = { day: Number(parts.day), month: Number(parts.month), year: Number(parts.year) };
+    const epochDay = Math.floor((+date + OFFSET) / 86400000), starts = monthTable.starts;
+    if (epochDay >= starts[0] && epochDay < starts[starts.length - 1]) {
+      let lo = 0, hi = starts.length - 1;
+      while (lo + 1 < hi) { const mid = (lo + hi) >> 1; if (starts[mid] <= epochDay) lo = mid; else hi = mid; }
+      value = { day: epochDay - starts[lo] + 1, month: lo % 12 + 1, year: monthTable.startYear + Math.floor(lo / 12) };
+    } else {
+      // Dates outside AH 1400–1500 keep the required runtime Intl behavior.
+      formatter ||= new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { timeZone: TIME_ZONE, year: 'numeric', month: 'numeric', day: 'numeric' });
+      const parts = Object.fromEntries(formatter.formatToParts(date).map(p => [p.type, p.value]));
+      value = { day: Number(parts.day), month: Number(parts.month), year: Number(parts.year) };
+    }
     dates.set(key, value);
     if (dates.size > 4) dates.delete(dates.keys().next().value);
   }

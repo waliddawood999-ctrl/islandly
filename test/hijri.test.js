@@ -16,3 +16,16 @@ assert.equal(get(new Date('2025-02-28T20:59:59Z')).month,8);
 assert.equal(get(new Date('2025-02-28T21:00:00Z')).month,9,'Saudi midnight, not executor local day');
 assert.equal(midnight(new Date('2025-02-28T22:00:00Z')),Date.parse('2025-02-28T21:00:00Z'));
 console.log('hijri: known Umm al-Qura dates, fixed timezone, all occasions, precedence and disabled occasions passed');
+
+// The compact cache is an exact materialization of Intl, not a substitute calendar algorithm.
+const table=require('../src/main/services/hijri-months.json');
+const intl=new Intl.DateTimeFormat('en-u-ca-islamic-umalqura',{timeZone:'Asia/Riyadh',year:'numeric',month:'numeric',day:'numeric'});
+for(let i=0;i<table.starts.length-1;i++)for(const delta of [0,14,table.starts[i+1]-table.starts[i]-1]){
+ const date=new Date((table.starts[i]+delta)*86400000+12*3600000);
+ const fields=Object.fromEntries(intl.formatToParts(date).map(p=>[p.type,p.value]));const actual=get(date,false);
+ assert.deepEqual([actual.year,actual.month,actual.day],[+fields.year,+fields.month,+fields.day]);
+}
+for(const date of [new Date('1970-01-01T12:00:00Z'),new Date('2080-01-01T12:00:00Z')]){
+ const fields=Object.fromEntries(intl.formatToParts(date).map(p=>[p.type,p.value]));const actual=get(date,false);assert.deepEqual([actual.year,actual.month,actual.day],[+fields.year,+fields.month,+fields.day]);
+}
+console.log('Intl calendar cache: every cached month start/middle/end and out-of-range fallback agree with runtime Intl');
