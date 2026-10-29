@@ -2,6 +2,13 @@ name: T9 performance verification
 on:
   pull_request:
     branches: [dev]
+    paths:
+      - 'src/**'
+      - 'native/**'
+      - 'scripts/**'
+      - 'test/**'
+      - 'package*.json'
+      - '.github/workflows/**'
   push:
     branches: [dev]
   workflow_dispatch:

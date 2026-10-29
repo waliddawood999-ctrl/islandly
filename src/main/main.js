@@ -507,6 +507,7 @@ app.whenReady().then(() => {
 });
 
 function stopNativeServices() { privacy?.stop(); media?.stop(); perf?.stop(); commandHost.shutdown(true); }
+app.on('render-process-gone', () => { if (nativeManaged) app.quit(); });
 app.on('before-quit', () => { nativeSession?.stop(); stopNativeServices(); });
 process.on('exit', stopNativeServices);
 

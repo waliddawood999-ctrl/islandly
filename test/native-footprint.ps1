@@ -65,7 +65,7 @@ function Samples([string]$phase) {
         if ($phase -eq 'idle' -and @($s.processes).Count -ne 1) { throw 'Idle must own only the native host; Electron/helper leaked' }
         $samples += $s
     }
-    return @{ averageMB=($samples | Measure-Object totalMB -Average).Average; minMB=($samples | Measure-Object totalMB -Minimum).Minimum; peakMB=($samples | Measure-Object totalMB -Maximum).Maximum; samples=$samples }
+    return @{ averageCPU=($samples | Measure-Object totalCPU -Average).Average; averageMB=($samples | Measure-Object totalMB -Average).Average; minMB=($samples | Measure-Object totalMB -Minimum).Minimum; peakMB=($samples | Measure-Object totalMB -Maximum).Maximum; samples=$samples }
 }
 try {
     $initial = Wait-Phase 'idle'

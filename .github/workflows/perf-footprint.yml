@@ -2,6 +2,13 @@ name: T9 RAM footprint diagnosis
 on:
   pull_request:
     branches: [dev]
+    paths:
+      - 'src/**'
+      - 'native/**'
+      - 'scripts/**'
+      - 'test/**'
+      - 'package*.json'
+      - '.github/workflows/**'
   workflow_dispatch:
 permissions:
   contents: read

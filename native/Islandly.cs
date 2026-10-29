@@ -74,6 +74,8 @@ sealed class IslandHost : Form {
     Native.APPBARDATA abd;
     DateTime settingsStamp;
     int launchCount;
+    readonly Dictionary<int,double> cpuTimes = new Dictionary<int,double>();
+    long cpuSampleAt;
     uint taskbarCreated;
     bool barBlocked;
     long lastBackground, compactAt;
@@ -344,9 +346,12 @@ sealed class IslandHost : Form {
     void Status() {
         if(probe == "" || closing) return;
         var ids = JobPids().Concat(new[]{Process.GetCurrentProcess().Id}).Distinct().ToArray();
-        var processes = new List<object>(); double total = 0;
-        foreach(int id in ids) try { using(var p=Process.GetProcessById(id)) { double mb=p.WorkingSet64/1048576.0; total+=mb; processes.Add(new { pid=id, name=p.ProcessName, mb=mb }); } } catch(ArgumentException) {}
-        var data = new { hostPid=Process.GetCurrentProcess().Id, phase=child == null ? "idle" : ready ? "panel" : "starting", averageNotApplicable=true, totalMB=total, processes=processes, launchCount=launchCount, latenciesMs=latencies.ToArray(), appBar=bar, appBarTop=abd.rect.top, appBarBottom=abd.rect.bottom, stateAgeMs=clock.ElapsedMilliseconds-stateWrittenAt, command=lastCommand };
+        var processes = new List<object>(); double total = 0, totalCPU=0; long now=clock.ElapsedMilliseconds;
+        foreach(int id in ids) try { using(var p=Process.GetProcessById(id)) { double mb=p.WorkingSet64/1048576.0; total+=mb; double time=p.TotalProcessorTime.TotalMilliseconds, previous;
+            double cpu=cpuTimes.TryGetValue(id,out previous) && now>cpuSampleAt ? Math.Max(0,(time-previous)/(now-cpuSampleAt)*100) : 0; cpuTimes[id]=time; totalCPU+=cpu;
+            processes.Add(new { pid=id, name=p.ProcessName, mb=mb, cpu=cpu }); } } catch(ArgumentException) {}
+        cpuSampleAt=now;
+        var data = new { hostPid=Process.GetCurrentProcess().Id, phase=child == null ? "idle" : ready ? "panel" : "starting", averageNotApplicable=true, totalMB=total, totalCPU=totalCPU, processes=processes, launchCount=launchCount, latenciesMs=latencies.ToArray(), appBar=bar, appBarTop=abd.rect.top, appBarBottom=abd.rect.bottom, stateAgeMs=clock.ElapsedMilliseconds-stateWrittenAt, command=lastCommand };
         string file=Path.Combine(probe,"status.json"); try { File.WriteAllText(file+".tmp",json.Serialize(data)); if(File.Exists(file)) File.Replace(file+".tmp",file,null); else File.Move(file+".tmp",file); } catch(IOException) {}
     }
     void DeleteBarMarker() { try { File.Delete(Path.Combine(profile,"native-appbar-marker.json")); } catch {} }
