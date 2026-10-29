@@ -6,7 +6,7 @@ function load(file, stubs = {}) {
     module, exports: module.exports, process, Buffer, console,
     require: (name) => name in stubs ? stubs[name] : require(require.resolve(name, { paths: [path.join(__dirname, '../src/main', path.dirname(file))] })),
     setInterval: (cb, ms) => { timers.set(++id, { cb, ms }); return id; }, clearInterval: (id) => timers.delete(id),
-    setTimeout, clearTimeout,
+    setTimeout: (cb, ms) => { timers.set(++id, { cb, ms }); return id; }, clearTimeout: (id) => timers.delete(id),
   });
   return { exports: module.exports, timers };
 }
@@ -22,6 +22,7 @@ sys.watch(true); assert.equal(system.timers.size, 0); sys.setPaused(false); asse
 sys.watch(false); sys.setPaused(true); sys.setPaused(false); assert.equal(system.timers.size, 0);
 const foreground = load('fullscreen.js', { './win32': { available: () => true, foreground: () => ({ app: '', title: '', fullscreen: false }) } });
 const watcher = foreground.exports.watchForeground({ onFullscreen() {} }); watcher.setEco(true);
+const firstTick = [...foreground.timers.entries()][0]; foreground.timers.delete(firstTick[0]); firstTick[1].cb();
 assert.equal([...foreground.timers.values()][0].ms, 3000); watcher.setEco(false); assert.equal(foreground.timers.size, 1); watcher.stop();
 let requests = 0;
 const weather = load('services/weather.js', { electron: { net: { fetch: () => { requests++; return Promise.reject(Error('offline')); } } } });

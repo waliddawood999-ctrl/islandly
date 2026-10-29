@@ -433,3 +433,7 @@ html.acrylic #below { background: var(--glass-solid); }
 html[dir='rtl'] [dir='auto']:not(input):not(textarea) { text-align: right; }
 html[dir='ltr'] [dir='auto']:not(input):not(textarea) { text-align: left; }
 html[dir] .lyrics-strip [dir='auto'], html[dir] .sh-item [dir='auto'], html[dir] .ck-app [dir='auto'], html[dir] .td-place[dir='auto'], html[dir] .step-val[dir='auto'] { text-align: center; }
+
+/* T17 binds the backend motion setting; preserve existing layout, colors and type. */
+:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation: none !important; transition: none !important; }
+:root[data-motion="reduced"] .wave i { animation: none !important; }

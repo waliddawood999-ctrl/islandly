@@ -23,11 +23,12 @@ class Material {
   }
   state() { return { material: this.effective, supported: this.supported }; }
   region(rect, force = false) {
-    const converted = physicalRect(rect, this.zoom(), this.dpi());
-    if (!converted) return false;
+    const rects = [rect, ...(rect.secondary ? [rect.secondary] : [])];
+    const converted = rects.map((part) => physicalRect(part, this.zoom(), this.dpi()));
+    if (converted.some((part) => !part)) return false;
     const key = JSON.stringify(converted);
     if (!force && key === this.key) return true;
-    if (!this.native.setPillRegion(this.window.getNativeWindowHandle(), converted)) return false;
+    if (!this.native.setPillRegion(this.window.getNativeWindowHandle(), (converted.length === 1 ? converted[0] : converted))) return false;
     this.key = key;
     return true;
   }
@@ -61,8 +62,8 @@ class Material {
     this.publish(this.state());
   }
   shape(rect) {
-    if (!physicalRect(rect, this.zoom(), this.dpi())) return;
-    this.last = { ...rect };
+    if (!physicalRect(rect, this.zoom(), this.dpi()) || (rect.secondary && !physicalRect(rect.secondary, this.zoom(), this.dpi()))) return;
+    this.last = { ...rect, secondary: rect.secondary ? { ...rect.secondary } : null };
     if (this.requested !== 'acrylic' || !this.supported) return;
     if (this.effective !== 'acrylic') this.apply(this.requested);
     else if (!this.region(this.last)) { this.fallback(); this.publish(this.state()); }

@@ -20,6 +20,11 @@
     .catch(() => {});
   API.on('material:changed', (r) => r && applyMaterial(r.material));
 
+  let eco = !!API.settings.ecoMode, motion = API.settings.motion || 'full';
+  Island.setMotion(motion, eco);
+  API.on('eco:changed', value => { eco = value.eco; Island.setMotion(motion, eco); });
+  API.on('settings:update', value => { motion = value.motion || 'full'; Island.setMotion(motion, eco); });
+
   // Report script errors to the log file so problems can be diagnosed.
   window.addEventListener('error', (e) => API.send('log:error', `${e.message} (${e.filename}:${e.lineno})`));
   window.addEventListener('unhandledrejection', (e) => API.send('log:error', 'promise: ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason)));

@@ -65,12 +65,6 @@ class GitHubWatcher {
     this.timer = this.paused ? null : setInterval(() => this.poll(), 3 * 60 * 1000);
   }
 
-  setPaused(paused) {
-    if (this.paused === paused) return;
-    this.paused = paused;
-    clearInterval(this.timer); this.timer = null;
-    if (!paused && this.getToken()) this.timer = this.paused ? null : setInterval(() => this.poll(), 3 * 60 * 1000);
-  }
 
   stop() {
     clearInterval(this.timer);

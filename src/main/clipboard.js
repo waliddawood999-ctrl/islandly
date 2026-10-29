@@ -54,6 +54,8 @@ class ClipboardHistory {
     this.timer = setInterval(() => this.poll(), interval);
   }
 
+  setEco(eco) { if (this.timer) this.start(eco ? 4000 : 800); }
+
   stop() {
     this.generation = (this.generation || 0) + 1;
     clearInterval(this.timer);

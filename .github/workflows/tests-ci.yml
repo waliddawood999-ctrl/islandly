@@ -22,6 +22,11 @@ jobs:
   ui-e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [ar, en]
+        mode: [overlay, appbar]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,6 +40,8 @@ jobs:
           sudo apt-get install -y xvfb openbox python3-xlib libgtk-3-0 libnss3 libatk-bridge2.0-0 libgbm1 libasound2t64
       - name: Real panel UI under xvfb
         env:
+          ISLANDLY_E2E_LANG: ${{ matrix.lang }}
+          ISLANDLY_E2E_MODE: ${{ matrix.mode }}
           ISLANDLY_PYTHON: /usr/bin/python3
           ISLANDLY_SHOTS: out/ui-e2e
         run: |
@@ -44,7 +51,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: t13-ui-e2e
+          name: t17-ui-${{ matrix.lang }}-${{ matrix.mode }}
           path: out/
           if-no-files-found: warn
   native-idle:

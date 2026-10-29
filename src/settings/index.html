@@ -12,6 +12,19 @@
   <h1 data-i18n="settings.title"></h1>
 
   <section>
+    <h2 data-i18n="settings.performance"></h2>
+    <label><span data-i18n="settings.ecoMode"></span><input id="ecoMode" type="checkbox"></label>
+    <label><span data-i18n="settings.ecoAuto"></span><input id="ecoAuto" type="checkbox"></label>
+    <label><span data-i18n="settings.motion"></span><select id="motion">
+      <option value="full" data-i18n="settings.motion.full"></option>
+      <option value="reduced" data-i18n="settings.motion.reduced"></option>
+      <option value="off" data-i18n="settings.motion.off"></option>
+    </select></label>
+    <p id="ecoState" class="hint"></p>
+    <p id="ramTotal" aria-live="polite"></p>
+    <p id="ramProcesses" class="hint"></p>
+  </section>
+  <section>
     <h2 data-i18n="settings.appearance"></h2>
     <label><span data-i18n="settings.position"></span>
       <select id="position">

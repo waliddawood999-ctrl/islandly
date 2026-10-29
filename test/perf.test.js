@@ -60,7 +60,7 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS ' + name
   await test('perf includes GPU/native host totals, scoped five-second subscription and close cleanup', () => {
     const { PerformanceMonitor } = require('../src/main/perf');
     const window = new EventEmitter(); window.isDestroyed = () => false; window.isVisible = () => true;
-    const events = []; window.webContents = { getOSProcessId: () => 7, send: (...args) => events.push(args) };
+    const events = []; window.webContents = Object.assign(new EventEmitter(), { getOSProcessId: () => 7, send: (...args) => events.push(args) });
     let tick, interval, cleared = false;
     const monitor = new PerformanceMonitor({ app: { getAppMetrics: () => [{ type: 'Tab', pid: 7, memory: { workingSetSize: 10240 }, cpu: { percentCPUUsage: 0.5 } }, { type: 'GPU', pid: 8, memory: { workingSetSize: 20480 }, cpu: { percentCPUUsage: 0.2 } }] }, host: { pids: () => [] }, windows: () => ({ settings: window }), setTimer: (fn, ms) => { tick = fn; interval = ms; return 42; }, clearTimer: () => { cleared = true; } });
     const sample = monitor.get(); assert.equal(sample.totalMB, 30); assert.equal(sample.processes[0].label, 'settings'); assert.equal(sample.processes[1].type, 'gpu');

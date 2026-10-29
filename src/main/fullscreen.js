@@ -25,7 +25,7 @@ function watchForeground({ onFullscreen, onApp, intervalMs = 1000 }) {
     timer = setTimeout(tick, intervalMs);
   };
   timer = setTimeout(tick, intervalMs);
-  return { stop: () => { stopped = true; clearTimeout(timer); }, setIntervalMs: ms => { intervalMs = ms; } };
+  return { stop: () => { stopped = true; clearTimeout(timer); }, setEco: eco => { intervalMs = eco ? 3000 : 1000; }, setIntervalMs: ms => { intervalMs = ms; } };
 }
 
 module.exports = { watchForeground };

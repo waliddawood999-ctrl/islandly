@@ -29,9 +29,10 @@ const Island = (() => {
   const AUTO_HIDE_MS = 5000;
   const HOVER_DWELL_MS = 280; // pointer must rest on the island before it opens (avoids accidental opens)
   const LEAVE_MS = 160; // how long after the pointer leaves the island closes again
-  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Spring: visual duration ~0.35 s with a slight overshoot. Reduced motion: short, no bounce.
-  const SPRING = reducedMotion ? { duration: 0.12, ease: 'easeOut' } : { type: 'spring', visualDuration: 0.34, bounce: 0.24 };
+  let motionOff = false;
+  let SPRING = reducedMotion ? { duration: 0.12, ease: 'easeOut' } : { type: 'spring', visualDuration: 0.34, bounce: 0.24 };
 
   let hovered = false; // pointer has rested on the island long enough to open it
   let pointer = false; // pointer is over the island right now
@@ -97,7 +98,7 @@ const Island = (() => {
 
     if (shapeAnim) shapeAnim.stop();
     const target = { width: w + 'px', height: hgt + 'px', top: y + 'px', borderRadius: r + 'px' };
-    if (!M) {
+    if (!M || motionOff) {
       Object.assign(el.style, target);
       settle();
       return;
@@ -126,23 +127,28 @@ const Island = (() => {
 
   // The strip under the island (lyrics). It slides in from under the pill and fades out again.
   let belowEl = null;
+  let belowAnimating = 0;
   function placeBelow(next) {
     const nextEl = next ? next.el : null;
     if (nextEl !== belowEl) {
-      if (belowEl && M) {
+      if (belowEl && M && !motionOff) {
         const old = belowEl;
         M.animate(below, { opacity: 0, y: -6 }, { duration: 0.1 }).then(() => old.remove());
       } else if (belowEl) belowEl.remove();
       belowEl = nextEl;
       if (nextEl) {
         below.replaceChildren(nextEl);
-        if (M) {
+        if (M && !motionOff) {
           below.style.opacity = '0';
-          M.animate(below, { opacity: [0, 1], y: [-8, 0], scale: [0.96, 1] }, { ...SPRING, delay: reducedMotion ? 0 : 0.18 });
+          belowAnimating++;
+          M.animate(below, { opacity: [0, 1], y: [-8, 0], scale: [0.96, 1] }, { ...SPRING, delay: reducedMotion ? 0 : 0.18 }).then(() => { belowAnimating--; reportShape(); });
+          startShapeLoop();
         }
       }
     }
     belowShape = next ? { w: next.w, h: next.h } : null;
+    lastShape = '';
+    startShapeLoop();
     below.style.display = next ? '' : 'none';
     if (next) {
       below.style.width = next.w + 'px';
@@ -159,6 +165,7 @@ const Island = (() => {
       return;
     }
     below.style.top = el.getBoundingClientRect().bottom + BELOW_GAP + 'px';
+    reportShape();
     if (animating) requestAnimationFrame(followBelow);
     else following = false;
   }
@@ -307,7 +314,7 @@ const Island = (() => {
   let swapToken = 0;
   function swap(v) {
     const token = ++swapToken;
-    if (!M) {
+    if (!M || motionOff) {
       mount(v);
       return;
     }
@@ -522,14 +529,19 @@ const Island = (() => {
     const r = el.getBoundingClientRect();
     const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
     const msg = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), radius: Math.round(radius) };
-    const key = msg.x + ',' + msg.y + ',' + msg.width + ',' + msg.height + ',' + msg.radius;
+    msg.secondary = null;
+    if (belowShape && below.style.display !== 'none') {
+      const b = below.getBoundingClientRect();
+      if (b.width > 0 && b.height > 0) msg.secondary = { x: Math.round(b.left), y: Math.round(b.top), width: Math.round(b.width), height: Math.round(b.height), radius: Math.round(parseFloat(getComputedStyle(below).borderTopLeftRadius) || 0) };
+    }
+    const key = JSON.stringify(msg);
     if (key === lastShape) return;
     lastShape = key;
     API.send('island:shape', msg);
   }
   function shapeFrame() {
     reportShape();
-    if (animating && material === 'acrylic') requestAnimationFrame(shapeFrame);
+    if ((animating || belowAnimating > 0) && material === 'acrylic') requestAnimationFrame(shapeFrame);
     else shapeLoop = false;
   }
   function startShapeLoop() {
@@ -600,6 +612,12 @@ const Island = (() => {
     relang,
     setTint,
     setMaterial,
+    setMotion(mode, eco) {
+      motionOff = mode === 'off';
+      reducedMotion = !!eco || mode === 'reduced' || !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      SPRING = reducedMotion ? { duration: 0.12, ease: 'easeOut' } : { type: 'spring', visualDuration: 0.34, bounce: 0.24 };
+      document.documentElement.dataset.motion = motionOff ? 'off' : reducedMotion ? 'reduced' : 'full';
+    },
     isExpanded: () => hovered || pinned,
     hold,
     selectedId: () => {

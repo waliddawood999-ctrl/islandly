@@ -10,8 +10,8 @@ current.digits = current.digits || 'latn';
 I18N.configure(current);
 I18N.apply();
 
-const fields = ['position', 'autoHide', 'prayerMethod', 'madhab', 'islandMode', 'material'];
-const checks = ['hideFullscreen', 'clipboard', 'updates', 'prayerAlerts', 'weather', 'timeTracking', 'micCamIndicator'];
+const fields = ['position', 'autoHide', 'prayerMethod', 'madhab', 'islandMode', 'material', 'motion'];
+const checks = ['hideFullscreen', 'clipboard', 'updates', 'prayerAlerts', 'weather', 'timeTracking', 'micCamIndicator', 'ecoMode', 'ecoAuto'];
 
 // material: acrylic needs Windows 11; main says whether it is supported (task T15)
 if (!current.material) current.material = 'acrylic';
@@ -164,3 +164,28 @@ function relang() {
 }
 
 $('quit').addEventListener('click', () => api.quit());
+
+// T17 connects the existing backend contracts without keeping the panel runtime resident.
+let perfSnapshot = null, ecoEffective = !!current.ecoMode;
+function paintPerformance() {
+  $('ecoState').textContent = t(ecoEffective ? 'settings.eco.active' : 'settings.eco.inactive');
+  if (!perfSnapshot) return;
+  $('ramTotal').textContent = t('settings.ramTotal', { mb: perfSnapshot.totalMB });
+  $('ramProcesses').textContent = perfSnapshot.processes.map(p => `${p.label || p.type}: ${p.mb} MB`).join(' · ');
+}
+if (api.on) {
+  api.on('perf:update', value => { perfSnapshot = value; paintPerformance(); });
+  api.on('eco:changed', value => { ecoEffective = value.eco; paintPerformance(); });
+  api.on('settings:update', value => {
+    Object.assign(current, value);
+    for (const key of [...fields, ...checks]) {
+      if (document.activeElement === $(key)) continue;
+      if (checks.includes(key)) $(key).checked = !!value[key]; else $(key).value = value[key];
+    }
+    I18N.configure(current); paintPerformance();
+  });
+}
+function subscribePerformance() { api.send('perf:watch', !document.hidden); }
+if (api.perf) api.perf().then(value => { perfSnapshot = value; paintPerformance(); }).catch(() => {});
+if (api.send) { subscribePerformance(); document.addEventListener('visibilitychange', subscribePerformance); window.addEventListener('beforeunload', () => api.send('perf:watch', false)); }
+paintPerformance();

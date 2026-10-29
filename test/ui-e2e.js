@@ -6,14 +6,14 @@ const os = require('os');
 const path = require('path');
 const assert = require('assert');
 const { execFileSync } = require('child_process');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'islandly-e2e-'));
 app.setPath('userData', userData);
 // Interface language for this run: ISLANDLY_E2E_LANG=en runs the same checks in English (T11).
 const LANG = process.env.ISLANDLY_E2E_LANG === 'en' ? 'en' : 'ar';
 // Isolate the real app from network/host pollers so injected UI fixtures remain deterministic.
-fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ lang: LANG, uiLang: LANG, weather: false, updates: false, icsUrl: '',
+fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ lang: LANG, uiLang: LANG, islandMode: process.env.ISLANDLY_E2E_MODE || 'overlay', weather: false, updates: false, icsUrl: '',
   clipboard: false, timeTracking: false, micCamIndicator: false, breakEvery: 0, prayerAutoPause: false }));
 const watchdog = setTimeout(() => { console.error('E2E FAILED: 180s watchdog exceeded'); app.exit(1); }, 180000);
 process.on('unhandledRejection', error => { console.error('E2E FAILED:', error); app.exit(1); });
@@ -31,6 +31,8 @@ require('../src/main/main.js');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const xmouse = (...args) => execFileSync(process.env.ISLANDLY_PYTHON || 'python3', [path.join(__dirname, 'xmouse.py'), ...args.map(String)]);
 let win;
+const clipReports = [];
+ipcMain.on('island:shape', (e, value) => { if (win && e.sender === win.webContents) clipReports.push(value); });
 const js = (code) => win.webContents.executeJavaScript(code);
 
 async function waitFor(label, fn, ms = 3000) {
@@ -289,6 +291,24 @@ app.whenReady().then(() =>
       })()`);
       const bad = report.filter((r) => r.contentBottom > r.dotsTop + 1 || r.contentBottom > r.islandBottom + 1);
       assert.strictEqual(bad.length, 0, 'overlap: ' + JSON.stringify(bad));
+    });
+
+    await step('acrylic clips both lyrics pills through appearance, resize and hide without changing material', async () => {
+      await js("Island.open('music'); Island.setMaterial('acrylic'); 0");
+      win.webContents.send('lyrics:update', { lines: [], text: 'Lyrics fixture\nNext line' });
+      await waitFor('secondary clip reported', () => clipReports.some(r => r.secondary), 5000);
+      await sleep(1000);
+      const fit = await js(`(() => {
+        const a=Island.el.getBoundingClientRect(), b=document.querySelector('.lyrics-strip').getBoundingClientRect();
+        return { gap:b.top-a.bottom, right:b.right, bottom:b.bottom, width:innerWidth, height:innerHeight };
+      })()`);
+      assert(fit.gap >= 0 && fit.right <= fit.width + 1 && fit.bottom <= fit.height + 1, JSON.stringify(fit));
+      const resizeStart=clipReports.length;
+      await js("window.__originalMusicView=Island.feature('music').view; Island.feature('music').view=function(mode){const v=__originalMusicView.call(this,mode); if(v&&v.below)v.below={...v.below,w:400,h:70}; return v;}; Island.render(); 0");
+      await waitFor('resized lyrics clip', () => clipReports.slice(resizeStart).some(r=>r.secondary && r.secondary.height===70), 5000);
+      win.webContents.send('lyrics:update', null);
+      await waitFor('lyrics excluded from clip', () => clipReports.at(-1) && clipReports.at(-1).secondary===null, 5000);
+      await js("Island.feature('music').view=__originalMusicView; Island.setMaterial('glass'); 0");
     });
 
     await step('moving away closes the island and the window shrinks back', async () => {

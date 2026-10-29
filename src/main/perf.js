@@ -1,32 +1,47 @@
-const { processMetrics } = require('./native-perf');
-const round = n => Math.round(n * 10) / 10;
+const round = (n) => Math.round(n * 10) / 10;
 class PerformanceMonitor {
-  constructor({ app, windows = () => ({}), host, nativeOwnerPid = null, setTimer = setInterval, clearTimer = clearInterval }) { this.app = app; this.windows = windows; this.host = host; this.nativeOwnerPid = nativeOwnerPid; this.setTimer = setTimer; this.clearTimer = clearTimer; this.timer = null; this.target = null; }
+  constructor({ app, windows = () => ({}), host, nativeOwnerPid = null, children = require('./owned-processes').list, metric = require('./native-perf').processMetrics, setTimer = setInterval, clearTimer = clearInterval }) {
+    Object.assign(this, { app, windows, host, nativeOwnerPid, children, metric, setTimer, clearTimer });
+    this.timer = null; this.target = null;
+  }
   get() {
     const labels = new Map();
-    for (const [label, win] of Object.entries(this.windows())) if (win && !win.isDestroyed()) labels.set(win.webContents.getOSProcessId(), label);
+    for (const [label, w] of Object.entries(this.windows())) if (w && !w.isDestroyed()) labels.set(w.webContents.getOSProcessId(), label);
     const types = { Browser: 'browser', Tab: 'renderer', GPU: 'gpu', Utility: 'utility' };
-    const processes = this.app.getAppMetrics().map(p => ({ type: types[p.type] || 'other', pid: p.pid, mb: round(p.memory.workingSetSize / 1024), cpu: p.cpu.percentCPUUsage, label: labels.get(p.pid) || null }));
-    if (this.nativeOwnerPid) { const native = processMetrics(this.nativeOwnerPid); if (native) processes.push({ ...native, mb: round(native.mb), type: 'other', label: 'native host' }); }
-    const pids = this.host.pids();
-    for (const pid of pids) { const metric = processMetrics(pid); if (metric) processes.push({ ...metric, mb: round(metric.mb), type: 'powershell', label: null }); }
-    return { totalMB: round(processes.reduce((sum, p) => sum + p.mb, 0)), processes, powershellCount: pids.length, uptimeSec: Math.floor(process.uptime()) };
+    const processes = this.app.getAppMetrics().map((p) => ({ type: types[p.type] || 'other', pid: p.pid,
+      mb: round(p.memory.workingSetSize / 1024), cpu: p.cpu.percentCPUUsage, label: labels.get(p.pid) || null }));
+    const children = [...this.children(), ...(this.host ? this.host.pids().map((pid) => ({ pid, type: 'powershell' })) : [])];
+    if (this.nativeOwnerPid) children.push({ pid: this.nativeOwnerPid, type: 'other' });
+    const distinctChildren = [...new Map(children.map((p) => [p.pid, p])).values()];
+    for (const child of distinctChildren) {
+      if (processes.some((p) => p.pid === child.pid)) continue;
+      const sample = this.metric(child.pid);
+      if (sample) processes.push({ ...sample, mb: round(sample.mb), type: child.type, label: null });
+    }
+    return { totalMB: round(processes.reduce((n, p) => n + p.mb, 0)), processes,
+      powershellCount: distinctChildren.filter((p) => p.type === 'powershell').length, uptimeSec: Math.floor(process.uptime()) };
   }
   watch(win, on) {
     this.stop();
-    if (!on || !win || win.isDestroyed() || !win.isVisible()) return;
+    if (on !== true || !win || win.isDestroyed() || !win.isVisible()) return;
     this.target = win;
-    const closed = () => this.stop(); this.closed = closed;
-    win.once('closed', closed); win.once('hide', closed);
+    this.closed = () => this.stop();
+    for (const event of ['closed', 'hide']) win.once(event, this.closed);
+    win.webContents.once('render-process-gone', this.closed);
+    win.webContents.once('did-start-loading', this.closed);
     this.timer = this.setTimer(() => {
       if (win.isDestroyed() || !win.isVisible()) return this.stop();
-      win.webContents.send('perf:update', this.get());
+      try { win.webContents.send('perf:update', this.get()); } catch (_) { this.stop(); }
     }, 5000);
   }
   stop() {
-    if (this.timer) this.clearTimer(this.timer);
+    if (this.timer !== null) this.clearTimer(this.timer);
     this.timer = null;
-    if (this.target) { this.target.removeListener('closed', this.closed); this.target.removeListener('hide', this.closed); }
+    if (this.target) {
+      for (const event of ['closed', 'hide']) this.target.removeListener(event, this.closed);
+      this.target.webContents.removeListener('render-process-gone', this.closed);
+      this.target.webContents.removeListener('did-start-loading', this.closed);
+    }
     this.target = null;
   }
 }

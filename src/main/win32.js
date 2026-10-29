@@ -17,6 +17,7 @@ function load() {
     api = {
       koffi,
       CreateRoundRectRgn: gdi32.func('void * __stdcall CreateRoundRectRgn(int32 x1, int32 y1, int32 x2, int32 y2, int32 w, int32 h)'),
+      CombineRgn: gdi32.func('int32 __stdcall CombineRgn(void *dest, void *a, void *b, int32 mode)'),
       DeleteObject: gdi32.func('bool __stdcall DeleteObject(void *object)'),
       SetWindowRgn: user32.func('int32 __stdcall SetWindowRgn(uintptr_t hwnd, void *region, bool redraw)'),
       GetForegroundWindow: user32.func('void * __stdcall GetForegroundWindow()'),
@@ -153,12 +154,21 @@ function setPillRegion(hwnd, rect, native = load()) {
     }
     if (!hwnd) return false;
     if (rect !== null) {
-      if (!rect || !['x', 'y', 'width', 'height', 'radius'].every((k) => Number.isSafeInteger(rect[k])) ||
-          rect.x < 0 || rect.y < 0 || rect.width <= 0 || rect.height <= 0 || rect.radius < 0 ||
-          rect.x + rect.width > 1000000 || rect.y + rect.height > 1000000) return false;
-      const { x, y, width, height, radius } = rect;
-      region = native.CreateRoundRectRgn(x, y, x + width + 1, y + height + 1, radius * 2, radius * 2);
-      if (!region) return false;
+      const rects = Array.isArray(rect) ? rect : [rect];
+      if (!rects.length || rects.length > 2) return false;
+      for (const item of rects) {
+        if (!item || !['x', 'y', 'width', 'height', 'radius'].every((k) => Number.isSafeInteger(item[k])) ||
+            item.x < 0 || item.y < 0 || item.width <= 0 || item.height <= 0 || item.radius < 0 ||
+            item.x + item.width > 1000000 || item.y + item.height > 1000000) return false;
+        const { x, y, width, height, radius } = item;
+        const part = native.CreateRoundRectRgn(x, y, x + width + 1, y + height + 1, radius * 2, radius * 2);
+        if (!part) return false;
+        if (!region) region = part;
+        else {
+          try { if (!native.CombineRgn(region, region, part, 2)) return false; }
+          finally { native.DeleteObject(part); }
+        }
+      }
     }
     if (!native.SetWindowRgn(hwnd, region, true)) return false;
     region = null;

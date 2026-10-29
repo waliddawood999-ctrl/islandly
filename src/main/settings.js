@@ -4,7 +4,7 @@ const { app } = require('electron');
 
 const { ISLAMIC_DEFAULTS } = require('./services/store');
 const DEFAULTS = {
-  ecoMode: false,
+  uiLang: 'auto', digits: 'latn', fontPairing: 'plex',
   monitorId: '', // Existing T1/T7 display-selection contract; primary fallback.
   islandMode: 'overlay', // Existing T6/T7 contract: overlay | appbar; native owner reserves the strip.
   ...ISLAMIC_DEFAULTS,
@@ -65,6 +65,8 @@ function set(patch) {
   const prev = data;
   data = { ...data }; // keeps data.secrets
   for (const key of Object.keys(DEFAULTS)) {
+    if (key === 'uiLang' && !['auto', 'ar', 'en'].includes(patch[key])) continue;
+    if (key === 'digits' && !['latn', 'arab'].includes(patch[key])) continue;
     if (key === 'motion' && !['full', 'reduced', 'off'].includes(patch[key])) continue;
     if (key === 'material' && !['acrylic', 'glass'].includes(patch[key])) continue;
     if (!(key in patch)) continue;

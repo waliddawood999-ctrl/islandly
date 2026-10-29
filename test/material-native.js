@@ -25,6 +25,16 @@ app.whenReady().then(() => {
     assert.ok(get(handle, region) > 0);
     assert.equal(inside(region, 110, 50), true);
     assert.equal(inside(region, 10, 10), false, 'corner outside pill');
+    const secondary = { x: 10, y: 110, width: 200, height: 58, radius: 20 };
+    m.shape({ ...rect, secondary });
+    assert.ok(get(handle, region) > 0);
+    assert.equal(inside(region, 110, 139), true, 'lyrics center included');
+    assert.equal(inside(region, 110, 100), false, 'gap remains click-through');
+    m.shape({ ...rect, secondary: { ...secondary, width: 260 } });
+    assert.ok(get(handle, region) > 0); assert.equal(inside(region, 250, 139), true, 'lyrics resize included');
+    m.shape({ ...rect, secondary: null });
+    assert.ok(get(handle, region) > 0); assert.equal(inside(region, 110, 139), false, 'hidden lyrics excluded');
+    assert.equal(m.state().material, 'acrylic', 'lyrics changes never switch material');
     const times = [];
     for (let i = 0; i < 300; i++) {
       const start = performance.now();

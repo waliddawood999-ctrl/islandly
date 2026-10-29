@@ -10,14 +10,17 @@ class BluetoothWatcher {
     this.last = '';
     this.generation = 0;
     this.busy = false;
+    this.paused = false;
   }
 
   start() {
-    if (!isWindows || this.timer) return;
+    if (!isWindows || this.timer || this.paused) return;
     this.generation++;
     this.poll();
     this.timer = setInterval(() => this.poll(), POLL_MS);
   }
+
+  setPaused(paused) { if (paused === this.paused) return; this.paused = paused; if (paused) this.stop(); else this.start(); }
 
   stop() {
     this.generation++;

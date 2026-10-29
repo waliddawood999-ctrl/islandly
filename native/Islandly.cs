@@ -91,6 +91,8 @@ sealed class IslandHost : Form {
     readonly List<string> pendingClipboard = new List<string>();
     ConsentWatcher consent;
     string privacyLabel = "";
+    bool nativeEco, nativeAcrylic;
+    string appliedMaterial = "";
 
     public IslandHost(string[] args) {
         packaged = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"IslandlyPanels.exe"));
@@ -128,6 +130,7 @@ sealed class IslandHost : Form {
         ticker.Interval = 1000; ticker.Tick += Tick; ticker.Start();
         FormClosed += delegate { Cleanup(); };
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += DisplayChanged;
+        Microsoft.Win32.SystemEvents.PowerModeChanged += PowerChanged;
     }
     static string Arg(string[] args, string key, string fallback) { int i = Array.IndexOf(args,key); return i >= 0 && i+1 < args.Length ? args[i+1] : fallback; }
     protected override bool ShowWithoutActivation { get { return true; } }
@@ -136,7 +139,7 @@ sealed class IslandHost : Form {
     void ReadSettings() {
         string file = Path.Combine(profile,"settings.json");
         try { var stamp = File.GetLastWriteTimeUtc(file); if (stamp == settingsStamp) return;
-            var next = json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file)); settings = next; settingsStamp = stamp;
+            var next = json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file)); settings = next; settingsStamp = stamp; UpdateEco();
         } catch { }
     }
     protected override void OnHandleCreated(EventArgs e) {
@@ -151,6 +154,19 @@ sealed class IslandHost : Form {
         consent = new ConsentWatcher(delegate(string label) { if(!closing) { privacyLabel = label; Position(); } });
         Position();
     }
+    void UpdateEco() {
+        nativeEco = Setting("ecoMode","False") == "True" || Setting("ecoAuto","False") == "True" && SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Offline;
+    }
+    void PowerChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs e) {
+        if(!closing && IsHandleCreated) BeginInvoke((Action)delegate { UpdateEco(); Position(); });
+    }
+    void ApplyNativeMaterial() {
+        string requested=Setting("material","acrylic");
+        if(requested==appliedMaterial) return;
+        appliedMaterial=requested;
+        nativeAcrylic=requested=="acrylic" && NativeMaterial.Apply(Handle,true);
+        if(!nativeAcrylic) NativeMaterial.Apply(Handle,false);
+    }
     void DisplayChanged(object s, EventArgs e) { if (!closing && IsHandleCreated) BeginInvoke((Action)Position); }
     bool Fullscreen() {
         if (Setting("hideFullscreen","True").Equals("False",StringComparison.OrdinalIgnoreCase)) return false;
@@ -163,6 +179,7 @@ sealed class IslandHost : Form {
     }
     void Position() {
         if (closing || !IsHandleCreated) return;
+        ApplyNativeMaterial();
         string mode=modeOverride == "" ? Setting("islandMode","overlay") : modeOverride;
         bool reserved = !barBlocked && (mode == "appbar" || mode == "reserved-bar");
         bool hide = hidden || Fullscreen();
@@ -205,7 +222,7 @@ sealed class IslandHost : Form {
     protected override void OnPaint(PaintEventArgs e) {
         base.OnPaint(e); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         if (Height < 12) { using(var brush=new SolidBrush(TimerRunning() ? Color.FromArgb(167,139,250) : Color.FromArgb(76,76,76))) e.Graphics.FillRectangle(brush,ClientRectangle); return; }
-        using(var gradient=new LinearGradientBrush(ClientRectangle,Color.FromArgb(12,12,16),Color.Black,90f)) e.Graphics.FillRectangle(gradient,ClientRectangle);
+        if(!nativeAcrylic) using(var gradient=new LinearGradientBrush(ClientRectangle,Color.FromArgb(12,12,16),Color.Black,90f)) e.Graphics.FillRectangle(gradient,ClientRectangle);
         string label = DateTime.Now.ToString("HH:mm");
         if (TimerHasState()) { long end = Convert.ToInt64(state["endAt"]); var left = TimerRunning() ? Math.Max(0,(end-DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())/1000) : (long)Math.Ceiling(Convert.ToDouble(state["remaining"])); label = (left/60).ToString("00")+":"+(left%60).ToString("00"); }
         if(privacyLabel != "" && Setting("micCamIndicator","True") != "False") label = privacyLabel;
@@ -363,7 +380,7 @@ sealed class IslandHost : Form {
             double cpu=cpuTimes.TryGetValue(id,out previous) && now>cpuSampleAt ? Math.Max(0,(time-previous)/(now-cpuSampleAt)*100) : 0; cpuTimes[id]=time; totalCPU+=cpu;
             processes.Add(new { pid=id, name=p.ProcessName, mb=mb, cpu=cpu }); } } catch(ArgumentException) {}
         cpuSampleAt=now;
-        var data = new { hostPid=Process.GetCurrentProcess().Id, phase=child == null ? "idle" : ready ? "panel" : "starting", averageNotApplicable=true, totalMB=total, totalCPU=totalCPU, processes=processes, launchCount=launchCount, latenciesMs=latencies.ToArray(), appBar=bar, appBarTop=abd.rect.top, appBarBottom=abd.rect.bottom, stateAgeMs=clock.ElapsedMilliseconds-stateWrittenAt, command=lastCommand };
+        var data = new { hostPid=Process.GetCurrentProcess().Id, phase=child == null ? "idle" : ready ? "panel" : "starting", eco=nativeEco, material=nativeAcrylic?"acrylic":"glass", materialSupported=NativeMaterial.Supported(), averageNotApplicable=true, totalMB=total, totalCPU=totalCPU, processes=processes, launchCount=launchCount, latenciesMs=latencies.ToArray(), appBar=bar, appBarTop=abd.rect.top, appBarBottom=abd.rect.bottom, stateAgeMs=clock.ElapsedMilliseconds-stateWrittenAt, command=lastCommand };
         string file=Path.Combine(probe,"status.json"); try { File.WriteAllText(file+".tmp",json.Serialize(data)); if(File.Exists(file)) File.Replace(file+".tmp",file,null); else File.Move(file+".tmp",file); } catch(IOException) {}
     }
     void DeleteBarMarker() { try { File.Delete(Path.Combine(profile,"native-appbar-marker.json")); } catch {} }
@@ -394,7 +411,7 @@ sealed class IslandHost : Form {
     void BackgroundTick() {
         var input=new Native.LASTINPUT(); input.size=(uint)Marshal.SizeOf(input);
         bool active=Native.GetLastInputInfo(ref input) && unchecked((uint)Environment.TickCount-input.time)<60000;
-        if(Setting("timeTracking","True") != "False" && Setting("ecoMode","False") != "True" && active) {
+        if(Setting("timeTracking","True") != "False" && !nativeEco && active) {
             try {
                 uint pid; Native.GetWindowThreadProcessId(Native.GetForegroundWindow(),out pid);
                 string name; using(var p=Process.GetProcessById((int)pid)) name=p.ProcessName;
@@ -442,6 +459,7 @@ sealed class IslandHost : Form {
     void Cleanup() {
         if(closing) return; closing=true; ticker.Stop(); hoverDwell.Stop();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= DisplayChanged;
+        Microsoft.Win32.SystemEvents.PowerModeChanged -= PowerChanged;
         if(bar) { RemoveBar(); bar=false; }
         for(int i=1;i<=4;i++) Native.UnregisterHotKey(Handle,i);
         Native.RemoveClipboardFormatListener(Handle); if(consent != null) consent.Dispose();
