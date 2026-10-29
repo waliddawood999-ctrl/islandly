@@ -8,3 +8,4 @@ dev/shots/
 *.mp4
 test/__pycache__/
 __pycache__/
+dev/states/*.webm

@@ -25,6 +25,20 @@
         <option value="never">دائماً ظاهرة</option>
       </select>
     </label>
+    <label>التعامل مع الصفحات تحت الجزيرة
+      <select id="islandMode">
+        <option value="overlay">فوق الصفحة: صغيرة وتتلوّن مع الصفحة (موصى به)</option>
+        <option value="appbar">شريط محجوز: ويندوز ينزّل النوافذ تحتها فما تتغطى</option>
+      </select>
+    </label>
+    <p class="hint">يتغيّر على طول بدون إعادة تشغيل. في الوضعين تختفي الجزيرة في ملء الشاشة.</p>
+    <label>خلفية الجزيرة
+      <select id="material">
+        <option value="acrylic">أكريليك: تغبيش لما خلف الجزيرة (ويندوز 11)</option>
+        <option value="glass">زجاج داكن</option>
+      </select>
+    </label>
+    <p class="hint" id="materialHint" hidden>الأكريليك غير مدعوم على هذا الجهاز (يحتاج ويندوز 11)، فنستخدم الزجاج الداكن.</p>
     <label class="check"><input type="checkbox" id="hideFullscreen"> إخفاء الجزيرة عند ملء الشاشة (فيديو، ألعاب)</label>
     <label>حجم الجزيرة
       <select id="scale">
@@ -89,6 +103,13 @@
     </label>
     <label class="check"><input type="checkbox" id="timeTracking"> تتبّع وقت استخدام التطبيقات (يُحفظ على جهازك فقط)</label>
     <label class="check"><input type="checkbox" id="micCamIndicator"> إظهار مؤشر عند استخدام الميكروفون أو الكاميرا</label>
+  </section>
+
+  <section>
+    <h2>اختصارات التطبيقات (لوحة الساعة)</h2>
+    <label>أسماء التطبيقات مفصولة بفاصلة (كما تظهر في قائمة ابدأ)
+      <input id="shortcuts" type="text" dir="auto" placeholder="Edge, File Explorer, Calculator, Notepad">
+    </label>
   </section>
 
   <section>
