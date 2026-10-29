@@ -76,7 +76,7 @@ sealed class IslandHost : Form {
     int launchCount;
     uint taskbarCreated;
     bool barBlocked;
-    long lastBackground;
+    long lastBackground, compactAt;
     int breakSeconds;
     readonly List<string> pendingClipboard = new List<string>();
     ConsentWatcher consent;
@@ -163,7 +163,9 @@ sealed class IslandHost : Form {
         float scale; if (!Single.TryParse(Setting("scale","0.8"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture,out scale)) scale = .8f;
         scale = Math.Max(.5f, Math.Min(2f,scale)) * CreateGraphicsDpi();
         var screen = TargetScreen().Bounds;
-        bool sliver = Setting("autoHide","auto") != "never" && !TimerRunning() && (privacyLabel == "" || Setting("micCamIndicator","True") == "False");
+        string autoHide=Setting("autoHide","auto");
+        bool sliver = autoHide == "always" || autoHide == "auto" && (!TimerHasState() || clock.ElapsedMilliseconds-compactAt>=5000);
+        if(privacyLabel != "" && Setting("micCamIndicator","True") != "False") sliver=false;
         int w = (int)((sliver ? 84 : 138)*scale), height = Math.Max(4,(int)((sliver ? 5 : 36)*scale));
         if (bar) {
             var previous = abd.rect;
@@ -193,12 +195,13 @@ sealed class IslandHost : Form {
         if (Height < 12) { using(var brush=new SolidBrush(TimerRunning() ? Color.FromArgb(167,139,250) : Color.FromArgb(76,76,76))) e.Graphics.FillRectangle(brush,ClientRectangle); return; }
         using(var gradient=new LinearGradientBrush(ClientRectangle,Color.FromArgb(12,12,16),Color.Black,90f)) e.Graphics.FillRectangle(gradient,ClientRectangle);
         string label = DateTime.Now.ToString("HH:mm");
-        if (TimerRunning()) { long end = Convert.ToInt64(state["endAt"]); var left = Math.Max(0,(end-DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())/1000); label = (left/60).ToString("00")+":"+(left%60).ToString("00"); }
+        if (TimerHasState()) { long end = Convert.ToInt64(state["endAt"]); var left = TimerRunning() ? Math.Max(0,(end-DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())/1000) : (long)Math.Ceiling(Convert.ToDouble(state["remaining"])); label = (left/60).ToString("00")+":"+(left%60).ToString("00"); }
         if(privacyLabel != "" && Setting("micCamIndicator","True") != "False") label = privacyLabel;
         else if(!TimerRunning() && SystemInformation.PowerStatus.BatteryChargeStatus != BatteryChargeStatus.NoSystemBattery && SystemInformation.PowerStatus.BatteryLifePercent < .2f) label = ((int)(SystemInformation.PowerStatus.BatteryLifePercent*100))+"%";
         using(var brush = new SolidBrush(Color.FromArgb(167,139,250))) e.Graphics.FillEllipse(brush,Width*.16f,Height*.42f,Height*.16f,Height*.16f);
         using(var font = new Font("Segoe UI",Math.Max(8,Height*.32f),FontStyle.Regular,GraphicsUnit.Pixel)) TextRenderer.DrawText(e.Graphics,label,font,new Rectangle((int)(Width*.2f),0,(int)(Width*.7f),Height),ForeColor,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
     }
+    bool TimerHasState() { object remaining,total; return TimerRunning() || state.TryGetValue("remaining",out remaining) && state.TryGetValue("total",out total) && Convert.ToDouble(remaining)>0 && Convert.ToDouble(remaining)<Convert.ToDouble(total); }
     bool TimerRunning() { object running; return state.TryGetValue("running",out running) && running is bool && (bool)running; }
     void OpenPanel(string command) {
         hoverArmed = false;
@@ -291,7 +294,9 @@ sealed class IslandHost : Form {
         if(line == "ISLANDLY:exit:") { Close(); return; }
         if(line.StartsWith("ISLANDLY:state:")) {
             pendingClipboard.Clear();
-            try { state = json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(Convert.FromBase64String(line.Substring(15))));
+            try { var next = json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(Convert.FromBase64String(line.Substring(15))));
+                object previousEnd, nextEnd; if(next.TryGetValue("endAt",out nextEnd) && (!state.TryGetValue("endAt",out previousEnd) || Convert.ToString(previousEnd) != Convert.ToString(nextEnd))) compactAt=clock.ElapsedMilliseconds;
+                state = next;
                 SaveState();
             } catch {} // invalid child data never becomes a command
         }
