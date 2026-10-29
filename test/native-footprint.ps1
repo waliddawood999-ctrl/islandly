@@ -115,6 +115,8 @@ try {
         Command 'settings'; $second=Wait-Phase 'panel'
         $hostProcess.Kill(); $hostProcess.WaitForExit(); Start-Sleep -Seconds 2
         foreach ($id in $owned) { if (Get-Process -Id $id -ErrorAction SilentlyContinue) { throw "Owned PID $id survived native owner crash" } }
+        # The crashed owner's snapshot must not be mistaken for the fresh process during JIT/startup.
+        Remove-Item "$probe/status.json" -Force -ErrorAction SilentlyContinue
         $hostProcess = Start-Process $exe -ArgumentList @('--root',"`"$root`"",'--profile',"`"$profile`"",'--probe-dir',"`"$probe`"",'--mode',$Mode) -PassThru
         $recovered = Wait-Phase 'idle'
         if ($Mode -eq 'reserved-bar' -and !$recovered.appBar) { throw 'AppBar failed to recover after native owner crash' }

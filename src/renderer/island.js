@@ -185,7 +185,7 @@ const Island = (() => {
     clone.style.width = (w - 32) + 'px';
     const natural = v.auto ? clone.offsetHeight : v.h;
     clone.remove();
-    const hgt = Math.min(Math.max(120, workArea.height - TOP - GUTTER - (v.below ? v.below.h + BELOW_GAP : 0)), Math.max(440, natural + FOOTER + 44));
+    const hgt = Math.min(Math.max(120, Math.min(800, workArea.height) - TOP - GUTTER - (v.below ? v.below.h + BELOW_GAP : 0)), Math.max(440, natural + FOOTER + 44));
     return { w, h: hgt };
   }
   const expandable = () => features.filter((f) => f.view('expanded'));
