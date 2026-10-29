@@ -86,6 +86,22 @@ try {
         if ([WorkAreaProbe]::Top() -lt $initial.appBarBottom) { throw "Reserved top work area not applied: $workArea" }
     }
     if ($Smoke) {
+        # Exercise native preferences while Chromium is absent, before opening any panel.
+        $prefs = Get-Content "$profile/settings.json" -Raw | ConvertFrom-Json
+        foreach ($change in @(@{ecoMode=$true;material='glass'}, @{ecoMode=$false;material='acrylic'})) {
+            foreach ($key in $change.Keys) { $prefs | Add-Member -NotePropertyName $key -NotePropertyValue $change[$key] -Force }
+            [IO.File]::WriteAllText("$profile/settings.json",($prefs | ConvertTo-Json),[Text.UTF8Encoding]::new($false))
+            $deadline=[DateTime]::UtcNow.AddSeconds(5)
+            do {
+                Start-Sleep -Milliseconds 250
+                $nativeState=Read-Status
+                $expectedMaterial=if($change.material -eq 'acrylic' -and !$nativeState.materialSupported){'glass'}else{$change.material}
+                $applied=$nativeState.eco -eq $change.ecoMode -and $nativeState.material -eq $expectedMaterial
+            } while (!$applied -and [DateTime]::UtcNow -lt $deadline)
+            if(!$applied){throw 'Native Eco/material preference did not apply'}
+            if($nativeState.launchCount -ne 0 -or @($nativeState.processes).Count -ne 1){throw 'Native preferences must not launch Electron'}
+        }
+        Write-Output 'Native-only Eco/material preference roundtrip passed without launching Electron'
         Command 'settings'; $opened=Wait-Phase 'panel'; Start-Sleep -Seconds 1
         Command 'close'; $closed=Wait-Phase 'idle'
         $saved = Get-Content "$profile/native-session.json" -Raw | ConvertFrom-Json
