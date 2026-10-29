@@ -41,8 +41,12 @@ function Read-Status {
     if ($hostProcess.HasExited) { throw "Native host exited: $($hostProcess.ExitCode)" }
     $status = $null
     for ($retry=0; $retry -lt 20; $retry++) {
-        try { $status = Read-SharedJson "$probe/status.json"; break }
-        catch { Start-Sleep -Milliseconds 15 }
+        try {
+            $status = Read-SharedJson "$probe/status.json"
+            if ($null -ne $status -and $status.hostPid -eq $hostProcess.Id -and $null -ne $status.processes) { break }
+            $status = $null
+        } catch { $status = $null }
+        Start-Sleep -Milliseconds 15
     }
     if ($null -eq $status) { throw 'Could not read native ownership status after bounded retries' }
     foreach ($p in $status.processes) { [void]$owned.Add([int]$p.pid) }
@@ -134,7 +138,7 @@ try {
     Command 'close'
     $final = Wait-Phase 'idle'
     $result = @{ method='sum of native host and Windows Job Object process working sets / 1048576'; platform='Windows'; mode=$Mode; warmupSeconds=15; sampleCount=60; sampleIntervalSeconds=1;
-        idle=$idle; panel=$panel; afterClose=$afterClose; runtimeShutdownMs=$shutdownMs; panelOpenLatencyMs=@($reopened.latenciesMs); latencyDefinition='native interaction to existing panel ready-to-show plus initial 350ms layout; cold opens';
+        idle=$idle; panel=$panel; afterClose=$afterClose; runtimeShutdownMs=$shutdownMs; panelOpenLatencyMs=@($reopened.latenciesMs); latencyDefinition='native interaction through process creation, expanded content/font readiness and first paint; cold opens';
         electron=(Get-Content "$root/node_modules/electron/package.json" -Raw | ConvertFrom-Json).version; measuredAt=[DateTime]::UtcNow.ToString('o'); ownedPids=@($owned); acceptanceUnder180=($idle.averageMB -lt 180 -and $afterClose.averageMB -lt 180) }
     $result | ConvertTo-Json -Depth 12 | Set-Content $Output -Encoding UTF8
     Write-Output "NATIVE FOOTPRINT: idle $($idle.averageMB) MB; panel $($panel.averageMB) MB; after-close $($afterClose.averageMB) MB; panel latency $($result.panelOpenLatencyMs -join ', ') ms; shutdown $shutdownMs ms; idle CPU $($idle.averageCPU)%"

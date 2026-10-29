@@ -28,7 +28,7 @@ const Island = (() => {
   const BELOW_GAP = 8; // gap between the island and the strip under it
   const AUTO_HIDE_MS = 5000;
   const HOVER_DWELL_MS = 280; // pointer must rest on the island before it opens (avoids accidental opens)
-  const LEAVE_MS = 24; // how long after the pointer leaves the island closes again
+  const LEAVE_MS = 8; // how long after the pointer leaves the island closes again
   let reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Spring: visual duration ~0.35 s with a slight overshoot. Reduced motion: short, no bounce.
   let motionOff = false;
@@ -93,14 +93,15 @@ const Island = (() => {
     placeBelow(nextBelow);
     if (shapeAnim) shapeAnim.stop();
     // FLIP: one layout at the destination, then compositor transform/opacity only.
-    Object.assign(el.style, { width: w + 'px', height: hgt + 'px', top: y + 'px', borderRadius: r + 'px' });
+    const rasterW = Math.max(now.w, w), rasterH = Math.max(now.h, hgt);
+    Object.assign(el.style, { width: rasterW + 'px', height: rasterH + 'px', top: y + 'px', borderRadius: r + 'px' });
     if (motionOff || !el.animate) { settle(); return; }
     animating = true;
     el.style.willChange = 'transform';
     const started = performance.now();
     const animation = el.animate([
-      { transform: `translateX(-50%) translateY(${now.y-y}px) scale(${now.w/w}, ${now.h/hgt})` },
-      { transform: 'translateX(-50%) translateY(0px) scale(1, 1)' },
+      { transform: `translateX(-50%) translateY(${now.y-y}px) scale(${now.w/rasterW}, ${now.h/rasterH})` },
+      { transform: `translateX(-50%) translateY(0px) scale(${w/rasterW}, ${hgt/rasterH})` },
     ], { duration: reducedMotion ? 100 : 180, easing: 'cubic-bezier(.2,.9,.3,1)' });
     const anim = { stop: () => animation.cancel() };
     shapeAnim = anim; stats.animations++;
@@ -120,6 +121,7 @@ const Island = (() => {
 
   function settle() {
     animating = false;
+    Object.assign(el.style, { width: shape.w + 'px', height: shape.h + 'px', top: shape.y + 'px', borderRadius: shape.r + 'px' });
     reportShape();
     if (belowShape) below.style.top = el.getBoundingClientRect().bottom + BELOW_GAP + 'px';
     sendEnvelope(shape.w, shape.h, shape.y, belowShape); // trim the window to the final size
@@ -318,17 +320,10 @@ const Island = (() => {
       mount(v);
       return;
     }
-    const hadContent = stage.childElementCount > 0;
-    const out = hadContent ? M.animate(stage, { opacity: 0, scale: 0.98 }, { duration: reducedMotion ? 0.05 : 0.08, ease: 'easeIn' }) : Promise.resolve();
-    out.then(() => {
-      if (token !== swapToken) return;
-      mount(v);
-      M.animate(
-        stage,
-        { opacity: [0, 1], scale: [0.98, 1] },
-        { duration: reducedMotion ? 0.08 : 0.12, ease: [0.2, 0.9, 0.3, 1], delay: 0 }
-      );
-    });
+    // Mount before the shrink starts: retaining a large view in a tiny FLIP target
+    // forces oversized backdrop rasterization and delays the first collapsed frame.
+    mount(v);
+    M.animate(stage, { opacity: [0, 1] }, { duration: reducedMotion ? 0.08 : 0.12, ease: 'easeOut' });
   }
 
   function render() {
@@ -528,7 +523,7 @@ const Island = (() => {
   function reportShape() {
     if (material !== 'acrylic') return;
     const r = el.getBoundingClientRect();
-    const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+    const radius = (parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0) * Math.min(r.width / el.offsetWidth, r.height / el.offsetHeight);
     const msg = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), radius: Math.round(radius) };
     msg.secondary = null;
     if (belowShape && below.style.display !== 'none') {

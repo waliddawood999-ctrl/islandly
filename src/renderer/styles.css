@@ -463,3 +463,7 @@ html[dir] .lyrics-strip [dir='auto'], html[dir] .sh-item [dir='auto'], html[dir]
 .expanded-grid .m-bg { z-index: -1; }
 #island { transform-origin: 50% 0; transition: background-color .15s, color .15s; }
 #island.hint { transform: translateX(-50%); opacity: .9; }
+.expanded-grid .chips { flex-wrap: wrap; gap: 8px; }
+.expanded-grid .chip, .expanded-grid .stepper { flex-shrink: 0; }
+.expanded-grid .t-actions { flex-wrap: wrap; gap: 8px; }
+.expanded-grid .t-main { display: grid; grid-template-columns: 92px minmax(0,1fr); gap: 12px; }

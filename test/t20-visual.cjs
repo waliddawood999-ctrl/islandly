@@ -38,7 +38,15 @@ const root=path.resolve(__dirname,'..'), out=path.join(root,'dev/t20');
   await page.screenshot({path:path.join(out,`${version}-${lang}-${mode}-${dpi*100}.png`)});
   audit.push({version,lang,mode,dpi,errors,...geometry});
   if(version==='after'&&(geometry.collisions.length||errors.length))throw Error(JSON.stringify(audit.at(-1)));
+  if(process.env.T20_PROFILE && version==='after' && lang==='ar' && mode==='overlay' && dpi===1) {
+   const script=fs.readFileSync(path.join(__dirname,'t20-electron.js'),'utf8').match(/const timing=await run\(`([\s\S]*?)`\);/)[1];
+   const timing=await page.evaluate(script);console.log('LOCAL FRAME PROFILE '+JSON.stringify({...timing,frames:undefined}));
+  }
   if(version==='after' && dpi===1) {
+   await page.evaluate(() => { Island.open('timer'); Island.feature('timer').setMode('quick'); });
+   await page.waitForTimeout(400);
+   await page.locator('.timer-expanded .step:last-child').click();
+   if(!await page.evaluate(()=>Island.feature('timer').total===660))throw Error('Timer custom step inaccessible');
    const adaptive=await page.evaluate(async()=>{
     window.__emit('media:update',{type:'media',active:true,title:'A wide media title',artist:'Fixture',playing:false,position:10,duration:180,sentAt:Date.now(),trackChanged:false});
     Island.open('music'); await Island.whenPainted();
