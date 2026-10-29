@@ -138,6 +138,7 @@
   |---|---|---|
   | `ramadan` | رمضان | هجري |
   | `eid-fitr` | 1–3 شوال | هجري |
+  | `dhul-hijjah-ten` | العشر من ذي الحجة (عرفة والعيد لهما الأولوية) | هجري |
   | `arafah` | 9 ذو الحجة | هجري |
   | `eid-adha` | 10–13 ذو الحجة | هجري |
   | `hijri-new-year` | 1 محرم | هجري |
@@ -397,3 +398,12 @@
 - Cold service working-set deltas were 3.52 MB, then 3.25 MB with bounded daily calculation/Hijri caches, over the 3 MB limit. A minimal Intl-only control measured 2.39 MB; no heap-only metric or trimming used to claim a pass.
 - Added a 7,231-byte exact month-boundary cache generated with Intl.DateTimeFormat(en-u-ca-islamic-umalqura), fixed Asia/Riyadh. It covers AH 1400–1500 (roughly 1979–2077), retains runtime Intl fallback outside the cached range, and is checked against runtime Intl at every cached month start/middle/end. scripts/generate-hijri-cache.js regenerates it offline when ICU data changes. This avoids repeated cold ICU residency for contemporary dates without substituting another calendar algorithm. Memory rerun pending; the fallback path can have the documented cold Intl overhead.
 - Late initial SMTC playing metadata during adhan now triggers the one allowed pause; subsequent timeline/user-resume events do not repeat it. Expired iqama state cannot resume media even if the timer was delayed. Upcoming imsak is omitted if the next fajr falls on Eid rather than Ramadan. Preferences/resume invalidate the bounded daily calculation cache.
+
+
+### T10 final backend verification — PR #12
+
+- User accepted T9 before assigning T10; TASKS now records that acceptance. T10 remains scoped to the dev-based backend while the user updates dev with T9; no native production files were imported.
+- Code 0b35d28249e68329ad9ceecc39b9e3fa4f73b83f, https://github.com/waliddawood999-ctrl/islandly/actions/runs/40818006161 **SUCCESS**: full npm test, real Electron sender/frame-guarded prayer/Hijri/resume IPC, cold incremental RAM and zero idle Quran requests. Raw samples: https://github.com/waliddawood999-ctrl/islandly/actions/runs/40818006161/artifacts/12872989110.
+- Latest full-service Windows Browser working-set means **68.42 → 68.11 MB**, signed **-0.31 MB** (normal working-set variation, not savings). Observed initialization checkpoints were at most **0.77 MB** above baseline mean. Earlier cache-enabled run +0.10 MB; both below 3 MB. Zero startup Quran requests, one initial state event. 15s warmup/30 one-second samples per phase; no GC/working-set trimming or heap-only substitution. Details/commands in docs/T10.md.
+- Cache-generated dates match runtime Intl across every cached month boundary/middle/end; AH 1400–1500 is covered, with lazy runtime Intl outside that range. The cold fallback can exceed the contemporary-date budget and is documented. Regenerate via scripts/generate-hijri-cache.js when ICU data changes.
+- Protected renderer/settings UI/palette/fonts/CSS unchanged. PR #12 targets dev; no merge/main push. Claude review requested for T12 IPC/audio/CSP consumers and the two-minute adhan correction. Native-owner integration and manual playback verification are deferred, not claimed complete.
