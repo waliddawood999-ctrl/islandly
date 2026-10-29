@@ -58,6 +58,14 @@ const step = async (name, fn) => {
     results.push('PASS ' + name);
   } catch (e) {
     results.push('FAIL ' + name + ' -> ' + e.message);
+    try {
+      const state = await js(`({ active: document.activeElement?.className, hasFocus: document.hasFocus(), value: document.querySelector('.nt-input')?.value, expanded: Island.isExpanded(), selected: Island.selectedId() })`);
+      console.error('E2E failure diagnostics', JSON.stringify({ name, state, focusable: win.isFocusable(), focused: win.isFocused(), x11: JSON.parse(xmouse('info').toString()) }));
+      if (process.env.ISLANDLY_SHOTS) {
+        fs.mkdirSync(process.env.ISLANDLY_SHOTS, { recursive: true });
+        fs.writeFileSync(path.join(process.env.ISLANDLY_SHOTS, 'failure-' + results.length + '.png'), (await win.webContents.capturePage()).toPNG());
+      }
+    } catch (diagnosticError) { console.error('E2E diagnostics unavailable:', diagnosticError.message); }
   }
 };
 
@@ -201,23 +209,29 @@ app.whenReady().then(() =>
     });
 
     await step('typing in the to-do field adds a task with the real keyboard', async () => {
-      await js('Island.open("notes"); 0');
-      await sleep(900);
-      const [x, y] = await screenPoint('.nt-input');
-      xmouse('move', x, y);
-      await sleep(500);
-      xmouse('click');
-      await sleep(600);
-      xmouse('type', 'buy milk');
-      xmouse('key', 'Return');
-      await waitFor('task added', async () => (await js(`[...document.querySelectorAll('.nt-text')].map((e) => e.textContent).join('|')`)).includes('buy milk'), 4000);
-      // leaving the field gives focus back, so the island never keeps keyboard focus
-      await js('document.querySelector(".nt-input").blur(); 0');
-      await sleep(300);
-      // after typing the island must not stay stuck open
-      await js('Island.togglePin(); 0');
-      xmouse('move', 5, 400);
+      try {
+        await js('Island.open("notes"); 0');
+        await sleep(900);
+        await waitFor('notes window accepts keyboard focus', () => win.isFocusable());
+        const [x, y] = await screenPoint('.nt-input');
+        xmouse('move', x, y);
+        await sleep(500);
+        xmouse('click');
+        // Linux/Xvfb focus activation is a driver action, not a production focus workaround.
+        // Never change the app's focusability or inject a DOM value/key event to make this pass.
+        xmouse('focus', win.getNativeWindowHandle().readUInt32LE(0));
+        await waitFor('real X11/DOM input focus', async () => win.isFocused() && await js('document.hasFocus() && document.activeElement === document.querySelector(".nt-input")'));
+        xmouse('type', 'buy milk');
+        await waitFor('real keyboard text', () => js('document.querySelector(".nt-input").value === "buy milk"'));
+        xmouse('key', 'Return');
+        await waitFor('task added', async () => (await js(`[...document.querySelectorAll('.nt-text')].map((e) => e.textContent).join('|')`)).includes('buy milk'), 4000);
+      } finally {
+        // A failure here must not leave Island.hold active and falsify later privacy/edge assertions.
+        await js('document.querySelector(".nt-input")?.blur(); Island.setHover(false); if (Island.isExpanded()) Island.togglePin(); 0');
+        xmouse('move', 5, 400);
+      }
       await waitFor('island collapsed after typing', async () => !(await js('Island.isExpanded()')), 6000);
+      await waitFor('keyboard focus released after notes closed', () => !win.isFocusable());
       assert.strictEqual(win.isFocusable(), false, 'window still accepts focus after the to-do panel closed');
     });
 

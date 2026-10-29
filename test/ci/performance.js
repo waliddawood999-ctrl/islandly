@@ -3,13 +3,14 @@ const finite = (n,label) => { if (typeof n!=='number'||!Number.isFinite(n)||n<0)
 function validate(report,mode) {
  if(!baseline.modes[mode])throw Error(`Unknown native mode: ${mode}`);
  if(report.platform!=='Windows'||report.mode!==mode)throw Error(`Wrong native measurement platform/mode: ${report.platform}/${report.mode}`);
- if(report.warmupSeconds<baseline.warmupSeconds||report.sampleCount!==baseline.sampleCount||report.sampleIntervalSeconds!==baseline.sampleIntervalSeconds)throw Error('Native probe must use >=15s warmup, exactly 60 one-second samples');
+ if(!Number.isFinite(report.warmupSeconds)||report.warmupSeconds<baseline.warmupSeconds||report.sampleCount!==baseline.sampleCount||report.sampleIntervalSeconds!==baseline.sampleIntervalSeconds)throw Error('Native probe must use >=15s warmup, exactly 60 one-second samples');
  const results={};
+ let host;
  for(const phase of ['idle','afterClose']){
   const rows=report[phase]?.samples;
   if(!Array.isArray(rows)||rows.length!==baseline.sampleCount)throw Error(`${phase}: expected 60 raw process snapshots, got ${rows?.length}`);
-  let host;
   for(const [index,s]of rows.entries()){
+   if(!s || typeof s!=='object')throw Error(`${phase}[${index}]: invalid raw snapshot`);
    if(s.phase!=='idle'||!Number.isInteger(s.hostPid)||s.hostPid<=0)throw Error(`${phase}[${index}]: not native idle`);
    host??=s.hostPid;if(s.hostPid!==host)throw Error(`${phase}: native host restarted during measurement`);
    if(!Array.isArray(s.processes)||s.processes.length!==1||s.processes[0].pid!==host)throw Error(`${phase}[${index}]: native idle must own only its native host; Electron/helper or invalid ownership present`);

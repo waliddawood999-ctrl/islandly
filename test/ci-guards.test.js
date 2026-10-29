@@ -30,6 +30,9 @@ try {
  bad=fixture();bad.afterClose.samples[0].totalCPU=NaN;assert.throws(()=>validate(bad,'overlay'),/Invalid or missing/);
  bad=fixture();bad.idle.samples[0]=sample(0);assert.throws(()=>validate(bad,'overlay'),/zero native working set/);
  bad=fixture();bad.warmupSeconds=0;assert.throws(()=>validate(bad,'overlay'),/warmup/);
+ bad=fixture();delete bad.warmupSeconds;assert.throws(()=>validate(bad,'overlay'),/warmup/);
+ bad=fixture();bad.afterClose.samples[0]=null;assert.throws(()=>validate(bad,'overlay'),/invalid raw snapshot/);
+ bad=fixture();for(const s of bad.afterClose.samples){s.hostPid=99;s.processes[0].pid=99;}assert.throws(()=>validate(bad,'overlay'),/host restarted/);
  bad=fixture();bad.platform='linux';assert.throws(()=>validate(bad,'overlay'),/platform\/mode/);
  console.log('CI guards: bidirectional/deep locale keys, missing/invalid catalogues, raw-sample RAM/CPU boundaries, no Electron/omitted processes, and malformed/short reports pass');
 } finally {fs.rmSync(root,{recursive:true,force:true});}
