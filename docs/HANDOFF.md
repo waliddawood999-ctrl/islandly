@@ -459,3 +459,7 @@
 - T9 integration must retain its native owner PID/job membership and shared PowerShell host accounting, with a single performance/Eco owner. This old dev checkout has no native host to include; do not replace T9's accounting with this scoped Electron-only owner inventory. Reconcile overlapping backend modules/main hooks rather than keeping duplicate timers.
 - npm test passes locally: manual/battery precedence, suspend/resume re-read, listener cleanup, full totals, subscription teardown; cadence/pause/restoration/disabled-setting tests. Windows CI adds actual main/preload IPC, tracked native PowerShell RAM, Eco broadcasts and real five-second subscription/unsubscribe/hide checks. CI pending. No local Windows desktop, battery-hardware or native-idle acceptance measurement claimed.
 - Claude review requested for Eco/motion/perf UI consumers; add controls/initial state binding in protected UI later. No renderer/settings UI/palette/font/CSS edits. One PR into dev, never merge/main push.
+
+### T14 PR #17 first CI follow-up
+
+- Draft PR: https://github.com/waliddawood999-ctrl/islandly/pull/17. First Windows run 40835696386 passed full npm test but the new integration harness failed selecting its settings HWND: Electron 45 does not expose the old preload property in getLastWebPreferences. Fixed harness selection to use the new BrowserWindow ID created by the real openSettings action, without modifying production/UI code or weakening assertions. Rerun pending.

@@ -18,8 +18,9 @@ async function until(fn, timeout = 10000) {
 }
 app.whenReady().then(async () => {
   await until(() => global.__islandly);
+  const existingIds = new Set(BrowserWindow.getAllWindows().map((w) => w.id));
   global.__islandly.openSettings();
-  const settings = BrowserWindow.getAllWindows().find((w) => w.webContents.getLastWebPreferences().preload.endsWith('settings-preload.js'));
+  const settings = BrowserWindow.getAllWindows().find((w) => !existingIds.has(w.id));
   assert.ok(settings);
   await until(() => settings.webContents.executeJavaScript('typeof settingsAPI !== "undefined"').catch(() => false));
   const run = (js) => settings.webContents.executeJavaScript(js);
