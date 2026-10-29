@@ -546,6 +546,7 @@ app.whenReady().then(() => {
   palette = new Palette({
     root: info.root,
     settings,
+    effectiveEco: () => effectiveEco,
     onTimer: (minutes) => push('shortcut', 'timer:' + minutes),
     openSettings,
   });
@@ -562,7 +563,10 @@ app.whenReady().then(() => {
   surface.setMode(nativeManaged ? 'overlay' : settings.get().islandMode);
   applyMaterial();
 
-  perf = new PerformanceMonitor({ app, host: commandHost, nativeOwnerPid: nativeManaged ? process.ppid : null, windows: () => ({ island: win, settings: settingsWin, palette: palette?.win }) });
+  perf = new PerformanceMonitor({ app, host: commandHost, nativeOwnerPid: nativeManaged ? process.ppid : null, windows: () => ({ island: win, settings: settingsWin, palette: palette?.win }), active: () =>
+      !!(settingsWin && !settingsWin.isDestroyed() && settingsWin.isVisible()) ||
+      !!(palette?.win && !palette.win.isDestroyed() && palette.win.isVisible()) ||
+      !!(win && !win.isDestroyed() && win.isVisible() && expanded()) });
   applyActivityPolicy();
 
   if (process.env.ISLANDLY_TEST) global.__islandly = { palette, shelf, tracker, openSettings, cleanup: stopNativeServices };
@@ -582,7 +586,7 @@ app.whenReady().then(() => {
   applyActivityPolicy();
   ecoController = new EcoController({ powerMonitor, settings: settings.get,
     apply: ({ eco, suspended }) => { effectiveEco = eco; powerSuspended = suspended; applyActivityPolicy(); if (suspended) perf.stop(); },
-    publish: (state) => { push('eco:changed', state); if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('eco:changed', state); },
+    publish: (state) => { push('eco:changed', state); for (const target of [settingsWin, palette?.win]) if (target && !target.isDestroyed()) target.webContents.send('eco:changed', state); },
   });
   ecoController.start();
   const send = (cmd) => push('shortcut', cmd);

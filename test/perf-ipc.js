@@ -17,10 +17,12 @@ app.whenReady().then(async () => {
   assert(settings);
   if (settings.webContents.isLoading()) await new Promise(resolve => settings.webContents.once('did-finish-load', resolve));
   const metrics = await settings.webContents.executeJavaScript('settingsAPI.perf()');
+  assert.equal(metrics.state, 'active');
   assert(metrics.totalMB > 0 && Array.isArray(metrics.processes));
   await settings.webContents.executeJavaScript("window.__samples=[]; window.__eco=[]; settingsAPI.on('perf:update', v => __samples.push(v)); settingsAPI.on('eco:changed', v => __eco.push(v)); settingsAPI.send('perf:watch', true);");
   await wait(6000);
   assert.equal(await settings.webContents.executeJavaScript('__samples.length'), 1);
+  assert.equal(await settings.webContents.executeJavaScript('__samples[0].state'), 'active');
   await settings.webContents.executeJavaScript('settingsAPI.set({ecoMode:true})');
   assert.equal(await settings.webContents.executeJavaScript('__eco.at(-1).eco'), true);
   settings.hide(); await wait(6000);

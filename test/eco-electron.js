@@ -26,6 +26,7 @@ app.whenReady().then(async () => {
   await until(() => settings.webContents.executeJavaScript('typeof settingsAPI !== "undefined"').catch(() => false));
   const run = (js) => settings.webContents.executeJavaScript(js);
   const before = await run('settingsAPI.perf()');
+  assert.equal(before.state, 'active');
   assert.ok(before.totalMB > 0 && before.processes.some((p) => p.type === 'browser'));
   assert.ok(before.processes.some((p) => p.label === 'settings'));
   assert.equal(before.totalMB, Math.round(before.processes.reduce((n, p) => n + p.mb, 0) * 10) / 10);
@@ -35,12 +36,19 @@ app.whenReady().then(async () => {
     assert.ok((await run('settingsAPI.perf()')).powershellCount >= 1);
     child.kill();
   }
+  global.__islandly.palette.toggle();
+  const palette = global.__islandly.palette.win;
+  await until(() => palette.webContents.executeJavaScript('typeof paletteAPI !== "undefined"').catch(() => false));
+  await palette.webContents.executeJavaScript("window.paletteSettings=[]; window.paletteEco=[]; paletteAPI.on('settings:update', v=>paletteSettings.push(v)); paletteAPI.on('eco:changed', v=>paletteEco.push(v));");
   await run("window.ecoEvents=[]; settingsAPI.on('eco:changed', v=>ecoEvents.push(v)); settingsAPI.set({ecoMode:false})");
   await until(() => run('ecoEvents.some(v=>v.eco===false)'));
+  await until(() => palette.webContents.executeJavaScript('paletteEco.some(v=>v.eco===false) && paletteSettings.some(v=>v.ecoMode===false)'));
+  global.__islandly.palette.hide();
   await run('settingsAPI.set({ecoMode:true})');
   await until(() => run('ecoEvents.some(v=>v.eco===true)'));
   await run("window.perfEvents=[]; settingsAPI.on('perf:update', v=>perfEvents.push(v)); settingsAPI.send('perf:watch', true)");
   await until(() => run('perfEvents.length > 0'), 8000);
+  assert.equal(await run('perfEvents[0].state'), 'active');
   await run("settingsAPI.send('perf:watch', false)");
   await wait(200); const count = await run('perfEvents.length'); await wait(5300);
   assert.equal(await run('perfEvents.length'), count, 'unsubscribe stops real updates');

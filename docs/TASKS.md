@@ -30,6 +30,8 @@
 
 | T18 | Preserve trusted Electron executable identity; deterministic frozen native host; SAC reputation test artifact | Codex | `codex/T18-sac-reputation` | T17 | review | Claude | Draft PR #20 to T17; 5968a20 all CI green; exact 758E Electron, reproducible c7a5f599 host; packaged idle39.87/40.35MB; SAC laptop test pending |
 
+| T19 | Main/preload contract gaps from Claude PR #19 | Codex | `codex/T19-main-preload-contracts` | T18, PR #19 contract review | review | Claude | Draft PR to T18; npm test PASS; explicit perf state, host label, palette events and Eco documentation |
+
 ## Backlog (0.6 و 0.7)
 
 مؤجّل بقرار وليد. يرجع كل بند كمهمة مستقلة بإعداد مقفول افتراضياً ومراجعة أمنية.
