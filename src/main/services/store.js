@@ -26,4 +26,5 @@ function jsonStore(name, fallback) {
   };
 }
 
-module.exports = { jsonStore };
+const MATERIAL_DEFAULT = 'acrylic';
+module.exports = { jsonStore, MATERIAL_DEFAULT };
