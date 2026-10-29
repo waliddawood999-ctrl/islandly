@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Idle eyes: concept for approval (T19-C)</title>
+<link rel="stylesheet" href="../../../assets/fonts/typography.css">
+<style>
+  :root { --L: 26px; --W: 9px; --tilt: -27deg; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #101117; color: #dfe2ee; font-family: var(--font); padding: 24px; width: 1500px; }
+  h2 { font-size: 22px; margin: 0 0 4px; } p.sub { color: #8d93a8; font-size: 14px; margin-bottom: 16px; }
+  section { margin-bottom: 36px; padding: 22px; background: #181a23; border-radius: 18px; }
+  .grid { display: grid; gap: 14px 18px; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .cap { font-size: 13px; color: #aab0c6; text-align: center; line-height: 1.35; max-width: 200px; }
+  .cap b { color: #fff; }
+  /* a strip of the screen top: dark pill over a dark/colourful page, light pill over a light page */
+  .stage { position: relative; width: 300px; height: 112px; border-radius: 14px; overflow: hidden; }
+  .stage.dark { background: linear-gradient(135deg, #3a2f78, #1d2a52 60%, #123a44); }
+  .stage.light { background: #f1f2f7; }
+  .stage.light::after { content: ''; position: absolute; inset: 60px 22px auto; height: 10px; border-radius: 5px; background: #d9dce8; box-shadow: 0 18px 0 -2px #d9dce8; }
+  .stage.dark::after { content: ''; position: absolute; inset: 60px 22px auto; height: 10px; border-radius: 5px; background: rgba(255,255,255,.12); box-shadow: 0 18px 0 -2px rgba(255,255,255,.12); }
+  .pill { position: absolute; left: 50%; top: 14px; width: 138px; height: 36px; margin-left: -69px; border-radius: 18px; display: flex; align-items: center; justify-content: center; gap: 14px; zoom: 1; }
+  .dark .pill { background: #0c0c0f; box-shadow: inset 0 0 0 .5px rgba(255,255,255,.14), 0 8px 18px -6px rgba(0,0,0,.6); color: #fff; --eye: #f6f7fb; }
+  .light .pill { background: #e7e8ee; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.12), 0 8px 18px -6px rgba(0,0,0,.25); color: #111; --eye: #1b1b24; }
+  .pill[dir='rtl'] { flex-direction: row-reverse; }
+  .time { font-size: 14px; font-weight: 700; letter-spacing: .3px; font-variant-numeric: tabular-nums; direction: ltr; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 8px rgba(52,211,153,.7); }
+  /* the eyes: two solid capsules, parallel, tilted 27 deg, no pupils, no outline; they move together */
+  .eyes { position: relative; width: 40px; height: 30px; flex: none; transform: translate(var(--x, 0px), var(--y, 0px)); }
+  .eye { position: absolute; top: 50%; left: 50%; width: var(--W); height: var(--L); margin: calc(var(--L) / -2) 0 0 calc(var(--W) / -2); border-radius: 999px; background: var(--eye);
+         transform: translateX(var(--dx)) rotate(var(--tilt)) scale(var(--sx, 1), var(--sy, 1)); }
+  .eye.a { --dx: -10px; } .eye.b { --dx: 10px; }
+  .only .eyes { width: 40px; }
+  .cursor { position: absolute; width: 16px; height: 16px; z-index: 3; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+  .tag { position: absolute; right: 8px; bottom: 6px; font-size: 11px; color: #8d93a8; }
+  .light .tag { color: #6b7088; }
+  .strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  .strip .stage { width: 100%; height: 76px; } .strip .pill { top: 20px; }
+  .frames { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  .frames .stage { width: 100%; height: 76px; } .frames .pill { top: 20px; }
+  .strip7 { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 14px; } .strip7 .stage { width: 100%; height: 76px; } .strip7 .pill { top: 20px; }
+  .strip7 .cap { font-size: 12px; }
+</style>
+</head>
+<body>
+<h1 style="font-size:26px;margin-bottom:6px">Idle eyes: concept for approval</h1>
+<p class="sub">Collapsed island 138 × 36 (scale 1.0, shown at 2×). Two solid capsules 9 × 26 px, parallel, tilted 27° (top leaning left), no pupils, no outline. Original Islandly design, style inspired by the reference only.</p>
+<div id="app"></div>
+<script>
+  const CURSOR = (c) => `<svg class="cursor" viewBox="0 0 16 16"><path d="M2 1.5l10.5 6-4.4 1.3 2.6 4.6-1.9 1.1-2.6-4.6-3.2 3z" fill="${c}" stroke="${c === '#fff' ? '#000' : '#fff'}" stroke-width="1"/></svg>`;
+  const EYES = (o = {}) => `<div class="eyes" style="--x:${o.x || 0}px;--y:${o.y || 0}px"><i class="eye a" style="--sx:${o.sx ?? 1};--sy:${o.sy ?? 1}"></i><i class="eye b" style="--sx:${o.sx ?? 1};--sy:${o.sy ?? 1}"></i></div>`;
+  // theme: dark|light ; lang: en|ar ; layout: both (eyes + time) | only ; o: eye state ; cur: cursor {x,y} in stage px
+  function cell(theme, lang, layout, o, cap, cur, tag) {
+    const rtl = lang === 'ar';
+    const body = o.hidden ? `<i class="dot"></i><span class="time">10:42</span>` : layout === 'only' ? EYES(o) : `${EYES(o)}<span class="time">10:42</span>`;
+    return `<div class="cell"><div class="stage ${theme} ${layout === 'only' ? 'only' : ''}" ${rtl ? 'data-rtl' : ''}>
+      <div class="pill" dir="${rtl ? 'rtl' : 'ltr'}">${body}</div>
+      ${cur ? `<span style="position:absolute;left:${(cur.x / 3).toFixed(1)}%;top:${cur.y}px">${CURSOR(theme === 'dark' ? '#fff' : '#000')}</span>` : ''}
+      ${tag ? `<span class="tag">${tag}</span>` : ''}</div><div class="cap">${cap}</div></div>`;
+  }
+  const out = [];
+  // ---- board 1: the collapsed island, 2 themes x 2 languages x 2 layouts
+  out.push(`<section id="b1"><h2>1 · The collapsed island</h2><p class="sub">Left: eyes + time (recommended, the clock stays readable). Right: eyes only (time appears on expand). Arabic mirrors the order: eyes at the start (right).</p><div class="grid" style="grid-template-columns:repeat(4,1fr)">` +
+    ['dark', 'light'].map((t) => ['en', 'ar'].map((l) => ['both', 'only'].map((ly) => cell(t, l, ly, {}, `<b>${t === 'dark' ? 'Dark' : 'Light'} · ${l === 'ar' ? 'Arabic RTL' : 'English LTR'}</b><br>${ly === 'both' ? 'eyes + time' : 'eyes only'}`, null, '')).join('')).join('')).join('') + `</div></section>`);
+  // ---- board 2: the states (dark and light)
+  const states = [
+    ['Awake, cursor near', {}, { x: 232, y: 54 }, 'cursor within 240 px, resting look'],
+    ['Follow: cursor left', { x: -5, y: 1 }, { x: 36, y: 38 }, 'both eyes glide together, max ±5 px, ±2 px'],
+    ['Follow: cursor right/below', { x: 5, y: 2 }, { x: 258, y: 82 }, 'same offset for both eyes'],
+    ['Blink (mid-way)', { sx: 0.06 }, { x: 232, y: 54 }, 'short axis squashed to 6 %'],
+    ['Sleepy: cursor far', { sx: 0.48, sy: 0.92, y: 1.5 }, null, 'half-closed: short axis 48 %, slight droop'],
+    ['Happy squint: pointer on the island', { sx: 1.12, sy: 0.62, y: -1 }, { x: 196, y: 46 }, 'shorter and a little fatter'],
+  ];
+  out.push(`<section id="b2"><h2>2 · States (dark and light, English LTR)</h2><p class="sub">Hidden in fullscreen, Eco and Motion Off: the existing green clock dot returns (last cell).</p>` +
+    ['dark', 'light'].map((t) => `<div class="strip" style="margin-bottom:14px">` + states.map(([n, o, cur, d]) => cell(t, 'en', 'both', o, `<b>${n}</b><br>${d}`, cur, '')).join('') + `</div>`).join('') + `</section>`);
+  // ---- board 3: Arabic states, eyes only (dark + light); the cursor and the eye offset are mirrored
+  const mirror = (c) => c;
+  out.push(`<section id="b3"><h2>3 · Same states in Arabic RTL (eyes only layout)</h2><p class="sub">Following is physical (the eyes look where the cursor really is, left stays left); only the order of eyes and time mirrors in Arabic. The tilt is the same in both directions.</p>` +
+    ['dark', 'light'].map((t) => `<div class="strip7">` + states.map(([n, o, cur]) => cell(t, 'ar', 'only', o, `<b>${n}</b>`, mirror(cur), '')).join('') + cell(t, 'ar', 'only', { hidden: true }, `<b>Hidden: fullscreen, Eco, Motion Off</b>`, null, '') + `</div>`).join('') + `</section>`);
+  // ---- board 4: timelines (computed from the real easing numbers)
+  const follow = [0, 80, 160, 250, 500, 750].map((t) => 5 * (1 - Math.exp(-4 * t / 1000)));
+  const blinkAt = (t) => { const c = 0.4 * 280, h = 0.08 * 280; if (t <= c) { const u = t / c; return 1 - (1 - 0.06) * (u * u); } if (t <= c + h) return 0.06; const u = (t - c - h) / (280 - c - h); const e = 1 - (1 - u) * (1 - u); return 0.06 + (1 - 0.06) * e; };
+  out.push(`<section id="b4"><h2>4 · Motion timelines</h2><p class="sub">Follow: exponential glide at <b>4 per second</b> (time constant 250 ms): 63 % of the way in 250 ms, 98 % in 1 s. Blink: <b>280 ms</b> total, short axis 100 % → 6 % → 100 % (close 112 ms ease-in, hold 22 ms, open 146 ms ease-out), every 3–4 s.</p>
+    <div class="frames" style="margin-bottom:14px">` + [0, 80, 160, 250, 500, 750].map((t, i) => cell('dark', 'en', 'both', { x: +follow[i].toFixed(2), y: +(follow[i] * 0.4).toFixed(2) }, `<b>t = ${t} ms</b><br>offset ${follow[i].toFixed(1)} of 5 px`, { x: 258, y: 82 }, '')).join('') + `</div>
+    <div class="frames">` + [0, 56, 112, 134, 190, 280].map((t) => cell('dark', 'en', 'both', { sx: +blinkAt(t).toFixed(3) }, `<b>t = ${t} ms</b><br>short axis ${(blinkAt(t) * 100).toFixed(0)} %`, null, '')).join('') + `</div></section>`);
+  document.getElementById('app').innerHTML = out.join('');
+  document.querySelectorAll('.stage').forEach((s) => (s.style.zoom = ''));
+</script>
+</body>
+</html>
