@@ -6,10 +6,12 @@ public static class LaunchPolicy {
     public const string Notice = "حظر Windows Smart App Control / App Control لوحات Islandly. يلزم إصدار موقّع.\nWindows Smart App Control / App Control blocked Islandly's panels. The app needs a signed build.";
     static bool BlockedCode(uint code) {
         if((code & 0xffff0000U)==0x80070000U) code &= 0xffffU; // HRESULT_FROM_WIN32
+        if((code & 0xf0000000U)==0xd0000000U) code &= 0xefffffffU; // HRESULT_FROM_NT
         switch(code) {
             case 577: // ERROR_INVALID_IMAGE_HASH
             case 1260: // ERROR_ACCESS_DISABLED_BY_POLICY
             case 4551: // ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION
+            case 0xc0e90002U: // STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION
             case 0xc0000428U: // STATUS_INVALID_IMAGE_HASH
             case 0xc0000361U: // STATUS_ACCESS_DISABLED_BY_POLICY_DEFAULT
             case 0xc0000362U: // STATUS_ACCESS_DISABLED_BY_POLICY_PATH
