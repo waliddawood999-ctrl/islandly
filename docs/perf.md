@@ -160,3 +160,14 @@ Source 86cbffa; full native guards [40871409380](https://github.com/waliddawood9
 Cold settings/expanded readiness: overlay 1306/775ms, AppBar 1481/817ms. Full shutdown after close: 4578/4570ms. All native idle samples are under 180MB; both CPU means under 1%. Relative to accepted T9 idle 39.43/39.76MB, integrated means are +0.74/+0.91MB. Raw [overlay](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40871409380/artifacts/12896605986) and [AppBar](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40871409380/artifacts/12895783460) snapshots retain all workloads.
 
 Reproduce on Windows: `npm ci`, `npm test`, then `powershell -NoProfile -ExecutionPolicy Bypass -File test/ci-native-perf.ps1 -Mode overlay` and repeat `-Mode reserved-bar`. The script prepares the on-demand runtime before measurement, then starts the native candidate directly. Settings use canonical appbar; reserved-bar is only the probe label. No local laptop measurement is claimed.
+
+## T17 launch-hardening candidate — Windows CI, 2026-10-29
+
+Measured source **b697ca391cda01ac89a056ee30b1382c62083275**, [native guard workflow 40879480355](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40879480355). Same 15s warmup + 60 one-second samples for each workload; complete native host/Job inventory, no Electron at idle and no trimming. These are automated Windows runner measurements, not Walid's Windows 11 build 26300 laptop. This measurement success does not establish the laptop launch bug is fixed: the packaged real-input launch paths pass but failure-injection/recovery validation remains in progress.
+
+| Mode | Idle RAM avg / peak MB | Idle CPU | Settings RAM avg MB | After-close RAM avg / peak MB | After-close CPU | Cold settings / expanded ms | Full shutdown ms |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Overlay | 40.17 / 42.34 | 0.416% | 416.12 | 27.89 / 35.14 | 0.365% | 1494 / 739 | 4054 |
+| AppBar | 40.66 / 42.76 | 0.522% | 423.06 | 30.48 / 36.37 | 0.443% | 1383 / 718 | 4572 |
+
+Both modes pass all idle RAM samples <180 MB and mean idle CPU <1% before and after close. Packaged launch verification and exact laptop reproduction steps are in [T17-LAUNCH-VERIFY.md](T17-LAUNCH-VERIFY.md). The old host reads last-error after cleanup; the laptop's error 0/87 does not identify the underlying failure. The legacy host opens on the Windows Server runner with packaged defaults, so the original hardware failure is not claimed reproduced.

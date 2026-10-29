@@ -44,6 +44,7 @@ static class Native {
     [StructLayout(LayoutKind.Sequential, Pack=8)] public struct STARTUPINFO { public uint cb; public IntPtr reserved, desktop, title; public int x,y,w,h,xChars,yChars,fill,flags; public short show,reservedBytes; public IntPtr reservedPtr,input,output,error; }
     [StructLayout(LayoutKind.Sequential)] public struct PROCESSINFO { public IntPtr process,thread; public int pid,tid; }
     [DllImport("kernel32.dll", EntryPoint="CreateProcessW", ExactSpelling=true, CharSet=CharSet.Unicode, SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool CreateProcess(string app, StringBuilder command, IntPtr pa, IntPtr ta, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint flags, IntPtr environment, string directory, ref STARTUPINFO startup, out PROCESSINFO info);
+    [DllImport("kernel32.dll", SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool SetThreadErrorMode(uint mode,out uint previous);
     [DllImport("kernel32.dll",SetLastError=true)] public static extern uint ResumeThread(IntPtr thread);
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode,SetLastError=true)] public static extern IntPtr CreateJobObject(IntPtr attrs, string name);
     [DllImport("kernel32.dll",SetLastError=true)] public static extern bool SetInformationJobObject(IntPtr h, int type, ref EXTENDEDLIMIT data, int len);
@@ -307,13 +308,18 @@ sealed class IslandHost : Form {
             if(!Directory.Exists(cwd)) throw new DirectoryNotFoundException("Panel working directory unavailable: "+cwd);
             string arguments=Quote(electron)+(packaged?"":" "+Quote(root))+" --enable-logging=file --log-level=2 --log-file="+Quote(Path.Combine(profile,"panel-chromium.log"));
             Native.PROCESSINFO pi; bool started; int error;
-            IntPtr env=Marshal.StringToHGlobalUni(block);
+            uint previousErrorMode;
+            stage="SetThreadErrorMode";
+            // Loader errors must return to our recovery path, never block the UI on an OS dialog.
+            if(!Native.SetThreadErrorMode(0x8003,out previousErrorMode)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),stage);
+            IntPtr env=IntPtr.Zero;
             try {
+                env=Marshal.StringToHGlobalUni(block);
                 stage="CreateProcessW";
                 NativeLog.Write(stage,"cwd="+cwd+" flags=0x08000404 inherit=false STARTUPINFO=104 PROCESS_INFORMATION=24 JOB_EXTENDED_LIMIT=144 envChars="+block.Length);
                 started=Native.CreateProcess(electron,new StringBuilder(arguments),IntPtr.Zero,IntPtr.Zero,false,0x08000404,env,cwd,ref startup,out pi);
                 error=Marshal.GetLastWin32Error();
-            } finally { Marshal.FreeHGlobal(env); }
+            } finally { if(env!=IntPtr.Zero) Marshal.FreeHGlobal(env); uint ignored; Native.SetThreadErrorMode(previousErrorMode,out ignored); }
             if(!started) throw new System.ComponentModel.Win32Exception(error,stage+" failed (Win32 "+error+")");
             ready=false; shutdownAt=0; lastCommand=command;
             try {
