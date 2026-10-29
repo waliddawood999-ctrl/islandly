@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('settingsAPI', {
   call: channel => channel === 'perf:get' ? ipcRenderer.invoke(channel) : Promise.reject(Error('blocked')),
   send: (channel, on) => { if (channel === 'perf:watch' && typeof on === 'boolean') ipcRenderer.send(channel, on); },
   on: (channel, cb) => { if (['perf:update', 'eco:changed', 'settings:update'].includes(channel)) { const listener = (_e, value) => cb(value); ipcRenderer.on(channel, listener); return () => ipcRenderer.removeListener(channel, listener); } },
+  prayer: () => ipcRenderer.invoke('prayer:get'),
+  hijri: () => ipcRenderer.invoke('hijri:get'),
   get: () => ipcRenderer.sendSync('settings:get'),
   set: (patch) => ipcRenderer.invoke('settings:set', patch),
   info: () => ipcRenderer.invoke('app:info'),

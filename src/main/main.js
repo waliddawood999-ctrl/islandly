@@ -1,5 +1,5 @@
 const path = require('path');
-const { app, BrowserWindow, screen, ipcMain, Tray, Menu, globalShortcut, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, Tray, Menu, globalShortcut, nativeImage, shell, powerMonitor } = require('electron');
 const nativeManaged = process.env.ISLANDLY_NATIVE_SESSION === '1';
 if (nativeManaged && process.env.ISLANDLY_NATIVE_PROFILE) app.setPath('userData', process.env.ISLANDLY_NATIVE_PROFILE);
 const { NativeSession } = require('./native-session');
@@ -25,6 +25,8 @@ const { Updater, markBootOk } = require('./updater');
 const { runOnce } = require('./ps');
 const { logError } = require('./log');
 const prayer = require('./services/prayer');
+const { QuranService } = require('./services/quran');
+const { register: registerIslamicIpc } = require('./services/islamic-ipc');
 const { Weather } = require('./services/weather');
 const { SysInfo } = require('./services/sysinfo');
 const { Breaks } = require('./services/breaks');
@@ -67,6 +69,8 @@ const expanded = () => surfaceResting === null ? envelope.h > 150 : !surfaceRest
 let policy = null;
 let surface;
 let hoverPoll = null;
+let prayerLive;
+const quran = new QuranService({ directory: () => app.getPath('userData') });
 const notesStore = jsonStore('notes.json', { todos: [] });
 
 function todayState() {
@@ -223,6 +227,7 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     markBootOk();
     push('eco:changed', { eco: settings.get().ecoMode });
+    if (prayerLive) push('prayer:state', prayerLive.get());
     win.webContents.setZoomFactor(zoom());
   });
   win.webContents.on('render-process-gone', (_e, d) => logError('renderer gone', JSON.stringify(d)));
@@ -344,6 +349,9 @@ async function stashFromExplorer() {
 }
 
 function registerIpc() {
+  const isIsland = e => !!win && !win.isDestroyed() && e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame;
+  const isSettings = e => !!settingsWin && !settingsWin.isDestroyed() && e.sender === settingsWin.webContents && e.senderFrame === settingsWin.webContents.mainFrame;
+  registerIslamicIpc({ ipcMain, isIsland, isSettings, settings, prayer: () => prayerLive, quran });
   ipcMain.on('settings:get', (e) => (e.returnValue = settings.get()));
   ipcMain.on('island:envelope', (e, env) => {
     if (!isIsland(e) || !env || !Number.isFinite(env.w) || !Number.isFinite(env.h)) return;
@@ -452,9 +460,14 @@ app.whenReady().then(() => {
 
   media = new MediaBridge((payload) => {
     if (payload && payload.type === 'unavailable') logError('media unavailable:', payload.reason);
+    prayerLive?.mediaChanged(payload);
     push('media:update', payload);
   }, info.baseRoot);
   media.start();
+  prayerLive = new prayer.PrayerService({ getSettings: settings.get, onState: state => push('prayer:state', state), media });
+  prayerLive.start();
+  powerMonitor.on('resume', () => prayerLive.changed());
+  powerMonitor.on('unlock-screen', () => prayerLive.changed());
 
   clipboardHistory = new ClipboardHistory((list) => push('clipboard:update', list));
   // Clipboard policy is applied once services are ready.
@@ -556,7 +569,9 @@ app.whenReady().then(() => {
     if (now.icsUrl !== prev.icsUrl) calendar.configure(now.icsUrl);
 
     if (now.hideFullscreen !== prev.hideFullscreen) applyVisibility();
-    const locKeys = ['city', 'lat', 'lng', 'prayerMethod', 'madhab', 'weather'];
+    const prayerKeys = ['city', 'lat', 'lng', 'cityName', 'prayerMethod', 'madhab', 'prayerPreMinutes', 'prayerIqamaMinutes', 'prayerAutoPause', 'ramadanMode'];
+    if (prayerKeys.some(k => JSON.stringify(now[k]) !== JSON.stringify(prev[k]))) prayerLive.changed();
+    const locKeys = ['city', 'lat', 'lng', 'prayerMethod', 'madhab', 'weather', 'ramadanMode'];
     if (locKeys.some((k) => now[k] !== prev[k])) {
       weather.configure(prayer.location(now), now.weather);
       push('today:update', todayState());
@@ -601,7 +616,7 @@ process.on('exit', stopNativeServices);
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-  [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks, tracker, privacy, github, palette, surface].forEach((m) => m && m.stop && m.stop());
+  [prayerLive, media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks, tracker, privacy, github, palette, surface].forEach((m) => m && m.stop && m.stop());
   clearInterval(hoverPoll);
   clearTimeout(midnightTimer);
   perf?.stop();

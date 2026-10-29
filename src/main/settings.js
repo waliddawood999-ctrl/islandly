@@ -2,10 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 
+const { ISLAMIC_DEFAULTS } = require('./services/store');
 const DEFAULTS = {
   ecoMode: false,
   monitorId: '', // Existing T1/T7 display-selection contract; primary fallback.
   islandMode: 'overlay', // Existing T6/T7 contract: overlay | appbar; native owner reserves the strip.
+  ...ISLAMIC_DEFAULTS,
   lang: 'ar', // 'auto' | 'ar' | 'en'
   autoHide: 'auto', // 'auto' (shrink after a few seconds) | 'never' | 'always' (thin line until hovered)
   position: 'center', // 'center' | 'left' | 'right'
@@ -59,7 +61,18 @@ function set(patch) {
   const prev = data;
   data = { ...data }; // keeps data.secrets
   for (const key of Object.keys(DEFAULTS)) {
-    if (key in patch && typeof patch[key] === typeof DEFAULTS[key]) data[key] = patch[key];
+    if (!(key in patch)) continue;
+    if (key === 'prayerIqamaMinutes') {
+      if (patch[key] && typeof patch[key] === 'object' && !Array.isArray(patch[key])) {
+        const next = { ...ISLAMIC_DEFAULTS.prayerIqamaMinutes, ...data[key] };
+        for (const name of Object.keys(ISLAMIC_DEFAULTS.prayerIqamaMinutes)) if (Number.isInteger(patch[key][name]) && patch[key][name] >= 0 && patch[key][name] <= 60) next[name] = patch[key][name];
+        data[key] = next;
+      }
+    } else if (key === 'prayerPreMinutes') {
+      if (Number.isInteger(patch[key]) && patch[key] >= 0 && patch[key] <= 60) data[key] = patch[key];
+    } else if (key === 'ramadanMode') {
+      if (['auto', 'on', 'off'].includes(patch[key])) data[key] = patch[key];
+    } else if (typeof patch[key] === typeof DEFAULTS[key]) data[key] = patch[key];
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
