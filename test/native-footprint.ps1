@@ -1,6 +1,6 @@
 # Same 15 s warmup and 60 one-second samples as the Electron controls.
 # Counts native host plus every PID in its Windows Job Object, without working-set trimming.
-param([string]$Output = "$PSScriptRoot/../native-perf-result.json", [ValidateSet('overlay','reserved-bar')][string]$Mode = 'overlay')
+param([string]$Output = "$PSScriptRoot/../native-perf-result.json", [ValidateSet('overlay','reserved-bar')][string]$Mode = 'overlay', [switch]$Smoke)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Add-Type -AssemblyName System.Windows.Forms
@@ -72,6 +72,7 @@ try {
         $workArea = [WorkAreaProbe]::Current()
         if ([WorkAreaProbe]::Top() -lt $initial.appBarBottom) { throw "Reserved top work area not applied: $workArea" }
     }
+    if ($Smoke) { Command 'settings'; $opened=Wait-Phase 'panel'; Command 'close'; $closed=Wait-Phase 'idle'; Write-Output ('Native lifecycle smoke passed; latency ' + $opened.latenciesMs); return }
     $idle = Samples 'idle'
     Command 'settings'
     $opened = Wait-Phase 'panel'

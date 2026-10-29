@@ -12,6 +12,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.IO.Pipes;
 using System.Collections;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
@@ -35,6 +37,8 @@ static class Native {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT rect);
     [DllImport("user32.dll")] public static extern int GetClassName(IntPtr h, StringBuilder text, int count);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern uint RegisterWindowMessage(string name);
     [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct STARTUPINFO { public int cb; public string reserved, desktop, title; public int x,y,w,h,xChars,yChars,fill,flags; public short show,reservedBytes; public IntPtr reservedPtr,input,output,error; }
     [StructLayout(LayoutKind.Sequential)] public struct PROCESSINFO { public IntPtr process,thread; public int pid,tid; }
@@ -59,6 +63,7 @@ sealed class IslandHost : Form {
     Dictionary<string,object> state = new Dictionary<string,object>();
     Process child;
     StreamWriter childInput;
+    NamedPipeServerStream sessionPipe;
     AnonymousPipeServerStream inputPipe, outputPipe, errorPipe;
     IntPtr job;
     NotifyIcon tray;
@@ -140,6 +145,7 @@ sealed class IslandHost : Form {
         IntPtr h = Native.GetForegroundWindow(); var name = new StringBuilder(128); Native.GetClassName(h,name,128);
         if (h == Handle || name.ToString() == "Progman" || name.ToString() == "WorkerW" || name.ToString() == "Shell_TrayWnd") return false;
         Native.RECT r; if (!Native.GetWindowRect(h,out r)) return false;
+        if(Screen.FromHandle(h).DeviceName != TargetScreen().DeviceName) return false;
         var b = Screen.FromHandle(h).Bounds;
         return r.left <= b.Left && r.top <= b.Top && r.right >= b.Right && r.bottom >= b.Bottom;
     }
@@ -156,7 +162,7 @@ sealed class IslandHost : Form {
         }
         float scale; if (!Single.TryParse(Setting("scale","0.8"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture,out scale)) scale = .8f;
         scale = Math.Max(.5f, Math.Min(2f,scale)) * CreateGraphicsDpi();
-        var screen = Screen.PrimaryScreen.Bounds;
+        var screen = TargetScreen().Bounds;
         if(Setting("micCamIndicator","True") == "False") privacyLabel = "";
         bool sliver = Setting("autoHide","auto") != "never" && !TimerRunning() && privacyLabel == "";
         int w = (int)((sliver ? 84 : 138)*scale), height = Math.Max(4,(int)((sliver ? 5 : 36)*scale));
@@ -171,7 +177,18 @@ sealed class IslandHost : Form {
         using (var shape = new GraphicsPath()) { int d = Math.Min(Height,Width); shape.AddArc(0,0,d,d,180,90); shape.AddArc(Width-d,0,d,d,270,90); shape.AddArc(Width-d,Height-d,d,d,0,90); shape.AddArc(0,Height-d,d,d,90,90); shape.CloseFigure(); var old = Region; Region = new Region(shape); if(old != null) old.Dispose(); }
         Visible = !hide && !ready; Invalidate();
     }
-    float CreateGraphicsDpi() { using(var g = CreateGraphics()) return g.DpiX/96f; }
+    Screen TargetScreen() {
+        string id=Setting("monitorId",""); object maps;
+        if(id != "" && state.TryGetValue("monitors",out maps) && maps is IEnumerable) {
+            foreach(var item in (IEnumerable)maps) {
+                var map=item as Dictionary<string,object>; if(map == null || Convert.ToString(map["id"]) != id) continue;
+                var match=Screen.AllScreens.FirstOrDefault(s => s.Bounds.Left == Convert.ToInt32(map["x"]) && s.Bounds.Top == Convert.ToInt32(map["y"]));
+                if(match != null) return match;
+            }
+        }
+        return Screen.PrimaryScreen;
+    }
+    float CreateGraphicsDpi() { try { return Native.GetDpiForWindow(Handle)/96f; } catch(EntryPointNotFoundException) { using(var g=CreateGraphics()) return g.DpiX/96f; } }
     protected override void OnPaint(PaintEventArgs e) {
         base.OnPaint(e); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         if (Height < 12) { using(var brush=new SolidBrush(TimerRunning() ? Color.FromArgb(167,139,250) : Color.FromArgb(76,76,76))) e.Graphics.FillRectangle(brush,ClientRectangle); return; }
@@ -193,6 +210,15 @@ sealed class IslandHost : Form {
         var limit = new Native.EXTENDEDLIMIT(); limit.basic.flags = 0x2000; // KILL_ON_JOB_CLOSE
         if (job == IntPtr.Zero || !Native.SetInformationJobObject(job,9,ref limit,Marshal.SizeOf(limit))) throw new Exception("Cannot contain panel process tree");
         // Suspend before assigning the job: not even early Chromium children can escape ownership.
+        string pipeName="Islandly-"+Guid.NewGuid().ToString("N");
+        var security=new PipeSecurity(); security.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User,PipeAccessRights.FullControl,AccessControlType.Allow));
+        sessionPipe=new NamedPipeServerStream(pipeName,PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous,65536,65536,security);
+        var pipe=sessionPipe;
+        pipe.BeginWaitForConnection(delegate(IAsyncResult result) {
+            try { pipe.EndWaitForConnection(result); if(closing || pipe != sessionPipe) return;
+                BeginInvoke((Action)(() => { if(closing || pipe != sessionPipe) return; childInput=new StreamWriter(pipe,new UTF8Encoding(false)); childInput.AutoFlush=true; ReadSession(pipe); }));
+            } catch(ObjectDisposedException) {} catch(IOException) {}
+        },null);
         inputPipe = new AnonymousPipeServerStream(PipeDirection.Out,HandleInheritability.Inheritable);
         outputPipe = new AnonymousPipeServerStream(PipeDirection.In,HandleInheritability.Inheritable);
         errorPipe = new AnonymousPipeServerStream(PipeDirection.In,HandleInheritability.Inheritable);
@@ -202,6 +228,7 @@ sealed class IslandHost : Form {
         startup.error = new IntPtr(Int64.Parse(errorPipe.GetClientHandleAsString()));
         var environment = new SortedDictionary<string,string>(StringComparer.OrdinalIgnoreCase);
         foreach(DictionaryEntry entry in Environment.GetEnvironmentVariables()) environment[(string)entry.Key] = (string)entry.Value;
+        environment["ISLANDLY_NATIVE_PIPE"] = pipeName;
         environment["ISLANDLY_NATIVE_SESSION"] = "1"; environment["ISLANDLY_NATIVE_PROFILE"] = profile; environment["ISLANDLY_NATIVE_COMMAND"] = command;
         if(probe != "") environment["ISLANDLY_NATIVE_PROBE"] = "1";
         string block = String.Join("\0",environment.Select(pair => pair.Key+"="+pair.Value))+"\0\0";
@@ -216,7 +243,7 @@ sealed class IslandHost : Form {
             if(!Native.AssignProcessToJobObject(job,pi.process)) throw new Exception("Panel job assignment failed");
             child = Process.GetProcessById(pi.pid);
             inputPipe.DisposeLocalCopyOfClientHandle(); outputPipe.DisposeLocalCopyOfClientHandle(); errorPipe.DisposeLocalCopyOfClientHandle();
-            childInput = new StreamWriter(inputPipe,new UTF8Encoding(false)); childInput.AutoFlush = true;
+
             ReadPipe(outputPipe,false); ReadPipe(errorPipe,true);
             if(Native.ResumeThread(pi.thread) == UInt32.MaxValue) throw new Exception("Panel resume failed");
         } catch { try { Process.GetProcessById(pi.pid).Kill(); } catch {} EndSession(); throw; }
@@ -224,11 +251,19 @@ sealed class IslandHost : Form {
         launchCount++;
         Status();
     }
+    async void ReadSession(NamedPipeServerStream pipe) {
+        try { using(var reader=new StreamReader(pipe,Encoding.UTF8)) {
+            string line; while((line=await reader.ReadLineAsync()) != null) {
+                if(closing || pipe != sessionPipe) return;
+                if(line.StartsWith("ISLANDLY:")) Message(line);
+            }
+        } } catch(ObjectDisposedException) {} catch(IOException) {}
+    }
     async void ReadPipe(AnonymousPipeServerStream pipe, bool error) {
         try { using(var reader = new StreamReader(pipe,Encoding.UTF8)) {
             string line;
             while((line = await reader.ReadLineAsync()) != null) {
-                if(closing) return;
+                if(closing || (error ? errorPipe : outputPipe) != pipe) return;
                 if(!error && line.StartsWith("ISLANDLY:")) Message(line);
                 else if(error) File.AppendAllText(Path.Combine(profile,"native-panels.log"),line+Environment.NewLine);
             }
@@ -254,6 +289,7 @@ sealed class IslandHost : Form {
         if(job != IntPtr.Zero) { Native.TerminateJobObject(job,0); Native.CloseHandle(job); job = IntPtr.Zero; }
         if(child != null) { child.Dispose(); child = null; }
         if(childInput != null) { childInput.Dispose(); childInput = null; }
+        if(sessionPipe != null) { sessionPipe.Dispose(); sessionPipe=null; }
         if(inputPipe != null) { inputPipe.Dispose(); inputPipe = null; }
         if(outputPipe != null) { outputPipe.Dispose(); outputPipe = null; }
         if(errorPipe != null) { errorPipe.Dispose(); errorPipe = null; }
@@ -299,7 +335,9 @@ sealed class IslandHost : Form {
     void MarkBar() {
         var data=new { pid=Process.GetCurrentProcess().Id, start=Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks.ToString(), edge=1,
             left=abd.rect.left,top=abd.rect.top,right=abd.rect.right,bottom=abd.rect.bottom, hwnd=Handle.ToInt64().ToString() };
-        string file=Path.Combine(profile,"native-appbar-marker.json"); File.WriteAllText(file,json.Serialize(data));
+        string file=Path.Combine(profile,"native-appbar-marker.json");
+        using(var stream=new FileStream(file+".tmp",FileMode.Create,FileAccess.Write,FileShare.None)) { byte[] bytes=Encoding.UTF8.GetBytes(json.Serialize(data)); stream.Write(bytes,0,bytes.Length); stream.Flush(true); }
+        if(File.Exists(file)) File.Replace(file+".tmp",file,null); else File.Move(file+".tmp",file);
     }
     void RemoveBar() { if(Native.SHAppBarMessage(1,ref abd).ToUInt64() != 0) DeleteBarMarker(); }
     void RecoverBar() {
@@ -414,7 +452,8 @@ static class Program {
         byte[] hash=System.Security.Cryptography.SHA256.Create().ComputeHash(Encoding.UTF8.GetBytes(Path.GetFullPath(profile).ToLowerInvariant()));
         using(var mutex=new Mutex(true,"Local\\IslandlyNative-"+BitConverter.ToString(hash).Replace("-",""),out first)) {
             if(!first) return;
-            Native.SetProcessDPIAware(); Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+            try { Native.SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch(EntryPointNotFoundException) { Native.SetProcessDPIAware(); }
+            Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new IslandHost(args));
         }
     }

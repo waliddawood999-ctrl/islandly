@@ -48,4 +48,10 @@ try {
 require('module').globalPaths.push(path.join(baseRoot, 'node_modules'));
 
 global.__ISLANDLY = { root, baseRoot, version, baseVersion: basePkg.version, currentFile };
-require(path.join(root, 'src', 'main', 'main.js'));
+if (process.platform === 'win32' && process.env.ISLANDLY_NATIVE_SESSION !== '1' && !process.argv.includes('--dev')) {
+  // Direct invocation of the panel executable delegates to the native owner too.
+  const host = app.isPackaged ? path.join(path.dirname(process.execPath), 'Islandly.exe') : path.join(baseRoot, 'native', 'bin', 'Islandly.exe');
+  if (fs.existsSync(host)) require('child_process').spawn(host, app.isPackaged ? [] : ['--root', baseRoot], { detached: true, stdio: 'ignore' }).unref();
+  else console.error('Native Islandly host missing. Run npm run build:native or reinstall the complete package.');
+  app.quit();
+} else require(path.join(root, 'src', 'main', 'main.js'));

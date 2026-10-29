@@ -18,6 +18,9 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build:native
+      - name: Cold-launch readiness and complete shutdown smoke
+        shell: pwsh
+        run: ./test/native-footprint.ps1 -Smoke
       - name: Native-only idle, settings panel, complete shutdown and reopen
         shell: pwsh
         run: ./test/native-footprint.ps1 -Output native-perf-overlay.json -Mode overlay

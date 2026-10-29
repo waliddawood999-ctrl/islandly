@@ -101,7 +101,8 @@ const zoom = () => Number(settings.get().scale) || 0.8;
 /** Size the window to the island's envelope and keep it anchored at the top of the primary display. */
 function positionWindow() {
   if (!win || win.isDestroyed()) return;
-  const { bounds } = screen.getPrimaryDisplay();
+  const display = screen.getAllDisplays().find(d => String(d.id) === settings.get().monitorId) || screen.getPrimaryDisplay();
+  const { bounds } = display;
   const z = zoom();
   const width = Math.min(bounds.width, Math.ceil(envelope.w * z));
   const height = Math.min(bounds.height, Math.ceil(envelope.h * z));
@@ -428,7 +429,7 @@ app.whenReady().then(() => {
     openSettings,
   });
 
-  perf = new PerformanceMonitor({ app, host: commandHost, windows: () => ({ island: win, settings: settingsWin, palette: palette?.win }) });
+  perf = new PerformanceMonitor({ app, host: commandHost, nativeOwnerPid: nativeManaged ? process.ppid : null, windows: () => ({ island: win, settings: settingsWin, palette: palette?.win }) });
   applyActivityPolicy();
 
   if (process.env.ISLANDLY_TEST) global.__islandly = { palette, shelf, tracker, openSettings, cleanup: stopNativeServices };
@@ -455,7 +456,7 @@ app.whenReady().then(() => {
   }
 
   settings.onChange((now, prev) => {
-    if (now.position !== prev.position) positionWindow();
+    if (now.position !== prev.position || now.monitorId !== prev.monitorId) positionWindow();
     if (now.scale !== prev.scale && win) {
       win.webContents.setZoomFactor(zoom());
       positionWindow();
@@ -522,6 +523,8 @@ function startNativeSession() {
   const fs = require('node:fs');
   const stateFile = path.join(app.getPath('userData'), 'native-session.json');
   let closingPanel = false;
+  const connection = require('node:net').createConnection('\\\\.\\pipe\\' + process.env.ISLANDLY_NATIVE_PIPE);
+  connection.on('error', err => { logError('native pipe', err); app.quit(); });
   const renderer = script => win.webContents.executeJavaScript(script);
   const command = async action => {
     try {
@@ -547,9 +550,9 @@ function startNativeSession() {
     } catch (err) { logError('native command', err); }
   };
   nativeSession = new NativeSession({
-    input: process.stdin, output: process.stdout,
+    input: connection, output: connection,
     command, quit: () => app.quit(),
-    busy: () => (!closingPanel && nativeExpanded) || !!settingsWin?.isVisible() || !!palette.win?.isVisible(),
+    busy: () => (!closingPanel && nativeExpanded) || !!settingsWin?.isVisible() || !!palette.win?.isVisible() || commandHost.pending.size > 0,
     restore: async () => {
       logError('native renderer ready, restoring');
       let saved;
@@ -585,10 +588,11 @@ function startNativeSession() {
           endAt: timer.endAt, selected: Island.selectedId(), expanded: Island.isExpanded() };
       })()`);
       nativeExpanded = snapshot.expanded;
-      return { ...snapshot, clipboard: clipboardHistory.items, clipboardPending: [] };
+      return { ...snapshot, clipboard: clipboardHistory.items, clipboardPending: [],
+        monitors: screen.getAllDisplays().map(d => ({ id: String(d.id), ...screen.dipToScreenPoint({ x: d.bounds.x, y: d.bounds.y }) })) };
     },
   });
   const loaded = () => nativeSession.loaded().catch(err => { logError('native load', err); app.quit(); });
-  if (win.webContents.isLoading()) win.once('ready-to-show', loaded);
+  if (win.webContents.isLoadingMainFrame()) win.webContents.once('did-finish-load', loaded);
   else loaded();
 }
