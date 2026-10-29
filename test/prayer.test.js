@@ -52,6 +52,7 @@ const flush = async()=>{await Promise.resolve();await Promise.resolve();};
   assert.equal(prayer.windowFor({...settings,prayerIqamaMinutes:{fajr:2}},at+2*M,fakeTimes).state.phase,'idle');
   const ramadan=prayer.windowFor({...settings,ramadanMode:'on'},at-11*M,fakeTimes).state;
   assert.equal(ramadan.imsak,at-10*M);assert.equal(ramadan.iftar,hijri.midnight(new Date(at))+18*60*M);
+  assert.equal(prayer.windowFor({...settings,ramadanMode:'auto'},Date.parse('2025-03-29T12:00:00+03:00'),fakeTimes).state.imsak,null,'do not advertise a fast on Eid morning');
   // A completed command after stop/config invalidation cannot resurrect paused state.
   let resolvePause;const late=new prayer.PrayerService({getSettings:()=>settings,onState:()=>{},media:{isPlaying:()=>true,pauseForAdhan:()=>new Promise(r=>{resolvePause=r;})},now:()=>at,setTimer:clock.set,clearTimer:clock.clear,getTimes:fakeTimes});
   late.start();late.stop();resolvePause({ok:true});await flush();assert(!late.pausedByAdhan);

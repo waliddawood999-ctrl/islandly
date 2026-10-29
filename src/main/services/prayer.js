@@ -51,7 +51,7 @@ function windowFor(s, now, getTimes = timesFor) {
     if (iqama > 2) boundaries.push(p.time + iqama * MINUTE);
   }
   return { state: { next, current, phase, phaseEndsAt, ramadan: isRamadan,
-    imsak: isRamadan && nextFajr ? nextFajr.time - 10 * MINUTE : null,
+    imsak: isRamadan && nextFajr && ramadan(s, new Date(nextFajr.time)) ? nextFajr.time - 10 * MINUTE : null,
     iftar: isRamadan && Number.isFinite(iftar?.time) ? iftar.time : null, pausedByAdhan: false },
     wakeAt: Math.min(...boundaries.filter(t => t > now)) };
 }

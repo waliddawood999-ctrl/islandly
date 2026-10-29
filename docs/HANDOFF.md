@@ -117,8 +117,8 @@
 ```
 - **المراحل:**
   - `pre`: من (الأذان − `prayerPreMinutes`) إلى الأذان.
-  - `adhan`: من الأذان لمدة **3 دقائق**.
-  - `iqama`: من نهاية `adhan` إلى (الأذان + `prayerIqamaMinutes[name]`). لو القيمة ≤ 3، ما في مرحلة iqama.
+  - `adhan`: من الأذان لمدة **دقيقتين**.
+  - `iqama`: من نهاية `adhan` إلى (الأذان + `prayerIqamaMinutes[name]`). لو القيمة ≤ 2، ما في مرحلة iqama.
   - `idle`: غير ذلك.
 - `phaseEndsAt`: نهاية المرحلة الحالية، و `null` في `idle`.
 - **الإرسال:** فقط عند تغيّر المرحلة، وعند منتصف الليل، وعند تغيير أي مفتاح صلاة أو موقع، وعند تغيّر `pausedByAdhan`. **ليس كل ثانية**: العد التنازلي تحسبه الواجهة.
@@ -388,3 +388,12 @@
 - Quran constructor/getting prayer/Hijri opens no network. Only quran:reciters fetches Arabic/English catalogue metadata, with coalesced requests and a seven-day disk cache. Failed refresh uses validated stale cache; no cache gives offline. quran:url is cache-only and rejects unsupported surahs/IDs and non-HTTPS/non-mp3quran-subdomain servers. No audio downloads or playback in main. Claude T12 must add the audio element and appropriate media-src CSP; protected HTML is unchanged.
 - Added deterministic Riyadh reference/Ramadan/timezone/phase/pause tests, known Hijri dates/occasions, Quran cache/URL security tests, scoped IPC/settings validation tests, real Electron IPC and a cold incremental Windows Browser working-set probe (3 MB limit, no GC or working-set trimming, zero idle Quran requests). npm test passed on Linux; Windows CI/memory measurement pending.
 - **Integration dependency:** this dev-based task does not contain the accepted, unmerged T9 native host. When combining task PRs, preserve T9's shared PowerShell host and transplant the explicit pause/play/app-identity commands rather than replacing its media bridge with the pre-T9 file. The always-on prayer scheduler/pause owner must be wired into the native host before shipping a combined native-idle build; do not keep Electron alive to preserve the Node timeout. This backend PR supplies the calculation/state/IPC contract; it does not claim native-idle background prayer execution on the uncombined T9 branch. Mixed native/background integration needs separate verification, not UI redesign.
+
+
+### T10 scope decision and memory optimization
+
+- User confirmed: **keep PR #12 scoped; the user will update dev with T9**. Native-host integration stays outside this PR until that base is available. No prior task branch was merged or copied into production code.
+- Windows npm test initially exposed the existing app-index fixture including the machine's Start Menu. Added test/run-tests.js with per-child temporary APPDATA/ProgramData only for that test on Windows; palette source/tests are unchanged. Full npm test and real Electron IPC subsequently passed.
+- Cold service working-set deltas were 3.52 MB, then 3.25 MB with bounded daily calculation/Hijri caches, over the 3 MB limit. A minimal Intl-only control measured 2.39 MB; no heap-only metric or trimming used to claim a pass.
+- Added a 7,231-byte exact month-boundary cache generated with Intl.DateTimeFormat(en-u-ca-islamic-umalqura), fixed Asia/Riyadh. It covers AH 1400–1500 (roughly 1979–2077), retains runtime Intl fallback outside the cached range, and is checked against runtime Intl at every cached month start/middle/end. scripts/generate-hijri-cache.js regenerates it offline when ICU data changes. This avoids repeated cold ICU residency for contemporary dates without substituting another calendar algorithm. Memory rerun pending; the fallback path can have the documented cold Intl overhead.
+- Late initial SMTC playing metadata during adhan now triggers the one allowed pause; subsequent timeline/user-resume events do not repeat it. Expired iqama state cannot resume media even if the timer was delayed. Upcoming imsak is omitted if the next fajr falls on Eid rather than Ramadan. Preferences/resume invalidate the bounded daily calculation cache.
