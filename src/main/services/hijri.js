@@ -4,6 +4,7 @@ const OFFSET = 3 * 60 * 60 * 1000; // Riyadh civil time: UTC+03, no DST in the s
 const AR = ['محرم','صفر','ربيع الأول','ربيع الآخر','جمادى الأولى','جمادى الآخرة','رجب','شعبان','رمضان','شوال','ذو القعدة','ذو الحجة'];
 const EN = ['Muharram','Safar','Rabi al-Awwal','Rabi al-Thani','Jumada al-Ula','Jumada al-Akhirah','Rajab','Sha\u2019ban','Ramadan','Shawwal','Dhu al-Qadah','Dhu al-Hijjah'];
 let formatter;
+const dates = new Map();
 function civil(date = new Date()) {
   const shifted = new Date(+date + OFFSET);
   if (!Number.isFinite(+shifted)) throw Error('invalid date');
@@ -28,8 +29,15 @@ function occasion(month, day, g) {
 }
 function get(date = new Date(), showOccasions = true) {
   formatter ||= new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { timeZone: TIME_ZONE, year: 'numeric', month: 'numeric', day: 'numeric' });
-  const parts = Object.fromEntries(formatter.formatToParts(date).map(p => [p.type, p.value]));
-  const day = Number(parts.day), month = Number(parts.month), year = Number(parts.year);
-  return { day, month, year, monthNameAr: AR[month - 1], monthNameEn: EN[month - 1], occasion: showOccasions ? occasion(month, day, civil(date)) : null };
+  const g = civil(date), key = `${g.year}-${g.month}-${g.day}`;
+  let value = dates.get(key);
+  if (!value) {
+    const parts = Object.fromEntries(formatter.formatToParts(date).map(p => [p.type, p.value]));
+    value = { day: Number(parts.day), month: Number(parts.month), year: Number(parts.year) };
+    dates.set(key, value);
+    if (dates.size > 4) dates.delete(dates.keys().next().value);
+  }
+  const { day, month, year } = value;
+  return { day, month, year, monthNameAr: AR[month - 1], monthNameEn: EN[month - 1], occasion: showOccasions ? occasion(month, day, g) : null };
 }
 module.exports = { get, civil, midnight, TIME_ZONE };

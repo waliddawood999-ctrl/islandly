@@ -58,6 +58,16 @@ function windowFor(s, now, getTimes = timesFor) {
 class PrayerService {
   constructor({ getSettings, onState, media, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, getTimes = timesFor }) {
     Object.assign(this, { getSettings, onState, media, now, setTimer, clearTimer, getTimes });
+    this.days = new Map();
+    const calculate = this.getTimes;
+    this.getTimes = (settings, date) => {
+      const key = hijri.midnight(date);
+      if (!this.days.has(key)) {
+        this.days.set(key, calculate(settings, date));
+        if (this.days.size > 3) this.days.delete(this.days.keys().next().value);
+      }
+      return this.days.get(key);
+    };
     this.timer = null; this.active = false; this.pausedByAdhan = false; this.pauseFor = null; this.generation = 0; this.last = '';
   }
   start() { this.active = true; this.update(true); }
@@ -85,7 +95,7 @@ class PrayerService {
     // Genuine next-boundary timeout, never a per-second polling interval. First alignment can be <1 minute.
     this.timer = this.setTimer(() => this.update(), Math.max(1, Math.min(2147483647, wakeAt - this.now())));
   }
-  changed() { this.generation++; this.update(true); }
+  changed() { this.generation++; this.days.clear(); this.update(true); }
   mediaChanged(payload) {
     if (payload?.type !== 'media' || !this.active) return;
     if ((!payload.active || payload.playing) && this.pausedByAdhan) { this.pausedByAdhan = false; this.emit(); }
