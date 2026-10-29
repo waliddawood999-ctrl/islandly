@@ -10,7 +10,7 @@ current.digits = current.digits || 'latn';
 I18N.configure(current);
 I18N.apply();
 
-const fields = ['position', 'autoHide', 'prayerMethod', 'madhab', 'islandMode', 'material', 'motion'];
+const fields = ['position', 'autoHide', 'prayerMethod', 'madhab', 'islandMode', 'material'];
 const checks = ['hideFullscreen', 'clipboard', 'updates', 'prayerAlerts', 'weather', 'timeTracking', 'micCamIndicator', 'ecoMode', 'ecoAuto'];
 
 // material: acrylic needs Windows 11; main says whether it is supported (task T15)
@@ -33,7 +33,10 @@ fields.forEach((k) => {
 });
 checks.forEach((k) => {
   $(k).checked = !!current[k];
-  $(k).addEventListener('change', () => api.set({ [k]: $(k).checked }));
+  $(k).addEventListener('change', () => {
+    current[k] = $(k).checked;
+    api.set({ [k]: $(k).checked });
+  });
 });
 
 $('uiLang').value = current.uiLang;
@@ -161,31 +164,129 @@ function relang() {
   secrets.forEach((paint) => paint());
   paintVersion();
   paintStatus();
+  paintPerformance();
 }
 
 $('quit').addEventListener('click', () => api.quit());
 
-// T17 connects the existing backend contracts without keeping the panel runtime resident.
-let perfSnapshot = null, ecoEffective = !!current.ecoMode;
-function paintPerformance() {
-  $('ecoState').textContent = t(ecoEffective ? 'settings.eco.active' : 'settings.eco.inactive');
-  if (!perfSnapshot) return;
-  $('ramTotal').textContent = t('settings.ramTotal', { mb: perfSnapshot.totalMB });
-  $('ramProcesses').textContent = perfSnapshot.processes.map(p => `${p.label || p.type}: ${p.mb} MB`).join(' · ');
+// --- Performance and power (T14). Contracts: docs/HANDOFF.md §2.3-2.5.
+//   perf:get / perf:update  { totalMB, processes: [{ type, pid, mb, cpu, label }], powershellCount, uptimeSec }
+//   eco:changed             { eco }   the *effective* state: ecoMode, or ecoAuto while on battery
+// The contract has no idle/active flag, and updates only flow while this (Electron) window is open, so "active"
+// is derived from the summed CPU of every process; hysteresis keeps the chip from flickering.
+let perfSnapshot = null;
+let ecoEffective = !!current.ecoMode;
+let busy = false;
+const BUSY_ON = 1.5;
+const BUSY_OFF = 0.5;
+const GROUPS = ['island', 'settings', 'palette', 'browser', 'renderer', 'gpu', 'utility', 'powershell'];
+
+const setChip = (chip, state, key) => {
+  chip.dataset.state = state;
+  chip.querySelector('span').textContent = t(key);
+};
+const mbText = (mb) => I18N.num(mb, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+function uptimeText(sec) {
+  const unit = (n, u) => I18N.num(n, { style: 'unit', unit: u, unitDisplay: 'narrow' });
+  const m = Math.floor(sec / 60);
+  const h = Math.floor(m / 60);
+  return h ? `${unit(h, 'hour')} ${unit(m % 60, 'minute')}` : m ? unit(m, 'minute') : unit(Math.floor(sec), 'second');
 }
+
+// The island and this window follow the same motion choice; Eco limits "full" to "reduced" (as the island does).
+function paintMotion() {
+  const mode = current.motion || 'full';
+  document.documentElement.dataset.motion = mode === 'off' ? 'off' : mode === 'reduced' || ecoEffective ? 'reduced' : 'full';
+  document.querySelectorAll('input[name="motion"]').forEach((r) => (r.checked = r.value === mode));
+  $('motionNote').hidden = !(ecoEffective && mode === 'full');
+}
+document.querySelectorAll('input[name="motion"]').forEach((r) =>
+  r.addEventListener('change', () => {
+    current.motion = r.value;
+    api.set({ motion: r.value });
+    paintMotion();
+  })
+);
+
+function paintRam() {
+  const rows = $('ramRows');
+  rows.replaceChildren();
+  if (!perfSnapshot) {
+    setChip($('ramState'), 'wait', 'settings.ram.state.wait');
+    $('ramMeta').textContent = '';
+    return;
+  }
+  const cpu = perfSnapshot.processes.reduce((n, p) => n + (p.cpu || 0), 0);
+  busy = busy ? cpu > BUSY_OFF : cpu >= BUSY_ON;
+  setChip($('ramState'), busy ? 'busy' : 'idle', busy ? 'settings.ram.state.busy' : 'settings.ram.state.idle');
+  $('ramTotal').textContent = mbText(perfSnapshot.totalMB);
+
+  const groups = new Map();
+  for (const p of perfSnapshot.processes) {
+    const name = GROUPS.includes(p.label) ? p.label : GROUPS.includes(p.type) ? p.type : 'other';
+    groups.set(name, (groups.get(name) || 0) + p.mb);
+  }
+  const sorted = [...groups].sort((a, b) => b[1] - a[1]);
+  const max = sorted.length ? sorted[0][1] || 1 : 1;
+  for (const [name, mb] of sorted) {
+    const li = document.createElement('li');
+    const label = document.createElement('span');
+    label.className = 'ram-name';
+    label.textContent = t('settings.ram.proc.' + name);
+    const bar = document.createElement('span');
+    bar.className = 'ram-bar';
+    const fill = document.createElement('b');
+    fill.style.setProperty('--w', Math.max(2, Math.round((mb / max) * 100)) + '%');
+    bar.append(fill);
+    const val = document.createElement('span');
+    val.className = 'ram-val';
+    val.textContent = t('settings.ram.mb', { mb: mbText(mb) });
+    li.append(label, bar, val);
+    rows.append(li);
+  }
+  $('ramMeta').textContent = t('settings.ram.meta', { ps: perfSnapshot.powershellCount, up: uptimeText(perfSnapshot.uptimeSec) });
+}
+
+function paintPerformance() {
+  const manual = !!current.ecoMode;
+  setChip($('ecoState'), !ecoEffective ? 'inactive' : manual ? 'active' : 'battery', !ecoEffective ? 'settings.eco.inactive' : manual ? 'settings.eco.active' : 'settings.eco.battery');
+  paintMotion();
+  paintRam();
+}
+
 if (api.on) {
-  api.on('perf:update', value => { perfSnapshot = value; paintPerformance(); });
-  api.on('eco:changed', value => { ecoEffective = value.eco; paintPerformance(); });
-  api.on('settings:update', value => {
+  api.on('perf:update', (value) => {
+    perfSnapshot = value;
+    paintRam();
+  });
+  api.on('eco:changed', (value) => {
+    ecoEffective = !!value.eco;
+    paintPerformance();
+  });
+  api.on('settings:update', (value) => {
     Object.assign(current, value);
     for (const key of [...fields, ...checks]) {
       if (document.activeElement === $(key)) continue;
-      if (checks.includes(key)) $(key).checked = !!value[key]; else $(key).value = value[key];
+      if (checks.includes(key)) $(key).checked = !!value[key];
+      else $(key).value = value[key];
     }
-    I18N.configure(current); paintPerformance();
+    I18N.configure(current);
+    paintPerformance();
   });
 }
-function subscribePerformance() { api.send('perf:watch', !document.hidden); }
-if (api.perf) api.perf().then(value => { perfSnapshot = value; paintPerformance(); }).catch(() => {});
-if (api.send) { subscribePerformance(); document.addEventListener('visibilitychange', subscribePerformance); window.addEventListener('beforeunload', () => api.send('perf:watch', false)); }
+// Live figures are requested only while the window is visible; main also stops them on hide/close.
+const subscribePerformance = () => api.send('perf:watch', !document.hidden);
+if (api.perf)
+  api
+    .perf()
+    .then((value) => {
+      perfSnapshot = value;
+      paintRam();
+    })
+    .catch(() => {});
+if (api.send) {
+  subscribePerformance();
+  document.addEventListener('visibilitychange', subscribePerformance);
+  window.addEventListener('beforeunload', () => api.send('perf:watch', false));
+}
 paintPerformance();

@@ -11,18 +11,48 @@
   <!-- Every text comes from src/renderer/locales/<lang>.json through data-i18n (T11). -->
   <h1 data-i18n="settings.title"></h1>
 
-  <section>
+  <section id="perf" class="perf">
     <h2 data-i18n="settings.performance"></h2>
-    <label><span data-i18n="settings.ecoMode"></span><input id="ecoMode" type="checkbox"></label>
-    <label><span data-i18n="settings.ecoAuto"></span><input id="ecoAuto" type="checkbox"></label>
-    <label><span data-i18n="settings.motion"></span><select id="motion">
-      <option value="full" data-i18n="settings.motion.full"></option>
-      <option value="reduced" data-i18n="settings.motion.reduced"></option>
-      <option value="off" data-i18n="settings.motion.off"></option>
-    </select></label>
-    <p id="ecoState" class="hint"></p>
-    <p id="ramTotal" aria-live="polite"></p>
-    <p id="ramProcesses" class="hint"></p>
+
+    <div class="opt">
+      <div class="opt-text">
+        <label for="ecoMode" class="opt-title" data-i18n="settings.ecoMode"></label>
+        <p class="hint" data-i18n="settings.eco.hint"></p>
+      </div>
+      <span class="switch"><input id="ecoMode" type="checkbox" role="switch"><i aria-hidden="true"></i></span>
+    </div>
+    <div class="opt sub">
+      <div class="opt-text">
+        <label for="ecoAuto" class="opt-title" data-i18n="settings.ecoAuto"></label>
+        <p class="hint" data-i18n="settings.ecoAuto.hint"></p>
+      </div>
+      <span class="switch"><input id="ecoAuto" type="checkbox" role="switch"><i aria-hidden="true"></i></span>
+    </div>
+    <p id="ecoState" class="chip" data-state="inactive"><i class="chip-dot" aria-hidden="true"></i><span></span></p>
+
+    <div class="opt stack" role="radiogroup" aria-labelledby="motionTitle">
+      <div class="opt-text">
+        <span id="motionTitle" class="opt-title" data-i18n="settings.motion"></span>
+        <p class="hint" data-i18n="settings.motion.hint"></p>
+      </div>
+      <div class="seg" id="motion">
+        <label><input type="radio" name="motion" value="full"><span data-i18n="settings.motion.full"></span></label>
+        <label><input type="radio" name="motion" value="reduced"><span data-i18n="settings.motion.reduced"></span></label>
+        <label><input type="radio" name="motion" value="off"><span data-i18n="settings.motion.off"></span></label>
+      </div>
+      <p id="motionNote" class="hint note" hidden data-i18n="settings.motion.ecoLimit"></p>
+    </div>
+
+    <div class="ram" id="ram" data-state="wait">
+      <div class="ram-head">
+        <span class="ram-title" data-i18n="settings.ram.title"></span>
+        <span id="ramState" class="chip small" data-state="wait"><i class="chip-dot" aria-hidden="true"></i><span></span></span>
+      </div>
+      <div class="ram-total"><b id="ramTotal" class="tnum">—</b><span class="ram-unit" data-i18n="settings.ram.unit"></span></div>
+      <ul id="ramRows" class="ram-rows"></ul>
+      <p id="ramMeta" class="hint ram-meta"></p>
+      <p class="hint" data-i18n="settings.ram.hint"></p>
+    </div>
   </section>
   <section>
     <h2 data-i18n="settings.appearance"></h2>

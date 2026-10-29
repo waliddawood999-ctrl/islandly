@@ -436,4 +436,9 @@ html[dir] .lyrics-strip [dir='auto'], html[dir] .sh-item [dir='auto'], html[dir]
 
 /* T17 binds the backend motion setting; preserve existing layout, colors and type. */
 :root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation: none !important; transition: none !important; }
-:root[data-motion="reduced"] .wave i { animation: none !important; }
+:root[data-motion="reduced"] .wave i, :root[data-motion="reduced"] .pv-dot, :root[data-motion="reduced"] .art.round.playing { animation: none !important; }
+/* Reduced (also Eco): short fades only, no stagger, no overshoot, no long width tween */
+:root[data-motion="reduced"] .view.enter .stagger > * { animation: fadeIn 0.12s ease-out both; animation-delay: 0s; }
+:root[data-motion="reduced"] #island { transition-duration: 0.12s; transition-timing-function: ease-out; }
+:root[data-motion="reduced"] .meter i, :root[data-motion="reduced"] .dot { transition-duration: 0.12s; transition-timing-function: ease-out; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

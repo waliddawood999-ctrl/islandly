@@ -16,3 +16,4 @@ dev/i18n/shots/
 native/bin/
 footprint-local-*.json
 native-perf-*.json
+dev/t14/shots/

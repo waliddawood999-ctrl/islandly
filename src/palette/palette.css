@@ -58,6 +58,11 @@ kbd { font: inherit; font-size: 11px; color: var(--muted); border: 1px solid rgb
 #aText.err { color: #fca5a5; }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+/* T14 motion setting: Off = nothing moves; Reduced (or Eco) = short fades, no blur/slide/overshoot, no blinking caret */
+:root[data-motion='off'] *, :root[data-motion='off'] *::before, :root[data-motion='off'] *::after { animation: none !important; transition: none !important; }
+:root[data-motion='reduced'] #box.in, :root[data-motion='reduced'] .row { animation: fadeIn 0.1s ease-out both; animation-delay: 0s; }
+:root[data-motion='reduced'] #aText.wait::after { animation: none !important; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* User text (titles, names) is isolated with dir=auto but keeps the alignment of the interface around it. */
 html[dir='rtl'] [dir='auto']:not(input):not(textarea) { text-align: right; }

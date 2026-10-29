@@ -33,6 +33,14 @@ let seq = 0;
 let asking = false;
 let dirty = false; // typed since the last results arrived
 
+// Motion (T14): Off = nothing moves; Reduced, or a manual Eco, = short fades. Read at load and, when main sends
+// them with palette:shown, refreshed on every show (its preload cannot hear settings:update or eco:changed).
+function applyMotion(d) {
+  const motion = d && d.motion ? d.motion : API.settings.motion;
+  const eco = d && 'ecoMode' in d ? d.ecoMode : API.settings.ecoMode;
+  document.documentElement.dataset.motion = motion === 'off' ? 'off' : motion === 'reduced' || eco ? 'reduced' : 'full';
+}
+
 function applyLang() {
   document.documentElement.dataset.fonts = API.settings.fontPairing || 'plex';
   input.placeholder = s('placeholder');
@@ -204,6 +212,7 @@ document.addEventListener('keydown', (e) => {
 API.on('palette:shown', (d) => {
   if (d) configureLang(d);
   applyLang();
+  applyMotion(d);
   asking = false;
   input.value = '';
   answer.hidden = true;
@@ -215,4 +224,5 @@ API.on('palette:shown', (d) => {
 });
 
 applyLang();
+applyMotion();
 refresh();
