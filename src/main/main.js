@@ -678,7 +678,7 @@ function startNativeSession() {
   const connection = require('node:net').createConnection('\\\\.\\pipe\\' + process.env.ISLANDLY_NATIVE_PIPE);
   connection.on('error', err => { logError('native pipe', err); app.quit(); });
   const renderer = script => win.webContents.executeJavaScript(script);
-  const command = async action => {
+  const command = async (action, required = false) => {
     try {
       closingPanel = false;
       if (action === 'settings') {
@@ -705,7 +705,7 @@ function startNativeSession() {
         panelPaintReady = true; nativeSurfaceReady = true;
         applyVisibility();
       }
-    } catch (err) { logError('native command', err); }
+    } catch (err) { logError('native command', err); if (required) throw err; }
   };
   nativeSession = new NativeSession({
     input: connection, output: connection,
@@ -735,7 +735,7 @@ function startNativeSession() {
         })()`);
       }
       logError('native opening command', process.env.ISLANDLY_NATIVE_COMMAND);
-      await command(process.env.ISLANDLY_NATIVE_COMMAND || 'expand');
+      await command(process.env.ISLANDLY_NATIVE_COMMAND || 'expand', true);
       logError('native command opened');
       // Include first panel layout/paint rather than counting process spawn as panel readiness.
 
