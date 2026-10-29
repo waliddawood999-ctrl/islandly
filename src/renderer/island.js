@@ -315,7 +315,8 @@ const Island = (() => {
     const out = hadContent ? M.animate(stage, { opacity: 0, scale: 0.98 }, { duration: reducedMotion ? 0.05 : 0.08, ease: 'easeIn' }) : Promise.resolve();
     out.then(() => {
       if (token !== swapToken) return;
-      mount(v);
+      // the same view may have changed size during the fade-out (a list opened, data arrived): use its latest size
+      mount(current && current.key === v.key ? current : v);
       M.animate(
         stage,
         { opacity: [0, 1], scale: [0.96, 1], filter: ['blur(4px)', 'blur(0px)'] },

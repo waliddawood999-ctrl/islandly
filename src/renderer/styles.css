@@ -435,10 +435,12 @@ html[dir='ltr'] [dir='auto']:not(input):not(textarea) { text-align: left; }
 html[dir] .lyrics-strip [dir='auto'], html[dir] .sh-item [dir='auto'], html[dir] .ck-app [dir='auto'], html[dir] .td-place[dir='auto'], html[dir] .step-val[dir='auto'] { text-align: center; }
 
 /* ---- T12: live prayer activity, Ramadan, Hijri occasions, Quran player */
-.prayer-activity { padding-block: 0; padding-inline: 12px 14px; gap: 8px; justify-content: center; }
-.prayer-activity .c-title { flex: 1; min-width: 0; color: #fde68a; }
-.prayer-activity .tm { font-size: 14px; color: #fde68a; }
-.pa-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 8px rgba(251, 191, 36, 0.6); }
+.prayer-activity { padding-block: 0; padding-inline: 16px; gap: 10px; justify-content: center; }
+/* the label gives way (ellipsis) before anything can touch; the time never wraps or shrinks */
+.prayer-activity .c-title { flex: 1; min-width: 0; color: #fde68a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prayer-activity .tm { flex: none; margin-inline-start: 4px; font-size: 14px; color: #fde68a; unicode-bidi: isolate; white-space: nowrap; }
+/* the dot keeps clear of the label even with the adhan halo (5px) around it */
+.pa-dot { flex: none; width: 8px; height: 8px; margin-inline-end: 4px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 8px rgba(251, 191, 36, 0.6); }
 .prayer-activity[data-phase='iqama'] .pa-dot { background: var(--green); box-shadow: 0 0 8px rgba(52, 211, 153, 0.6); }
 .prayer-activity[data-phase='iftar'] .pa-dot { background: #fcd34d; }
 /* the adhan: a calm, slow breathing halo (transform/opacity only; it only runs while the pill is on screen) */
@@ -448,12 +450,13 @@ html[dir] .lyrics-strip [dir='auto'], html[dir] .sh-item [dir='auto'], html[dir]
 .prayer-peek .m-title { color: #fde68a; }
 
 .occasion { display: inline-block; margin-top: 4px; padding: 2px 9px; border-radius: 10px; font-size: 11.5px; font-weight: 600; color: #fde68a; background: rgba(251, 191, 36, 0.14); }
-.rmd { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 16px; background: linear-gradient(90deg, rgba(251, 191, 36, 0.12), rgba(251, 191, 36, 0.03)); }
-.rmd-moon { flex: none; width: 18px; height: 18px; opacity: 0.85; }
+.rmd { display: flex; align-items: center; gap: 12px; padding: 9px 16px; border-radius: 16px; background: linear-gradient(90deg, rgba(251, 191, 36, 0.12), rgba(251, 191, 36, 0.03)); }
+.rmd-moon { flex: none; width: 18px; height: 18px; opacity: 0.85; margin-inline-end: 2px; }
 .rmd-moon svg { width: 100%; height: 100%; }
-.rmd-cell { flex: 1; display: flex; align-items: baseline; justify-content: center; gap: 6px; }
+.rmd-cell { flex: 1; min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 10px; white-space: nowrap; }
 .rmd-cell small { font-size: 11.5px; color: var(--muted); }
-.rmd-cell b { font-size: 14px; color: #fde68a; }
+/* times are isolated so "4:26 ص" / "5:48 PM" keep their order next to Arabic or English labels */
+.rmd-cell b { font-size: 14px; color: #fde68a; unicode-bidi: isolate; }
 
 .music-expanded.quran { padding-bottom: 12px; gap: 6px; }
 .quran .p-head { margin-bottom: 4px; }
@@ -468,7 +471,8 @@ html[dir] .lyrics-strip [dir='auto'], html[dir] .sh-item [dir='auto'], html[dir]
 .q-row { padding: 7px 12px; border-radius: 12px; background: var(--card); text-align: start; font-size: 13px; transition: background 0.15s; }
 .q-row:hover { background: var(--card-hover); }
 .q-row.on { background: rgba(251, 191, 36, 0.18); color: #fde68a; }
-.quran-compact { padding-block: 0; padding-inline: 8px 14px; gap: 8px; justify-content: center; }
+.quran-compact { padding-block: 0; padding-inline: 10px 16px; gap: 10px; justify-content: center; }
+.quran-compact .c-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .q-dot { flex: none; width: 20px; height: 20px; display: grid; place-items: center; color: #fde68a; }
 .q-dot svg { width: 16px; height: 16px; }
 .quran-compact .c-title { color: var(--text); }

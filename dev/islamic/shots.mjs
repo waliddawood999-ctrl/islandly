@@ -114,6 +114,7 @@ async function island(lang) {
       const handlers = {};
       window.__emit = (ch, d) => handlers[ch] && handlers[ch](d);
       window.__calls = [];
+      window.__idle = { next: null, current: null, phase: 'idle', phaseEndsAt: null, ramadan: false, imsak: null, iftar: null, pausedByAdhan: false };
       const data = {
         'prayer:get': PRAYER.pre,
         'hijri:get': HIJRI,
@@ -155,7 +156,7 @@ async function island(lang) {
   const shot = async (name, prep, arg) => {
     await page.evaluate(() => Island.debug().pinned && Island.togglePin());
     await page.evaluate(prep, arg);
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(1600); // let the spring and the content fade settle
     const bottom = await page.evaluate(() =>
       Math.max(
         ...['#island', '#below']
@@ -172,12 +173,32 @@ async function island(lang) {
   await shot('pre-adhan', state, PRAYER.pre);
   await shot('adhan', state, PRAYER.adhan);
   await shot('adhan-peek', () => Island.peek('prayer', 60000));
+  await shot('adhan-pill', () => Island.peek('prayer', 0));
   await shot('paused-resume', state, PRAYER.paused);
   await shot('iqama', state, PRAYER.iqama);
   await shot('ramadan-iftar', state, PRAYER.iftar);
   await shot('today-ramadan', () => Island.open('today'));
   await shot('clock-hijri', () => Island.open('clock'));
   await shot('quran', () => Island.open('quran'));
+  await shot('quran-pill-long-name', () => {
+    window.__emit('prayer:state', { ...window.__idle }); // nothing prayer-related outranks the Quran pill
+    const q = Island.feature('quran');
+    q.list = '';
+    q.pick.sura = 60;
+    q.playing = true;
+    q.paint();
+    Island.render();
+  });
+  await page.evaluate(() => {
+    const q = Island.feature('quran');
+    q.playing = false;
+    q.pick.sura = 1;
+    q.paint();
+  });
+  // the acrylic material lightens the veil; spacing must hold there too
+  await shot('pre-adhan-acrylic', (s) => (document.documentElement.classList.add('acrylic'), window.__emit('prayer:state', s)), PRAYER.pre);
+  await shot('iqama-acrylic', (s) => window.__emit('prayer:state', s), PRAYER.iqama);
+  await page.evaluate(() => document.documentElement.classList.remove('acrylic'));
   await shot('quran-surahs', () => {
     Island.open('quran');
     Island.feature('quran').toggleList('surahs');
