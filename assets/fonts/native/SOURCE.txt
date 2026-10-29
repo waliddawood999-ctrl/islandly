@@ -1,0 +1,2 @@
+IBM Plex Sans Bold and IBM Plex Sans Arabic Bold, unmodified TTF from https://github.com/IBM/plex (master 71f5589, packages/plex-sans*/fonts/complete/ttf).
+Used only by the native collapsed island (GDI+ cannot read the woff2 files the web UI uses). SIL OFL 1.1, Reserved Font Name "Plex": the files must stay unmodified.
