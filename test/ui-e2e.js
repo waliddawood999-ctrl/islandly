@@ -10,6 +10,11 @@ const { app, BrowserWindow } = require('electron');
 
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'islandly-e2e-'));
 app.setPath('userData', userData);
+// Isolate the real app from network/host pollers so injected UI fixtures remain deterministic.
+fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ weather: false, updates: false, icsUrl: '',
+  clipboard: false, timeTracking: false, micCamIndicator: false, breakEvery: 0, prayerAutoPause: false }));
+const watchdog = setTimeout(() => { console.error('E2E FAILED: 180s watchdog exceeded'); app.exit(1); }, 180000);
+process.on('unhandledRejection', error => { console.error('E2E FAILED:', error); app.exit(1); });
 
 const { MediaBridge } = require('../src/main/media');
 const controls = [];
@@ -22,7 +27,7 @@ MediaBridge.prototype.capabilities = () => Promise.resolve({ ok: true, next: tru
 require('../src/main/main.js');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const xmouse = (...args) => execFileSync('python3', [path.join(__dirname, 'xmouse.py'), ...args.map(String)]);
+const xmouse = (...args) => execFileSync(process.env.ISLANDLY_PYTHON || 'python3', [path.join(__dirname, 'xmouse.py'), ...args.map(String)]);
 let win;
 const js = (code) => win.webContents.executeJavaScript(code);
 
@@ -242,6 +247,7 @@ app.whenReady().then(() =>
       assert.strictEqual(await js('Island.isExpanded()'), true, 'island flickered closed while the cursor sat on the top edge');
     });
 
+    clearTimeout(watchdog);
     console.log(results.join('\n'));
     console.log('E2E ' + (results.some((r) => r.startsWith('FAIL')) ? 'FAILED' : 'OK'));
     app.exit(results.some((r) => r.startsWith('FAIL')) ? 1 : 0);

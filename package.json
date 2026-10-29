@@ -7,9 +7,11 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "test": "node test/ics.test.js && node test/updater.test.js && node test/palette.test.js && node test/ai.test.js",
+    "test": "node test/run-tests.js",
     "test:smoke": "electron test/electron-smoke.js",
-    "test:e2e": "electron test/ui-e2e.js"
+    "test:e2e": "electron test/ui-e2e.js",
+    "test:locales": "node test/locales-check.js",
+    "test:ci-guards": "node test/ci-guards.test.js"
   },
   "devDependencies": {
     "electron": "^45.1.0"

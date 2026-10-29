@@ -1,0 +1,72 @@
+name: T13 tests and native performance guards
+on:
+  push:
+    branches: [dev]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Real Arabic/English JSON key parity
+        run: npm run test:locales
+  ui-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Install X11 runtime and real-pointer driver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb openbox python3-xlib libgtk-3-0 libnss3 libatk-bridge2.0-0 libgbm1 libasound2t64
+      - name: Real panel UI under xvfb
+        env:
+          ISLANDLY_PYTHON: /usr/bin/python3
+          ISLANDLY_SHOTS: out/ui-e2e
+        run: |
+          mkdir -p out/ui-e2e
+          set -o pipefail
+          xvfb-run -a -s '-screen 0 1920x1080x24 -ac +extension RANDR' sh -c 'openbox >out/openbox.log 2>&1 & exec npx electron test/ui-e2e.js --no-sandbox --disable-gpu' 2>&1 | tee out/ui-e2e.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t13-ui-e2e
+          path: out/
+          if-no-files-found: warn
+  native-idle:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [overlay, reserved-bar]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Candidate native idle and post-panel RAM/CPU gates
+        shell: pwsh
+        run: ./test/ci-native-perf.ps1 -Mode '${{ matrix.mode }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t13-native-${{ matrix.mode }}
+          path: native-perf-*.json
+          if-no-files-found: warn
