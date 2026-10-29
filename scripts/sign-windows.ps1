@@ -1,5 +1,6 @@
 param([string]$Package = "$PSScriptRoot/../out/IslandlyPanels-win32-x64")
 $ErrorActionPreference = 'Stop'
+if(Test-Path (Join-Path $Package 'EXECUTABLE-IDENTITY.json')){throw 'T18 identity-locked packages must not be signed or re-stamped'}
 $statusFile = Join-Path $Package 'SIGNING-STATUS.txt'
 if (!(Test-Path $Package -PathType Container)) { throw 'Windows package directory is missing' }
 $hasPfx = ![string]::IsNullOrEmpty($env:ISLANDLY_SIGN_PFX_BASE64)

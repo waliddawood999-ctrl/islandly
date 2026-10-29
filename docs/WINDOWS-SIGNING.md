@@ -1,5 +1,7 @@
 # Optional Windows Authenticode signing
 
+T17 history: T18 uses a separate unsigned, identity-locked reproduction flow. Its workflow never calls this signing step, and sign-windows.ps1 refuses identity-locked packages. See T18-SAC-REPUTATION.md.
+
 SAC is enabled on Walid's Windows11 build26300 laptop and blocks the unsigned preview EXEs. Keep SAC enabled. If it blocks Islandly.exe itself, no application code executes and no native log/tray message is possible. If only the panels are blocked, the host's bilingual message identifies application control and suppresses automatic retries. See T17-LAUNCH-VERIFY.md for the supplied CodeIntegrity evidence.
 
 ## Build order and unsigned previews

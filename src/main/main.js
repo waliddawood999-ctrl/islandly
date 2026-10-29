@@ -279,7 +279,7 @@ function openSettings() {
 
 // ---------------------------------------------------------------- tray
 
-function nativeHostPath() { return app.isPackaged ? path.join(path.dirname(process.execPath), 'Islandly.exe') : path.join(info.baseRoot, 'native', 'bin', 'Islandly.exe'); }
+function nativeHostPath() { return require('./native-path').nativeHostPath({packaged:app.isPackaged,executable:process.execPath,baseRoot:info.baseRoot}); }
 
 function trayMenuTemplate() {
   const s = settings.get();

@@ -1,5 +1,5 @@
 # Windows interactive-session regression: real pointer/button/keyboard input, no probe open command.
-param([string]$Package = 'out/IslandlyPanels-win32-x64')
+param([string]$Package = 'out/Islandly-native-win64')
 $ErrorActionPreference='Stop'
 $env:ISLANDLY_INPUT_UNICODE='تجربة OneDrive'
 0..9 | ForEach-Object { [Environment]::SetEnvironmentVariable(('ISLANDLY_LARGE_'+$_),('x'*4096),'Process') }
@@ -84,13 +84,13 @@ try {
   Wait-Until { $s=Status; $s.phase -eq 'panel' -and $s.launchCount -gt $before } "$action launch"
   $log=Get-Content "$profile/native-panels.log" -Raw
   if($log -notmatch "launch-started origin=$action"){throw "Panel did not start through the real $action handler"}
-  if(!((Status).processes | Where-Object name -eq 'IslandlyPanels')){throw 'Packaged Electron process not owned by native job'}
+  if(!((Status).processes | Where-Object { $_.name -eq 'Islandly' -and $_.pid -ne $hostProcess.Id })){throw 'Packaged Electron process not owned by native job'}
   Move-Away; Probe-Command 'close'
   Wait-Until { (Status).phase -eq 'idle' -and @((Status).processes).Count -eq 1 } "$action complete shutdown" 12
   Write-Output "PACKAGED REAL INPUT PASS: $action"
  }
  # Compare the host's preserved error with a direct API reference: Windows can return 193 or 216 for this malformed image.
- $runtime=Join-Path $stage 'IslandlyPanels.exe'; Move-Item $runtime "$runtime.hold"
+ $runtime=Join-Path $stage 'panels/Islandly.exe'; Move-Item $runtime "$runtime.hold"
  [IO.File]::WriteAllText($runtime,'not a Windows PE executable')
  $expectedError=[PanelInput]::ReferenceLaunchError($runtime)
  if($expectedError -notin @(193,216)){throw "Unexpected malformed-image reference error: $expectedError"}
