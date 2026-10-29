@@ -11,7 +11,9 @@
     "test:smoke": "electron test/electron-smoke.js",
     "test:e2e": "electron test/ui-e2e.js",
     "build:native": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-native.ps1",
-    "package:native": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-native.ps1"
+    "package:native": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-native.ps1",
+    "test:locales": "node test/locales-check.js",
+    "test:ci-guards": "node test/ci-guards.test.js"
   },
   "devDependencies": {
     "@fontsource/alexandria": "^5.3.0",

@@ -12,8 +12,11 @@ const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'islandly-e2e-'));
 app.setPath('userData', userData);
 // Interface language for this run: ISLANDLY_E2E_LANG=en runs the same checks in English (T11).
 const LANG = process.env.ISLANDLY_E2E_LANG === 'en' ? 'en' : 'ar';
-// Updates off: a real "update ready" notice from GitHub would cover the island at a random moment.
-fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ lang: LANG, uiLang: LANG, updates: false }));
+// Isolate the real app from network/host pollers so injected UI fixtures remain deterministic.
+fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ lang: LANG, uiLang: LANG, weather: false, updates: false, icsUrl: '',
+  clipboard: false, timeTracking: false, micCamIndicator: false, breakEvery: 0, prayerAutoPause: false }));
+const watchdog = setTimeout(() => { console.error('E2E FAILED: 180s watchdog exceeded'); app.exit(1); }, 180000);
+process.on('unhandledRejection', error => { console.error('E2E FAILED:', error); app.exit(1); });
 
 const { MediaBridge } = require('../src/main/media');
 const controls = [];
@@ -26,7 +29,7 @@ MediaBridge.prototype.capabilities = () => Promise.resolve({ ok: true, next: tru
 require('../src/main/main.js');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const xmouse = (...args) => execFileSync('python3', [path.join(__dirname, 'xmouse.py'), ...args.map(String)]);
+const xmouse = (...args) => execFileSync(process.env.ISLANDLY_PYTHON || 'python3', [path.join(__dirname, 'xmouse.py'), ...args.map(String)]);
 let win;
 const js = (code) => win.webContents.executeJavaScript(code);
 
@@ -57,6 +60,14 @@ const step = async (name, fn) => {
     results.push('PASS ' + name);
   } catch (e) {
     results.push('FAIL ' + name + ' -> ' + e.message);
+    try {
+      const state = await js(`({ active: document.activeElement?.className, hasFocus: document.hasFocus(), value: document.querySelector('.nt-input')?.value, expanded: Island.isExpanded(), selected: Island.selectedId() })`);
+      console.error('E2E failure diagnostics', JSON.stringify({ name, state, focusable: win.isFocusable(), focused: win.isFocused(), x11: JSON.parse(xmouse('info').toString()) }));
+      if (process.env.ISLANDLY_SHOTS) {
+        fs.mkdirSync(process.env.ISLANDLY_SHOTS, { recursive: true });
+        fs.writeFileSync(path.join(process.env.ISLANDLY_SHOTS, 'failure-' + results.length + '.png'), (await win.webContents.capturePage()).toPNG());
+      }
+    } catch (diagnosticError) { console.error('E2E diagnostics unavailable:', diagnosticError.message); }
   }
 };
 
@@ -290,23 +301,29 @@ app.whenReady().then(() =>
     });
 
     await step('typing in the to-do field adds a task with the real keyboard', async () => {
-      await js('Island.open("notes"); 0');
-      await sleep(900);
-      const [x, y] = await screenPoint('.nt-input');
-      xmouse('move', x, y);
-      await sleep(500);
-      xmouse('click');
-      await sleep(600);
-      xmouse('type', 'buy milk');
-      xmouse('key', 'Return');
-      await waitFor('task added', async () => (await js(`[...document.querySelectorAll('.nt-text')].map((e) => e.textContent).join('|')`)).includes('buy milk'), 4000);
-      // leaving the field gives focus back, so the island never keeps keyboard focus
-      await js('document.querySelector(".nt-input").blur(); 0');
-      await sleep(300);
-      // after typing the island must not stay stuck open
-      await js('Island.togglePin(); 0');
-      xmouse('move', 5, 400);
+      try {
+        await js('Island.open("notes"); 0');
+        await sleep(900);
+        await waitFor('notes window accepts keyboard focus', () => win.isFocusable());
+        const [x, y] = await screenPoint('.nt-input');
+        xmouse('move', x, y);
+        await sleep(500);
+        xmouse('click');
+        // Linux/Xvfb focus activation is a driver action, not a production focus workaround.
+        // Never change the app's focusability or inject a DOM value/key event to make this pass.
+        xmouse('focus', win.getNativeWindowHandle().readUInt32LE(0));
+        await waitFor('real X11/DOM input focus', async () => win.isFocused() && await js('document.hasFocus() && document.activeElement === document.querySelector(".nt-input")'));
+        xmouse('type', 'buy milk');
+        await waitFor('real keyboard text', () => js('document.querySelector(".nt-input").value === "buy milk"'));
+        xmouse('key', 'Return');
+        await waitFor('task added', async () => (await js(`[...document.querySelectorAll('.nt-text')].map((e) => e.textContent).join('|')`)).includes('buy milk'), 4000);
+      } finally {
+        // A failure here must not leave Island.hold active and falsify later privacy/edge assertions.
+        await js('document.querySelector(".nt-input")?.blur(); Island.setHover(false); if (Island.isExpanded()) Island.togglePin(); 0');
+        xmouse('move', 5, 400);
+      }
       await waitFor('island collapsed after typing', async () => !(await js('Island.isExpanded()')), 6000);
+      await waitFor('keyboard focus released after notes closed', () => !win.isFocusable());
       assert.strictEqual(win.isFocusable(), false, 'window still accepts focus after the to-do panel closed');
     });
 
@@ -360,6 +377,7 @@ app.whenReady().then(() =>
       assert.strictEqual(await js('Island.isExpanded()'), true, 'island flickered closed while the cursor sat on the top edge');
     });
 
+    clearTimeout(watchdog);
     console.log(results.join('\n'));
     console.log('E2E ' + (results.some((r) => r.startsWith('FAIL')) ? 'FAILED' : 'OK'));
     app.exit(results.some((r) => r.startsWith('FAIL')) ? 1 : 0);
