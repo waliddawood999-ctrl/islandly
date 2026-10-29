@@ -1,24 +1,26 @@
 const round = (n) => Math.round(n * 10) / 10;
 class PerformanceMonitor {
-  constructor({ app, windows = () => ({}), host, nativeOwnerPid = null, children = require('./owned-processes').list, metric = require('./native-perf').processMetrics, setTimer = setInterval, clearTimer = clearInterval }) {
-    Object.assign(this, { app, windows, host, nativeOwnerPid, children, metric, setTimer, clearTimer });
+  constructor({ app, windows = () => ({}), host, nativeOwnerPid = null, active = null, children = require('./owned-processes').list, metric = require('./native-perf').processMetrics, setTimer = setInterval, clearTimer = clearInterval }) {
+    Object.assign(this, { app, windows, host, nativeOwnerPid, active, children, metric, setTimer, clearTimer });
     this.timer = null; this.target = null;
   }
   get() {
+    const windows = this.windows();
+    const active = this.active ? this.active() : Object.values(windows).some(w => w && !w.isDestroyed() && w.isVisible());
     const labels = new Map();
-    for (const [label, w] of Object.entries(this.windows())) if (w && !w.isDestroyed()) labels.set(w.webContents.getOSProcessId(), label);
+    for (const [label, w] of Object.entries(windows)) if (w && !w.isDestroyed()) labels.set(w.webContents.getOSProcessId(), label);
     const types = { Browser: 'browser', Tab: 'renderer', GPU: 'gpu', Utility: 'utility' };
     const processes = this.app.getAppMetrics().map((p) => ({ type: types[p.type] || 'other', pid: p.pid,
       mb: round(p.memory.workingSetSize / 1024), cpu: p.cpu.percentCPUUsage, label: labels.get(p.pid) || null }));
     const children = [...this.children(), ...(this.host ? this.host.pids().map((pid) => ({ pid, type: 'powershell' })) : [])];
-    if (this.nativeOwnerPid) children.push({ pid: this.nativeOwnerPid, type: 'other' });
+    if (this.nativeOwnerPid) children.push({ pid: this.nativeOwnerPid, type: 'native-host', label: 'host' });
     const distinctChildren = [...new Map(children.map((p) => [p.pid, p])).values()];
     for (const child of distinctChildren) {
       if (processes.some((p) => p.pid === child.pid)) continue;
       const sample = this.metric(child.pid);
-      if (sample) processes.push({ ...sample, mb: round(sample.mb), type: child.type, label: null });
+      if (sample) processes.push({ ...sample, mb: round(sample.mb), type: child.type, label: child.label || null });
     }
-    return { totalMB: round(processes.reduce((n, p) => n + p.mb, 0)), processes,
+    return { state: active ? 'active' : 'idle', totalMB: round(processes.reduce((n, p) => n + p.mb, 0)), processes,
       powershellCount: distinctChildren.filter((p) => p.type === 'powershell').length, uptimeSec: Math.floor(process.uptime()) };
   }
   watch(win, on) {

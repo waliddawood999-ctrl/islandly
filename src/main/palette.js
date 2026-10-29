@@ -103,9 +103,10 @@ async function query(raw, ctx) {
 }
 
 class Palette {
-  constructor({ root, settings, onTimer, openSettings }) {
+  constructor({ root, settings, onTimer, openSettings, effectiveEco = () => !!settings.get().ecoMode }) {
     this.root = root;
     this.settings = settings;
+    this.effectiveEco = effectiveEco;
     this.onTimer = onTimer;
     this.openSettings = openSettings;
     this.win = null;
@@ -151,7 +152,10 @@ class Palette {
     const show = () => {
       this.win.show();
       this.win.focus();
-      this.win.webContents.send('palette:shown', { lang: this.settings.get().lang });
+      const { lang, uiLang, digits, motion } = this.settings.get();
+      // ecoMode in this presentation payload is effective Eco, including battery-auto.
+      this.win.webContents.send('palette:shown', { lang, uiLang, digits, motion, ecoMode: this.effectiveEco() });
+      this.win.webContents.send('eco:changed', { eco: this.effectiveEco() });
     };
     if (this.win.webContents.isLoading()) this.win.webContents.once('did-finish-load', show);
     else show();
