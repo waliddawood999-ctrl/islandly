@@ -79,6 +79,8 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apps-'));
 fs.mkdirSync(path.join(dir, 'Office'));
 for (const f of ['Visual Studio Code.lnk', 'Office/Word.lnk', 'Office/Excel.lnk', 'Uninstall Foo.lnk', 'readme.txt']) fs.writeFileSync(path.join(dir, f), '');
 process.env.ISLANDLY_APPS_DIR = dir;
+process.env.APPDATA = path.join(dir, 'user');
+process.env.ProgramData = path.join(dir, 'shared');
 const apps = require('../src/main/services/apps');
 eq(apps.search('wo')[0].name, 'Word');
 eq(apps.search('code')[0].name, 'Visual Studio Code');

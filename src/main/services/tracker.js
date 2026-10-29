@@ -15,7 +15,7 @@ const NAMES = {
   telegram: 'Telegram', slack: 'Slack', notepad: 'Notepad', windowsterminal: 'Terminal', zoom: 'Zoom',
 };
 // system surfaces and this app itself are not "apps you used"
-const SKIP = new Set(['', 'electron', 'islandly', 'lockapp', 'searchhost', 'searchapp', 'shellexperiencehost', 'startmenuexperiencehost', 'textinputhost']);
+const SKIP = new Set(['', 'electron', 'islandly', 'islandlypanels', 'lockapp', 'searchhost', 'searchapp', 'shellexperiencehost', 'startmenuexperiencehost', 'textinputhost']);
 
 const key = (exe) => String(exe || '').toLowerCase().replace(/\.exe$/, '');
 

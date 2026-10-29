@@ -21,7 +21,7 @@ class Weather {
       return;
     }
     this.refresh();
-    this.timer = setInterval(() => this.refresh(), REFRESH_MS);
+    this.timer = this.paused ? null : setInterval(() => this.refresh(), REFRESH_MS);
   }
 
   async refresh() {
@@ -44,6 +44,13 @@ class Weather {
     } catch (_) {
       /* keep the last good reading */
     }
+  }
+
+  setPaused(paused) {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    clearInterval(this.timer); this.timer = null;
+    if (!paused && this.loc) this.timer = this.paused ? null : setInterval(() => this.refresh(), REFRESH_MS);
   }
 
   stop() {
