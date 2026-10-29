@@ -3,6 +3,7 @@ const path = require('path');
 const { app } = require('electron');
 
 const DEFAULTS = {
+  material: require('./services/store').MATERIAL_DEFAULT,
   lang: 'ar', // 'auto' | 'ar' | 'en'
   autoHide: 'auto', // 'auto' (shrink after a few seconds) | 'never' | 'always' (thin line until hovered)
   position: 'center', // 'center' | 'left' | 'right'
@@ -39,6 +40,7 @@ function init() {
   file = path.join(app.getPath('userData'), 'settings.json');
   try {
     data = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+    if (!['acrylic', 'glass'].includes(data.material)) data.material = DEFAULTS.material;
   } catch (_) {
     /* first run */
   }
@@ -53,6 +55,7 @@ function set(patch) {
   const prev = data;
   data = { ...data }; // keeps data.secrets
   for (const key of Object.keys(DEFAULTS)) {
+    if (key === 'material' && !['acrylic', 'glass'].includes(patch[key])) continue;
     if (key in patch && typeof patch[key] === typeof DEFAULTS[key]) data[key] = patch[key];
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });

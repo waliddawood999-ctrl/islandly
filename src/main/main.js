@@ -20,6 +20,7 @@ const { PrivacyWatcher } = require('./services/privacy');
 const { GitHubWatcher } = require('./services/github');
 const { Palette } = require('./palette');
 const win32 = require('./win32');
+const { Material } = require('./material');
 const cities = require('./cities');
 
 const isDev = process.argv.includes('--dev');
@@ -36,6 +37,7 @@ process.on('unhandledRejection', (err) => logError('main (promise)', err));
 
 let win = null;
 let tray = null;
+let material = null;
 let settingsWin = null;
 let userHidden = false;
 let envelope = { w: 160, h: 60 }; // the size the island needs right now, in CSS pixels (reported by the renderer)
@@ -80,6 +82,7 @@ function positionWindow() {
   const pos = settings.get().position;
   const x = pos === 'left' ? bounds.x + 16 : pos === 'right' ? bounds.x + bounds.width - width - 16 : Math.round(bounds.x + (bounds.width - width) / 2);
   win.setBounds({ x, y: bounds.y, width, height });
+  if (material) material.resized();
 }
 
 function applyVisibility() {
@@ -112,6 +115,20 @@ function createWindow() {
     },
   });
 
+  material = new Material({ window: win, native: win32, zoom,
+    dpi: () => screen.getDisplayMatching(win.getBounds()).scaleFactor,
+    initialRect: { x: 0, y: 0, width: envelope.w, height: envelope.h, radius: envelope.h / 2 },
+    publish: (state) => {
+      for (const target of [win, settingsWin]) {
+        if (target && !target.isDestroyed()) {
+          target.webContents.send('material:changed', state);
+          target.webContents.send('settings:update', { ...settings.get(), materialEffective: state.material });
+        }
+      }
+    },
+  });
+  material.apply(settings.get().material);
+  win.on('resize', () => material.resized());
   positionWindow();
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -120,6 +137,8 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     markBootOk();
     win.webContents.setZoomFactor(zoom());
+    material.resized();
+    material.publish(material.state());
   });
   win.webContents.on('render-process-gone', (_e, d) => logError('renderer gone', JSON.stringify(d)));
   win.webContents.on('preload-error', (_e, p, err) => logError('preload', p, err));
@@ -145,6 +164,7 @@ function openSettings() {
       sandbox: true,
     },
   });
+  settingsWin.webContents.on('did-finish-load', () => material.publish(material.state()));
   settingsWin.setMenu(null);
   settingsWin.loadFile(path.join(info.root, 'src', 'settings', 'index.html'));
 }
@@ -236,7 +256,13 @@ async function stashFromExplorer() {
 }
 
 function registerIpc() {
-  ipcMain.on('settings:get', (e) => (e.returnValue = settings.get()));
+  const owns = (e, target) => target && !target.isDestroyed() && e.sender === target.webContents && e.senderFrame === target.webContents.mainFrame;
+  ipcMain.handle('material:get', (e) => {
+    if (!owns(e, win) && !owns(e, settingsWin)) throw new Error('unauthorized material sender');
+    return material.state();
+  });
+  ipcMain.on('island:shape', (e, rect) => { if (owns(e, win)) material.shape(rect); });
+  ipcMain.on('settings:get', (e) => (e.returnValue = { ...settings.get(), materialEffective: material ? material.state().material : 'glass' }));
   ipcMain.on('island:envelope', (_e, env) => {
     if (!env || !Number.isFinite(env.w) || !Number.isFinite(env.h)) return;
     envelope = { w: Math.max(40, Math.min(1200, env.w)), h: Math.max(10, Math.min(800, env.h)) };
@@ -433,7 +459,10 @@ app.whenReady().then(() => {
         push('privacy:update', privacy.state);
       }
     }
-    push('settings:update', now);
+    if (now.material !== prev.material) material.apply(now.material);
+    const update = { ...now, materialEffective: material.state().material };
+    push('settings:update', update);
+    if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('settings:update', update);
     if (now.lang !== prev.lang && win) win.webContents.reload();
     buildTrayMenu();
   });
