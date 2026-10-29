@@ -1,6 +1,6 @@
 # T9 performance evidence
 
-**Status: native idle architecture implementation in progress; Windows measurements pending.** The prior measured idle working-set sum was 262.98 MB; the continuation retest is 260.00 MB with unchanged production code, above the required 180 MB ceiling and 150 MB goal. Real-player music CPU and manual Windows desktop acceptance remain unverified.
+**Status: native idle RAM and CPU acceptance pass on Windows CI; local native confirmation and Claude visual review remain pending.** Electron-only results below are historical controls; the native host results are in the 2026-10-29 section.
 
 ## Prior comparable measurements
 
@@ -81,7 +81,7 @@ The before-continuation value is 262.98 MB and the unchanged full-app retest is 
 
 Process averages for the blank control: Browser 88.53 MB, Renderer 54.96 MB, GPU 44.85 MB, Utility 37.66 MB. For the full app: Browser 107.04 MB, Renderer 70.29 MB, GPU 44.89 MB, Utility 37.79 MB. Main-thread V8 heap is only one component; worker heaps/native allocations are separate. These measurements do not prove a universal minimum on every GPU/Windows machine, but they show that the tested backend/runtime sizing changes cannot bridge the current gap on this runner.
 
-**Stopped at the user's architectural boundary.** Under the current Electron runtime/process model, the next material approaches change the host/window lifecycle or runtime. No native shell, WebView migration, process consolidation or sandbox/isolation change was implemented. No working-set trimming, metric substitution or process omission was used. The RAM acceptance item remains failed; npm test and diagnostic CI passing do not change that status.
+**Historical stop, superseded by the user's Option 1 authorization below.** Under the current Electron runtime/process model, the next material approaches change the host/window lifecycle or runtime. No native shell, WebView migration, process consolidation or sandbox/isolation change was implemented. No working-set trimming, metric substitution or process omission was used. The RAM acceptance item remains failed; npm test and diagnostic CI passing do not change that status.
 
 ### Options before further implementation
 
@@ -96,15 +96,41 @@ The first two options are architectural work requiring the user's choice and coo
 Set `ISLANDLY_FOOTPRINT_VARIANT` to `full-app`, `compact-v8` or `blank-window`, set `ISLANDLY_FOOTPRINT_OUTPUT`, then run `npx electron test/perf-footprint.js` on Windows. The script records all samples, main-process heap data and process-type totals. The full-app comparison uses exactly the same network/feature settings as the earlier T9 probe. Automated Windows CI is distinct from manual desktop validation.
 
 
-## 2026-10-29: native idle host (Option 1 authorized)
+## 2026-10-29: native idle host (Option 1)
 
-User-supplied Acer Aspire Lite 16 / Windows / Electron 45.1.0, 15s warmup and 60 samples: full app **452.21 MB** versus CI 260.00 MB; blank Electron **301.35 MB** versus CI 225.99 MB (local GPU approximately 183 MB). These local figures were supplied by the user, not captured by this Linux session.
+The native Win32/WinForms host owns the collapsed island, tray, hotkeys, timer deadline, clipboard notifications, privacy events, usage/break tracking and optional AppBar reservation. Electron starts only for an expanded island, settings or palette. A random named pipe restricted to the current Windows user transfers readiness and state; existing panel UI and IPC names remain unchanged. Electron starts suspended, enters a kill-on-close Job Object, then resumes. After a 3s collapsed grace period, it quits; the native owner terminates any remaining job descendants. User-requested external applications are launched outside that job so they survive panel closure.
 
-The user authorized Option 1: native Win32 collapsed island, existing Electron panels started on demand and terminated after a 3s collapsed grace period. `native/Islandly.cs` uses the Windows .NET Framework WinForms/GDI native window APIs; it embeds no browser or web view. The native host owns the tray, hotkeys, top work-area reservation, timer deadline, settings file and a kill-on-close Windows Job Object containing Electron and its descendants. A fixed line protocol over a random, current-user-only asynchronous Windows named pipe transfers panel readiness and timer/clipboard state without changing existing panel IPC. The full-package compatibility base is now 3 because JavaScript-only updates cannot install/replace the native host. The native executable is the packaged entry point; `IslandlyPanels.exe` is only the on-demand runtime.
+### Before/after measurements
 
-Windows validation/measurements are pending. Do not infer a passing RAM budget from the architecture. The new `native-perf.yml` records host plus **every PID in the Job Object**, checks no Electron/helper remains after panel close, and enforces <180 MB before and after opening panels. It uses 15s warmup and 60 one-second samples for idle, settings open, and returned idle; records cold panel readiness latency; repeats in overlay and reserved-bar mode with work-area recovery checks. The probe itself is external instrumentation, not included as an app-owned process. No working-set trim or GPU omission.
+User-supplied Acer Aspire Lite 16 / Windows / Electron 45.1.0, same 15s warmup and 60 samples:
 
-Local confirmation (PowerShell in the T9 checkout; close other Islandly instances first):
+| Historical Electron control | CI average MB | Local laptop average MB |
+|---|---:|---:|
+| Full app idle | 260.00 | 452.21 |
+| Blank Electron window | 225.99 | 301.35 |
+
+The local GPU process alone was approximately 183 MB. These laptop figures were supplied by the user; this Linux session did not run them. **Native laptop measurements remain pending.**
+
+Native code `1f78cb0fe4feb6a9d894ea058638ced74e60c5df`, [Windows native/package CI](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40809880548) **SUCCESS**, [raw samples](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40809880548/artifacts/12870680145). Electron 45.1.0 panels, Windows runner; measurements use a disposable profile and the same optional-feature configuration as the earlier Electron controls.
+
+| Mode | Native idle MB | Settings open MB | Returned idle MB | Idle sampled CPU | Settings cold open ms | Expanded island cold open ms | Close to native-only ms |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Overlay | 39.43 | 398.76 | 31.00 | 0.21% | 1114 | 692 | 4556 |
+| Reserved-bar / appbar | 39.76 | 399.50 | 31.67 | 0.39% | 1066 | 678 | 4584 |
+
+Idle RAM is below 180 MB (also below the 150 MB goal) in both modes, including after opening and closing panels. Every idle sample contains **only the native host**, with no Electron Browser/GPU/Utility/Renderer or PowerShell process. Native RAM is reduced from the historical CI 260.00 MB to 39.43–39.76 MB. Panel-open RAM includes the native host plus all runtime/helper processes; it is a different workload from the historical collapsed Electron control.
+
+The initial native implementation met RAM but sampled 1.23–1.65% idle CPU. Moving idle work from four wakeups/second to once/second and using a separate one-shot 280ms hover timer corrected that; final CI enforces <1% both before and after opening panels. No working-set trim, GPU omission, metric substitution, renderer isolation change or hidden Electron residency is used.
+
+### Method and validation
+
+Each RAM workload warms for 15 seconds and records 60 one-second samples: startup idle, settings open, and returned idle. `Process.WorkingSet64 / 1048576` counts the native host plus every PID enumerated from its Windows Job Object. The probe is separate instrumentation, not an app-owned process. CPU is sampled from process CPU-time deltas; raw per-process snapshots remain in the artifact. Panel latency is native request dispatch through actual panel readiness plus 350ms initial layout allowance, not process creation alone. Each panel open starts a fresh Electron process; Windows file caches can be warm. Hover dwell and the probe's command-file polling delay are outside that latency definition. The first cold packaged smoke open took 1304 ms; it is separate from the measurement-table opens.
+
+CI verifies RAM <180 MB and CPU <1% at startup and after close; shutdown within 8s including the 3s grace; settings open and a second cold expanded-island open; timer deadline, clipboard and elapsed-break-state handoff; forced native-owner death with no surviving runtime PIDs; AppBar work-area recovery after crash and restoration after exit. Packaging and packaged smoke run in a separate Windows job. [Existing functional/native/perf IPC CI](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40809881015) and [Electron control CI](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40809880396) also passed, as did npm test. Real-player playback and manual mixed-DPI/multi-monitor/native visual acceptance remain unverified.
+
+### Local confirmation
+
+Close other Islandly instances. From the Windows T9 checkout, run:
 
 ```powershell
 git switch codex/T9-perf-ram
@@ -116,4 +142,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File test/native-footprint.ps1 -O
 powershell -NoProfile -ExecutionPolicy Bypass -File test/native-footprint.ps1 -Output native-perf-local-reserved-bar.json -Mode reserved-bar
 ```
 
-Run `npm start` (or `native/bin/Islandly.exe --root "C:\path\to\islandly"`) for ordinary use. `npm run package:native` builds a portable package whose `Islandly.exe` is the native entry point. Electron-only historical probes remain available as controls, not the new product startup path.
+Both commands print idle/settings/returned-idle averages, cold-open latencies, shutdown time and idle CPU, and retain all 60 samples per workload in the named JSON files. They fail if the RAM/CPU budgets or ownership/lifecycle checks fail. They use isolated profiles without changing the user's normal settings.
+
+Run `npm start` for ordinary native-host startup. `npm run package:native` builds `out/Islandly-native-win64.zip`; [the validated Windows preview](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40809880548/artifacts/12870405443) includes native `Islandly.exe` and on-demand `IslandlyPanels.exe`. The full-package compatibility base is now 3: src/assets-only updates cannot install or replace the native host. The Linux packaging script requires a Windows-built `ISLANDLY_NATIVE_EXE`. Prior T3/T6/T7 integration must retain this full-install boundary and exactly one AppBar owner in managed sessions.
+
+Native visual gaps for Claude are listed in HANDOFF: GDI rasterization/translucency/shadow/animation differences, generic tray icon/English native menu, and missing rich compact artwork/waveforms or app-specific localized indicators. Existing renderer/settings UI/palette/font/CSS files are untouched. T9 remains in review for laptop confirmation and UI-owner review; CI acceptance does not constitute manual desktop/playback acceptance.
