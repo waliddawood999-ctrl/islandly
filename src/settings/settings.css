@@ -18,3 +18,7 @@ textarea { resize: vertical; min-height: 84px; line-height: 1.6; }
 .grid2 .span2 { grid-column: span 2; }
 [hidden] { display: none !important; }
 .ok { color: #34d399; }
+.field-title { font-weight: 600; margin: 4px 0 6px; }
+.grid5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0 8px; }
+.grid5 label { font-weight: 500; font-size: 12.5px; }
+input[type='range'] { display: block; width: 100%; margin-top: 8px; accent-color: #a78bfa; }

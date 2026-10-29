@@ -17,11 +17,12 @@ Island.register({
     this.bigSec = h('span', { class: 'ck-sec', dir: 'ltr' });
     this.dateEl = h('div', { class: 'ck-date' });
     this.hijriEl = h('div', { class: 'm-artist' });
+    this.occasion = h('span', { class: 'occasion' });
     this.apps = h('div', { class: 'ck-apps stagger' });
     this.expandedEl = h(
       'div',
       { class: 'view auto clock-panel' },
-      h('div', { class: 'ck-head' }, h('div', { class: 'ck-clock' }, this.bigTime, this.bigSec), h('div', { class: 'ck-dates' }, this.dateEl, this.hijriEl)),
+      h('div', { class: 'ck-head' }, h('div', { class: 'ck-clock' }, this.bigTime, this.bigSec), h('div', { class: 'ck-dates' }, this.dateEl, this.hijriEl, this.occasion)),
       this.apps
     );
 
@@ -78,6 +79,7 @@ Island.register({
     if (open && !this.secTimer) {
       this.paintPanel();
       this.secTimer = setInterval(() => this.paintPanel(), 1000);
+      HijriInfo.paint(this.occasion); // Hijri occasion (T12): asked for when the panel opens
     } else if (!open && this.secTimer) {
       clearInterval(this.secTimer);
       this.secTimer = 0;

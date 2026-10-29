@@ -598,6 +598,7 @@ const Island = (() => {
     open,
     configure,
     relang,
+    currentKey: () => (current ? current.key : null),
     setTint,
     setMaterial,
     isExpanded: () => hovered || pinned,

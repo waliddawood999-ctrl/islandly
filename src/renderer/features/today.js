@@ -21,10 +21,22 @@ Island.register({
     this.next = h('div', { class: 'np' }, h('div', {}, this.nextName, this.nextAt), this.nextIn);
     this.row = h('div', { class: 'pr-row stagger' });
     this.place = h('div', { class: 'td-place', dir: 'auto' });
+    // Ramadan: imsak and iftar, with a faint crescent (T12)
+    this.imsak = h('b', { class: 'tnum' });
+    this.iftar = h('b', { class: 'tnum' });
+    this.ramadanRow = h(
+      'div',
+      { class: 'rmd' },
+      h('span', { class: 'rmd-moon' }, html(ICONS.moon)),
+      h('span', { class: 'rmd-cell' }, h('small', {}, T('imsak')), this.imsak),
+      h('span', { class: 'rmd-cell' }, h('small', {}, T('iftar')), this.iftar)
+    );
+    this.occasion = h('span', { class: 'occasion' });
     this.expandedEl = h(
       'div',
       { class: 'view auto panel today' },
-      h('div', { class: 'td-head' }, h('div', {}, this.date, this.hijri), this.wx),
+      h('div', { class: 'td-head' }, h('div', {}, this.date, this.hijri, this.occasion), this.wx),
+      this.ramadanRow,
       this.next,
       this.row,
       this.place
@@ -94,7 +106,7 @@ Island.register({
       this.nextIn.textContent = this.fmtLeft(left);
       this.cName.textContent = t('p_' + next.name);
       this.cIn.textContent = this.fmtLeft(left);
-      if (API.settings.prayerAlerts !== false) {
+      if (API.settings.prayerAlerts !== false && !this.handledByActivity()) {
         const soon = next.name + next.time + ':soon';
         if (left <= 10 * 60000 && left > 9 * 60000 && !this.alerted.has(soon)) {
           this.alerted.add(soon);
@@ -105,7 +117,7 @@ Island.register({
       }
     }
     // the moment of adhan: the prayer that started within the last minute
-    if (API.settings.prayerAlerts !== false) {
+    if (API.settings.prayerAlerts !== false && !this.handledByActivity()) {
       const started = this.prayers().find((p) => now >= p.time && now - p.time < 60000);
       const key = started && started.name + started.time + ':now';
       if (started && !this.alerted.has(key)) {
@@ -151,8 +163,28 @@ Island.register({
       this.wxDesc.textContent = t('tempRange', { desc: t('wx_' + key), max: deg(w.max), min: deg(w.min) });
     }
     this.place.textContent = this.sched && this.sched.location ? this.sched.location : '';
+    HijriInfo.paint(this.occasion);
+    this.paintRamadan();
     this.paintRow();
     this.tick();
+  },
+
+  paintRamadan() {
+    const live = Island.feature('prayer');
+    const s = live && live.state;
+    const on = !!(s && s.ramadan && (s.imsak || s.iftar));
+    this.ramadanRow.style.display = on ? '' : 'none';
+    this.expandedEl.classList.toggle('ramadan', on);
+    if (on) {
+      this.imsak.textContent = s.imsak ? this.fmtTime(s.imsak) : '–';
+      this.iftar.textContent = s.iftar ? this.fmtTime(s.iftar) : '–';
+    }
+  },
+
+  /** With the live prayer activity on, it owns the countdown pill and the adhan alerts. */
+  handledByActivity() {
+    const live = Island.feature('prayer');
+    return !!(live && live.enabled());
   },
 
   paintRow() {
@@ -167,6 +199,7 @@ Island.register({
 
   // The countdown pill shows during the 15 minutes before a prayer.
   priority() {
+    if (this.handledByActivity()) return 0;
     const next = this.upcoming();
     return next && next.time - Date.now() <= 15 * 60000 ? 35 : 0;
   },

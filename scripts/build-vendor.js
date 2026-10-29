@@ -18,6 +18,7 @@ fs.copyFileSync(mod('motion', 'LICENSE.md'), path.join(out, 'motion.LICENSE.md')
 // Lucide: only the icons the UI uses. Name in the app -> Lucide file name.
 const ICONS = {
   play: 'play',
+  book: 'book-open',
   pause: 'pause',
   prev: 'skip-back',
   next: 'skip-forward',

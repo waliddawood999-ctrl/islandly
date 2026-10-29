@@ -101,6 +101,32 @@
   </section>
 
   <section>
+    <h2 data-i18n="settings.islamic"></h2>
+    <label class="check"><input type="checkbox" id="prayerActivity"> <span data-i18n="settings.prayerActivity"></span></label>
+    <label><span data-i18n="settings.prayerPreMinutes"></span><input id="prayerPreMinutes" type="number" min="0" max="60" step="1" dir="ltr"></label>
+    <p class="field-title" data-i18n="settings.prayerIqama"></p>
+    <div class="grid5" id="iqamaGrid">
+      <label><span data-i18n="p_fajr"></span><input type="number" min="0" max="60" step="1" dir="ltr" data-prayer="fajr"></label>
+      <label><span data-i18n="p_dhuhr"></span><input type="number" min="0" max="60" step="1" dir="ltr" data-prayer="dhuhr"></label>
+      <label><span data-i18n="p_asr"></span><input type="number" min="0" max="60" step="1" dir="ltr" data-prayer="asr"></label>
+      <label><span data-i18n="p_maghrib"></span><input type="number" min="0" max="60" step="1" dir="ltr" data-prayer="maghrib"></label>
+      <label><span data-i18n="p_isha"></span><input type="number" min="0" max="60" step="1" dir="ltr" data-prayer="isha"></label>
+    </div>
+    <label class="check"><input type="checkbox" id="prayerAutoPause"> <span data-i18n="settings.prayerAutoPause"></span></label>
+    <label><span data-i18n="settings.ramadanMode"></span>
+      <select id="ramadanMode">
+        <option value="auto" data-i18n="settings.ramadan.auto"></option>
+        <option value="on" data-i18n="settings.ramadan.on"></option>
+        <option value="off" data-i18n="settings.ramadan.off"></option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="hijriOccasions"> <span data-i18n="settings.hijriOccasions"></span></label>
+    <label class="check"><input type="checkbox" id="quranEnabled"> <span data-i18n="settings.quranEnabled"></span></label>
+    <label><span data-i18n="settings.quranVolume"></span><input id="quranVolume" type="range" min="0" max="1" step="0.05" dir="ltr"></label>
+    <p class="hint" data-i18n="settings.islamic.hint"></p>
+  </section>
+
+  <section>
     <h2 data-i18n="settings.health"></h2>
     <label><span data-i18n="settings.breakEvery"></span>
       <select id="breakEvery">

@@ -49,6 +49,33 @@ $('digits').addEventListener('change', () => {
   relang();
 });
 
+// --- prayer and Quran (T12; keys from the T10 contract, defaults as there)
+const ISLAMIC = { prayerActivity: true, prayerPreMinutes: 10, prayerIqamaMinutes: { fajr: 25, dhuhr: 20, asr: 20, maghrib: 10, isha: 20 }, prayerAutoPause: true, ramadanMode: 'auto', hijriOccasions: true, quranEnabled: true, quranVolume: 0.8 };
+for (const k of ['prayerActivity', 'prayerAutoPause', 'hijriOccasions', 'quranEnabled']) {
+  $(k).checked = current[k] ?? ISLAMIC[k];
+  $(k).addEventListener('change', () => api.set({ [k]: $(k).checked }));
+}
+const minutes = (el, fallback) => {
+  const n = Math.round(Number(el.value));
+  return Number.isInteger(n) && n >= 0 && n <= 60 ? n : fallback;
+};
+$('prayerPreMinutes').value = current.prayerPreMinutes ?? ISLAMIC.prayerPreMinutes;
+$('prayerPreMinutes').addEventListener('change', () => api.set({ prayerPreMinutes: minutes($('prayerPreMinutes'), ISLAMIC.prayerPreMinutes) }));
+const iqama = { ...ISLAMIC.prayerIqamaMinutes, ...(current.prayerIqamaMinutes || {}) };
+document.querySelectorAll('#iqamaGrid input').forEach((input) => {
+  const name = input.dataset.prayer;
+  input.value = iqama[name];
+  input.addEventListener('change', () => {
+    iqama[name] = minutes(input, ISLAMIC.prayerIqamaMinutes[name]);
+    input.value = iqama[name];
+    api.set({ prayerIqamaMinutes: { ...iqama } });
+  });
+});
+$('ramadanMode').value = current.ramadanMode || ISLAMIC.ramadanMode;
+$('ramadanMode').addEventListener('change', () => api.set({ ramadanMode: $('ramadanMode').value }));
+$('quranVolume').value = String(current.quranVolume ?? ISLAMIC.quranVolume);
+$('quranVolume').addEventListener('change', () => api.set({ quranVolume: Number($('quranVolume').value) }));
+
 $('scale').value = String(current.scale);
 $('scale').addEventListener('change', () => api.set({ scale: parseFloat($('scale').value) }));
 

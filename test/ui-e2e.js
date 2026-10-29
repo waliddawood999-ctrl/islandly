@@ -52,6 +52,7 @@ const hoverIsland = async () => xmouse('move', ...(await screenPoint('#island'))
 
 const results = [];
 const step = async (name, fn) => {
+  console.log("STEP " + name);
   try {
     await fn();
     results.push('PASS ' + name);
