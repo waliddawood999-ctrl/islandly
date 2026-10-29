@@ -41,14 +41,14 @@ static class Native {
     [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern uint RegisterWindowMessage(string name);
-    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct STARTUPINFO { public int cb; public string reserved, desktop, title; public int x,y,w,h,xChars,yChars,fill,flags; public short show,reservedBytes; public IntPtr reservedPtr,input,output,error; }
+    [StructLayout(LayoutKind.Sequential, Pack=8)] public struct STARTUPINFO { public uint cb; public IntPtr reserved, desktop, title; public int x,y,w,h,xChars,yChars,fill,flags; public short show,reservedBytes; public IntPtr reservedPtr,input,output,error; }
     [StructLayout(LayoutKind.Sequential)] public struct PROCESSINFO { public IntPtr process,thread; public int pid,tid; }
-    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcess(string app, StringBuilder command, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr environment, string directory, ref STARTUPINFO startup, out PROCESSINFO info);
-    [DllImport("kernel32.dll")] public static extern uint ResumeThread(IntPtr thread);
-    [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr CreateJobObject(IntPtr attrs, string name);
-    [DllImport("kernel32.dll")] public static extern bool SetInformationJobObject(IntPtr h, int type, ref EXTENDEDLIMIT data, int len);
-    [DllImport("kernel32.dll")] public static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
-    [DllImport("kernel32.dll")] public static extern bool TerminateJobObject(IntPtr job, uint code);
+    [DllImport("kernel32.dll", EntryPoint="CreateProcessW", ExactSpelling=true, CharSet=CharSet.Unicode, SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool CreateProcess(string app, StringBuilder command, IntPtr pa, IntPtr ta, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint flags, IntPtr environment, string directory, ref STARTUPINFO startup, out PROCESSINFO info);
+    [DllImport("kernel32.dll",SetLastError=true)] public static extern uint ResumeThread(IntPtr thread);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode,SetLastError=true)] public static extern IntPtr CreateJobObject(IntPtr attrs, string name);
+    [DllImport("kernel32.dll",SetLastError=true)] public static extern bool SetInformationJobObject(IntPtr h, int type, ref EXTENDEDLIMIT data, int len);
+    [DllImport("kernel32.dll",SetLastError=true)] public static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+    [DllImport("kernel32.dll",SetLastError=true)] public static extern bool TerminateJobObject(IntPtr job, uint code);
     [DllImport("kernel32.dll")] public static extern bool QueryInformationJobObject(IntPtr h, int type, IntPtr data, uint size, out uint returned);
     [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
 }
@@ -72,7 +72,10 @@ sealed class IslandHost : Form {
     Process child;
     StreamWriter childInput;
     NamedPipeServerStream sessionPipe;
-    AnonymousPipeServerStream inputPipe, outputPipe, errorPipe;
+    readonly System.Windows.Forms.Timer launchRetry = new System.Windows.Forms.Timer();
+    bool launching;
+    string retryCommand="";
+    long nextLaunchAt, lastFailureNotice;
     IntPtr job;
     NotifyIcon tray;
     bool ready, bar, closing, hidden, measuring, hoverArmed;
@@ -97,12 +100,15 @@ sealed class IslandHost : Form {
     public IslandHost(string[] args) {
         packaged = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"IslandlyPanels.exe"));
         root = Arg(args,"--root", packaged ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"resources/app") : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"../..")));
+        root=Path.GetFullPath(root);
         electron = Arg(args,"--electron", packaged ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"IslandlyPanels.exe") : Path.Combine(root,"node_modules/electron/dist/electron.exe"));
+        electron=Path.GetFullPath(electron);
         profile = Arg(args,"--profile", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"islandly"));
+        profile=Path.GetFullPath(profile); NativeLog.Profile=profile;
         probe = Arg(args,"--probe-dir", "");
         modeOverride = Arg(args,"--mode", "");
         Directory.CreateDirectory(profile);
-        if (probe != "") { Directory.CreateDirectory(probe); measuring = true; }
+        if (probe != "") { Directory.CreateDirectory(probe); measuring = !args.Contains("--interactive-probe"); }
         ReadSettings();
         try { state = json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(profile,"native-session.json"))); } catch { }
         object initialBreak; if(state.TryGetValue("breakActive",out initialBreak)) breakSeconds=(int)(Math.Max(0,Convert.ToDouble(initialBreak))*60);
@@ -125,8 +131,10 @@ sealed class IslandHost : Form {
         tray.DoubleClick += delegate { OpenPanel("settings"); };
         MouseEnter += delegate { hoverArmed = true; hoverDwell.Start(); };
         MouseLeave += delegate { hoverArmed = false; hoverDwell.Stop(); };
-        MouseClick += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) OpenPanel("expand"); };
-        hoverDwell.Interval = 280; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring) OpenPanel("expand"); };
+        MouseClick += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) OpenPanel("expand","click"); };
+        hoverDwell.Interval = 280; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring) OpenPanel("expand","click"); };
+        launchRetry.Interval=1500;
+        launchRetry.Tick+=delegate { launchRetry.Stop(); string requested=retryCommand; retryCommand=""; if(requested!="") OpenPanel(requested,"retry",true); };
         ticker.Interval = 1000; ticker.Tick += Tick; ticker.Start();
         FormClosed += delegate { Cleanup(); };
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += DisplayChanged;
@@ -235,72 +243,95 @@ sealed class IslandHost : Form {
     }
     bool TimerHasState() { object remaining,total; return TimerRunning() || state.TryGetValue("remaining",out remaining) && state.TryGetValue("total",out total) && Convert.ToDouble(remaining)>0 && Convert.ToDouble(remaining)<Convert.ToDouble(total); }
     bool TimerRunning() { object running; return state.TryGetValue("running",out running) && running is bool && (bool)running; }
-    void OpenPanel(string command) {
-        hoverArmed = false; hoverDwell.Stop();
-        if (child != null) { if (ready) Send(command); return; }
-        if (!File.Exists(electron)) { tray.ShowBalloonTip(5000,"Islandly","Panel runtime missing. Run npm ci or reinstall the full package.",ToolTipIcon.Error); return; }
-        state["breakActive"]=breakSeconds/60.0; SaveState();
-        launchedAt = clock.ElapsedMilliseconds;
-        job = Native.CreateJobObject(IntPtr.Zero,null);
-        var limit = new Native.EXTENDEDLIMIT(); limit.basic.flags = 0x2000; // KILL_ON_JOB_CLOSE
-        if (job == IntPtr.Zero || !Native.SetInformationJobObject(job,9,ref limit,Marshal.SizeOf(limit))) throw new Exception("Cannot contain panel process tree");
-        // Suspend before assigning the job: not even early Chromium children can escape ownership.
-        string pipeName="Islandly-"+Guid.NewGuid().ToString("N");
-        var security=new PipeSecurity(); security.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User,PipeAccessRights.FullControl,AccessControlType.Allow));
-        sessionPipe=new NamedPipeServerStream(pipeName,PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous,65536,65536,security);
-        var pipe=sessionPipe;
-        pipe.BeginWaitForConnection(delegate(IAsyncResult result) {
-            try { pipe.EndWaitForConnection(result); if(closing || pipe != sessionPipe) return;
-                BeginInvoke((Action)(() => { if(closing || pipe != sessionPipe) return; childInput=new StreamWriter(pipe,new UTF8Encoding(false)); childInput.AutoFlush=true; ReadSession(pipe); }));
-            } catch(ObjectDisposedException) {} catch(IOException) {}
-        },null);
-        inputPipe = new AnonymousPipeServerStream(PipeDirection.Out,HandleInheritability.Inheritable);
-        outputPipe = new AnonymousPipeServerStream(PipeDirection.In,HandleInheritability.Inheritable);
-        errorPipe = new AnonymousPipeServerStream(PipeDirection.In,HandleInheritability.Inheritable);
-        var startup = new Native.STARTUPINFO(); startup.cb = Marshal.SizeOf(startup); startup.flags = 0x100;
-        startup.input = new IntPtr(Int64.Parse(inputPipe.GetClientHandleAsString()));
-        startup.output = new IntPtr(Int64.Parse(outputPipe.GetClientHandleAsString()));
-        startup.error = new IntPtr(Int64.Parse(errorPipe.GetClientHandleAsString()));
-        var environment = new SortedDictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-        foreach(DictionaryEntry entry in Environment.GetEnvironmentVariables()) environment[(string)entry.Key] = (string)entry.Value;
-        environment["ISLANDLY_NATIVE_PIPE"] = pipeName;
-        environment["ISLANDLY_NATIVE_SESSION"] = "1"; environment["ISLANDLY_NATIVE_PROFILE"] = profile; environment["ISLANDLY_NATIVE_COMMAND"] = command;
-        if(probe != "") environment["ISLANDLY_NATIVE_PROBE"] = "1";
-        string block = String.Join("\0",environment.Select(pair => pair.Key+"="+pair.Value))+"\0\0";
-        IntPtr env = Marshal.StringToHGlobalUni(block);
-        Native.PROCESSINFO pi;
-        bool started;
-        try { started = Native.CreateProcess(electron,new StringBuilder("\""+electron+"\""+(packaged ? "" : " \""+root+"\"")),IntPtr.Zero,IntPtr.Zero,true,0x08000404,env,root,ref startup,out pi); }
-        finally { Marshal.FreeHGlobal(env); }
-        if(!started) { EndSession(); throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()); }
-        ready = false; shutdownAt = 0; lastCommand = command;
+    static string Quote(string value) {
+        var text=new StringBuilder("\""); int slashes=0;
+        foreach(char c in value) { if(c=='\\') { slashes++; continue; } text.Append('\\',c=='"'?slashes*2+1:slashes); slashes=0; text.Append(c); }
+        return text.Append('\\',slashes*2).Append('"').ToString();
+    }
+    public void ReportFailure(string stage,Exception ex) {
+        NativeLog.Write(stage,ex);
+        if(tray!=null && clock.ElapsedMilliseconds-lastFailureNotice>=5000 || tray!=null && lastFailureNotice==0) {
+            lastFailureNotice=clock.ElapsedMilliseconds;
+            try { tray.ShowBalloonTip(5000,"Islandly","Could not open the panel. Retrying once; click the island to try again. Details: native-panels.log in your Islandly data folder.",ToolTipIcon.Warning); } catch { }
+        }
+    }
+    void OpenPanel(string command,string origin="command",bool retry=false) {
+        hoverArmed=false; hoverDwell.Stop();
+        if(closing || launching || clock.ElapsedMilliseconds<nextLaunchAt) return;
+        if(child!=null) { if(ready) Send(command); return; }
+        launchRetry.Stop(); retryCommand=""; launching=true;
+        try { OpenPanelCore(command,origin); }
+        catch(Exception ex) {
+            // Capture API errors at the call site, before any disposal/positioning calls.
+            try { EndSession(); } catch(Exception cleanup) { NativeLog.Write("launch-cleanup",cleanup); }
+            nextLaunchAt=clock.ElapsedMilliseconds+1000;
+            ReportFailure("launch-failed origin="+origin,ex);
+            if(!retry && !closing) {
+                retryCommand=command; launchRetry.Start();
+            }
+        } finally { launching=false; }
+    }
+    void OpenPanelCore(string command,string origin) {
+        string stage="validate";
+        NativeLog.Write("launch-request","origin="+origin+" root="+root+" executable="+electron);
+        if(!Directory.Exists(root)) throw new DirectoryNotFoundException("Panel resources directory does not exist: "+root);
+        if(!File.Exists(electron)) throw new FileNotFoundException("Panel runtime not installed or available locally",electron);
+        if(Marshal.SizeOf(typeof(Native.STARTUPINFO))!=104 || Marshal.SizeOf(typeof(Native.PROCESSINFO))!=24 || Marshal.SizeOf(typeof(Native.EXTENDEDLIMIT))!=144)
+            throw new InvalidOperationException("Unexpected x64 Win32 structure layout");
+        state["breakActive"]=breakSeconds/60.0; SaveState(); launchedAt=clock.ElapsedMilliseconds;
         try {
-            if(!Native.AssignProcessToJobObject(job,pi.process)) throw new Exception("Panel job assignment failed");
-            child = Process.GetProcessById(pi.pid);
-            inputPipe.DisposeLocalCopyOfClientHandle(); outputPipe.DisposeLocalCopyOfClientHandle(); errorPipe.DisposeLocalCopyOfClientHandle();
-
-            ReadPipe(outputPipe,false); ReadPipe(errorPipe,true);
-            if(Native.ResumeThread(pi.thread) == UInt32.MaxValue) throw new Exception("Panel resume failed");
-        } catch { try { Process.GetProcessById(pi.pid).Kill(); } catch {} EndSession(); throw; }
-        finally { Native.CloseHandle(pi.thread); Native.CloseHandle(pi.process); }
-        launchCount++;
-        Status();
+            stage="CreateJobObject"; job=Native.CreateJobObject(IntPtr.Zero,null);
+            if(job==IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),stage);
+            var limit=new Native.EXTENDEDLIMIT(); limit.basic.flags=0x2000;
+            stage="SetInformationJobObject";
+            if(!Native.SetInformationJobObject(job,9,ref limit,Marshal.SizeOf(limit))) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),stage);
+            stage="named-session-pipe";
+            string pipeName="Islandly-"+Guid.NewGuid().ToString("N");
+            var security=new PipeSecurity(); security.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User,PipeAccessRights.FullControl,AccessControlType.Allow));
+            sessionPipe=new NamedPipeServerStream(pipeName,PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous,65536,65536,security);
+            var pipe=sessionPipe;
+            pipe.BeginWaitForConnection(delegate(IAsyncResult result) {
+                try { pipe.EndWaitForConnection(result); if(closing || pipe!=sessionPipe) return;
+                    BeginInvoke((Action)(() => { if(closing || pipe!=sessionPipe) return; childInput=new StreamWriter(pipe,new UTF8Encoding(false)); childInput.AutoFlush=true; ReadSession(pipe); }));
+                } catch(ObjectDisposedException) {} catch(IOException) {} catch(Exception ex) { NativeLog.Write("pipe-connect",ex); }
+            },null);
+            var startup=new Native.STARTUPINFO(); startup.cb=(uint)Marshal.SizeOf(startup);
+            // Protocol is on the named pipe. A GUI child needs no inherited standard handles.
+            var environment=new SortedDictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+            foreach(DictionaryEntry entry in Environment.GetEnvironmentVariables()) environment[(string)entry.Key]=(string)entry.Value;
+            environment["ISLANDLY_NATIVE_PIPE"]=pipeName; environment["ISLANDLY_NATIVE_SESSION"]="1";
+            environment["ISLANDLY_NATIVE_PROFILE"]=profile; environment["ISLANDLY_NATIVE_COMMAND"]=command;
+            if(probe!="") environment["ISLANDLY_NATIVE_PROBE"]="1";
+            string block=String.Join("\0",environment.Select(pair=>pair.Key+"="+pair.Value))+"\0\0";
+            string cwd=Path.GetFullPath(Path.GetDirectoryName(electron));
+            if(!Directory.Exists(cwd)) throw new DirectoryNotFoundException("Panel working directory unavailable: "+cwd);
+            string arguments=Quote(electron)+(packaged?"":" "+Quote(root))+" --enable-logging=file --log-level=2 --log-file="+Quote(Path.Combine(profile,"panel-chromium.log"));
+            Native.PROCESSINFO pi; bool started; int error;
+            IntPtr env=Marshal.StringToHGlobalUni(block);
+            try {
+                stage="CreateProcessW";
+                NativeLog.Write(stage,"cwd="+cwd+" flags=0x08000404 inherit=false STARTUPINFO=104 PROCESS_INFORMATION=24 JOB_EXTENDED_LIMIT=144 envChars="+block.Length);
+                started=Native.CreateProcess(electron,new StringBuilder(arguments),IntPtr.Zero,IntPtr.Zero,false,0x08000404,env,cwd,ref startup,out pi);
+                error=Marshal.GetLastWin32Error();
+            } finally { Marshal.FreeHGlobal(env); }
+            if(!started) throw new System.ComponentModel.Win32Exception(error,stage+" failed (Win32 "+error+")");
+            ready=false; shutdownAt=0; lastCommand=command;
+            try {
+                stage="AssignProcessToJobObject";
+                if(!Native.AssignProcessToJobObject(job,pi.process)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),stage);
+                child=Process.GetProcessById(pi.pid);
+                stage="ResumeThread";
+                if(Native.ResumeThread(pi.thread)==UInt32.MaxValue) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),stage);
+            } catch { try { Process.GetProcessById(pi.pid).Kill(); } catch {} throw; }
+            finally { Native.CloseHandle(pi.thread); Native.CloseHandle(pi.process); }
+            launchCount++; NativeLog.Write("launch-started","origin="+origin+" pid="+child.Id); Status();
+        } catch(Exception ex) { NativeLog.Write("launch-stage="+stage,ex); throw; }
     }
     async void ReadSession(NamedPipeServerStream pipe) {
         try { using(var reader=new StreamReader(pipe,Encoding.UTF8,true,65536,true)) {
             string line; while((line=await reader.ReadLineAsync()) != null) {
                 if(closing || pipe != sessionPipe) return;
                 if(line.StartsWith("ISLANDLY:")) Message(line);
-            }
-        } } catch(ObjectDisposedException) {} catch(IOException) {}
-    }
-    async void ReadPipe(AnonymousPipeServerStream pipe, bool error) {
-        try { using(var reader = new StreamReader(pipe,Encoding.UTF8)) {
-            string line;
-            while((line = await reader.ReadLineAsync()) != null) {
-                if(closing || (error ? errorPipe : outputPipe) != pipe) return;
-                if(!error && line.StartsWith("ISLANDLY:")) Message(line);
-                else if(error) File.AppendAllText(Path.Combine(profile,"native-panels.log"),line+Environment.NewLine);
             }
         } } catch(ObjectDisposedException) {} catch(IOException) {}
     }
@@ -343,9 +374,6 @@ sealed class IslandHost : Form {
         if(child != null) { child.Dispose(); child = null; }
         if(childInput != null) { try { childInput.Dispose(); } catch(IOException) {} catch(ObjectDisposedException) {} childInput = null; }
         if(sessionPipe != null) { sessionPipe.Dispose(); sessionPipe=null; }
-        if(inputPipe != null) { inputPipe.Dispose(); inputPipe = null; }
-        if(outputPipe != null) { outputPipe.Dispose(); outputPipe = null; }
-        if(errorPipe != null) { errorPipe.Dispose(); errorPipe = null; }
         shutdownAt = 0; Position(); Status();
     }
     void Tick(object sender, EventArgs e) {
@@ -455,12 +483,13 @@ sealed class IslandHost : Form {
                 if(text != "") { pendingClipboard.Remove(text); pendingClipboard.Add(text); while(pendingClipboard.Count > 30) pendingClipboard.RemoveAt(0); state["clipboardPending"]=pendingClipboard.ToArray(); SaveState(); }
             } } catch(System.Runtime.InteropServices.ExternalException) {}
         }
-        if(m.Msg == 0x0312) { int id=m.WParam.ToInt32(); OpenPanel(id==2?"palette":id==3?"pomodoro":id==4?"stash":"expand"); }
+        if(m.Msg == 0x0312) { int id=m.WParam.ToInt32(); OpenPanel(id==2?"palette":id==3?"pomodoro":id==4?"stash":"expand","hotkey"); }
         if(m.Msg == 0x8001 && m.WParam.ToInt32() == 1) BeginInvoke((Action)Position);
         base.WndProc(ref m);
     }
     void Cleanup() {
-        if(closing) return; closing=true; ticker.Stop(); hoverDwell.Stop();
+        if(closing) return; closing=true;
+        launchRetry.Stop(); launchRetry.Dispose(); ticker.Stop(); hoverDwell.Stop();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= DisplayChanged;
         Microsoft.Win32.SystemEvents.PowerModeChanged -= PowerChanged;
         if(bar) { RemoveBar(); bar=false; }
@@ -510,15 +539,24 @@ sealed class ConsentWatcher : IDisposable {
 }
 static class Program {
     [STAThread] static void Main(string[] args) {
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        IslandHost host=null;
+        Application.ThreadException+=delegate(object sender,ThreadExceptionEventArgs e) { if(host!=null) host.ReportFailure("ui-thread",e.Exception); else NativeLog.Write("ui-thread",e.Exception); };
+        AppDomain.CurrentDomain.UnhandledException+=delegate(object sender,UnhandledExceptionEventArgs e) { NativeLog.Write("fatal",Convert.ToString(e.ExceptionObject)); Environment.Exit(1); };
+        TaskScheduler.UnobservedTaskException+=delegate(object sender,UnobservedTaskExceptionEventArgs e) { NativeLog.Write("unobserved-task",e.Exception); e.SetObserved(); };
+        try { Run(args,ref host); } catch(Exception ex) { NativeLog.Write("startup",ex); Environment.ExitCode=1; }
+    }
+    static void Run(string[] args,ref IslandHost host) {
         bool first;
         string profile = Array.IndexOf(args,"--profile") >= 0 ? args[Array.IndexOf(args,"--profile")+1] : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)+"\\islandly";
+        NativeLog.Profile=Path.GetFullPath(profile);
         // Stable per-profile mutex, without exposing the profile path in a global name.
         byte[] hash=System.Security.Cryptography.SHA256.Create().ComputeHash(Encoding.UTF8.GetBytes(Path.GetFullPath(profile).ToLowerInvariant()));
         using(var mutex=new Mutex(true,"Local\\IslandlyNative-"+BitConverter.ToString(hash).Replace("-",""),out first)) {
             if(!first) return;
             try { Native.SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch(EntryPointNotFoundException) { Native.SetProcessDPIAware(); }
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new IslandHost(args));
+            host=new IslandHost(args); Application.Run(host);
         }
     }
 }

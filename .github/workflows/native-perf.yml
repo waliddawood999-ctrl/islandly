@@ -56,6 +56,18 @@ jobs:
       - name: Packaged startup, state handoff and crash containment
         shell: pwsh
         run: ./test/native-footprint.ps1 -Smoke -Mode reserved-bar -Executable out/IslandlyPanels-win32-x64/Islandly.exe
+      - name: Compare reported legacy packaged launch path
+        shell: pwsh
+        run: ./test/legacy-packaged-launch.ps1
+      - name: Packaged real hover click hotkey and recoverable launch errors
+        shell: pwsh
+        run: ./test/packaged-input.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t17-packaged-input-diagnostics
+          path: out/input-diagnostics
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
           name: islandly-native-windows-preview
