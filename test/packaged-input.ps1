@@ -7,7 +7,19 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 public static class PanelInput {
+ delegate bool WindowCallback(IntPtr window,IntPtr data);
+ [DllImport("user32.dll")] static extern bool EnumWindows(WindowCallback callback,IntPtr data);
+ [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window,out uint pid);
+ [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr window,StringBuilder value,int max);
+ public static IntPtr Find(int owner) {
+  IntPtr found=IntPtr.Zero;
+  EnumWindows(delegate(IntPtr window,IntPtr unused) { uint pid;GetWindowThreadProcessId(window,out pid);var text=new StringBuilder(256);GetWindowText(window,text,256);
+   if(pid==owner && IsWindowVisible(window) && text.ToString()=="Islandly Native"){found=window;return false;}return true;
+  },IntPtr.Zero);return found;
+ }
  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int left,top,right,bottom; }
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out RECT r);
  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
@@ -39,8 +51,8 @@ function Wait-Until([scriptblock]$Condition,[string]$Name,[int]$Seconds=30) {
 }
 function Probe-Command([string]$Value) { [IO.File]::WriteAllText("$probe/command.tmp",$Value); Move-Item "$probe/command.tmp" "$probe/command.txt" -Force }
 function Point-ToIsland {
- $hostProcess.Refresh(); $rect=[PanelInput+RECT]::new()
- if(!$hostProcess.MainWindowHandle -or ![PanelInput]::GetWindowRect($hostProcess.MainWindowHandle,[ref]$rect)){throw 'Native window unavailable'}
+ $window=[PanelInput]::Find($hostProcess.Id); $rect=[PanelInput+RECT]::new()
+ if($window -eq [IntPtr]::Zero -or ![PanelInput]::GetWindowRect($window,[ref]$rect)){throw 'Native window unavailable'}
  [void][PanelInput]::SetCursorPos([int](($rect.left+$rect.right)/2),[int](($rect.top+$rect.bottom)/2))
 }
 function Move-Away { [void][PanelInput]::SetCursorPos(800,500); Start-Sleep -Milliseconds 350 }
