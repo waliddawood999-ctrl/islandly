@@ -27,6 +27,8 @@ for lang in ['ar', 'en']:
         rows.append([load(f'B-{lang}-{mode}-center-{mat}-{t}.png', C) for t in fr])
         rows.append([load(f'B-{lang}-{mode}-center-{mat}-reverse-t30.png', C), load(f'B-{lang}-{mode}-center-{mat}-reverse-t90.png', C), load(f'B-{lang}-{mode}-center-{mat}-open.png', C)])
     sheet(rows, f'motion-B-{lang}.png')
+rows = [[load(f'B-{l}-{m}-center-acrylic-light-{t}.png', C) for t in fr] for l, m in [('ar', 'overlay'), ('en', 'floating'), ('en', 'appbar')]]
+sheet(rows, 'motion-B-light.png')
 sheet([[load(f'B-ar-floating-right-glass-t{t}.png', C) for t in ['060', '150', '260']], [load(f'B-en-floating-left-glass-t{t}.png', C) for t in ['060', '150', '260']], [load('B-motion-reduced-open.png', C), load('B-motion-off-open.png', C)]], 'motion-B-positions-reduced-off.png')
 # ---- C: gaze boards (cursor left, right, below-left, below-right, directly below, + above-right, far cases), states, timelines
 from PIL import ImageDraw
