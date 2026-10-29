@@ -16,9 +16,17 @@ class SysInfo {
     this.onSample = onSample;
     this.timer = null;
     this.prev = null;
+    this.requested = false;
+    this.paused = false;
   }
 
   watch(on) {
+    this.requested = !!on;
+    this.reconcile();
+  }
+
+  reconcile() {
+    const on = this.requested && !this.paused;
     if (on && !this.timer) {
       this.prev = cpuTimes();
       this.sample();
@@ -37,6 +45,11 @@ class SysInfo {
     const total = os.totalmem();
     const used = total - os.freemem();
     this.onSample({ cpu: Math.max(0, Math.min(100, cpu)), memUsed: used, memTotal: total, uptime: os.uptime(), cores: os.cpus().length });
+  }
+
+  setPaused(paused) {
+    this.paused = paused;
+    this.reconcile();
   }
 
   stop() {

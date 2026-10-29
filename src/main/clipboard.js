@@ -41,12 +41,23 @@ class ClipboardHistory {
     this.timer = null;
     this.busy = false;
     this.seq = 1;
+    this.intervalMs = 800;
   }
 
   start() {
     if (this.timer) return;
     this.last = null;
-    this.timer = setInterval(() => this.poll(), 800);
+    this.timer = setInterval(() => this.poll(), this.intervalMs);
+  }
+
+  setEco(eco) {
+    const next = eco ? 4000 : 800;
+    if (this.intervalMs === next) return;
+    this.intervalMs = next;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = setInterval(() => this.poll(), next);
+    }
   }
 
   stop() {

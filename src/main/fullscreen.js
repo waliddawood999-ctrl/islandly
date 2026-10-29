@@ -9,7 +9,7 @@ function watchForeground({ onFullscreen, onApp, intervalMs = 1000 }) {
   if (!win32.available()) return { stop() {} };
   let lastFull = null;
   let lastKey = '';
-  const timer = setInterval(() => {
+  const poll = () => {
     const fg = win32.foreground();
     if (fg.fullscreen !== lastFull) {
       lastFull = fg.fullscreen;
@@ -20,8 +20,16 @@ function watchForeground({ onFullscreen, onApp, intervalMs = 1000 }) {
       lastKey = key;
       if (onApp) onApp({ app: fg.app, title: fg.title });
     }
-  }, intervalMs);
-  return { stop: () => clearInterval(timer) };
+  };
+  let timer = setInterval(poll, intervalMs);
+  return {
+    setEco(eco) {
+      const next = eco ? 3000 : 1000;
+      if (next === intervalMs) return;
+      intervalMs = next; clearInterval(timer); timer = setInterval(poll, next);
+    },
+    stop: () => clearInterval(timer),
+  };
 }
 
 module.exports = { watchForeground };

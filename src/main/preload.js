@@ -8,7 +8,7 @@ const CALL = new Set([
 ]);
 const SEND = new Set(['island:envelope', 'log:error', 'system:watch', 'island:focus', 'island:focusable', 'media:control', 'open:external', 'settings:open', 'shelf:drag', 'menu:show', 'controls:volume']);
 const ON = new Set([
-  'media:update', 'clipboard:update', 'shelf:update', 'shelf:added', 'calendar:update', 'bluetooth:update',
+  'eco:changed', 'media:update', 'clipboard:update', 'shelf:update', 'shelf:added', 'calendar:update', 'bluetooth:update',
   'update:ready', 'settings:update', 'shortcut', 'toast', 'today:update', 'system:sample', 'break:due', 'foreground',
   'usage:update', 'github:update', 'privacy:update',
 ]);
