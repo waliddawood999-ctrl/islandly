@@ -13,6 +13,7 @@
               &motion=full|reduced|off &eco=1 &fullscreen=1 &eyes=0 &manual=1 (a fake clock for exact frames) -->
 
   <main id="desk">
+    <svg id="cursor" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 1.5l10.5 6-4.4 1.3 2.6 4.6-1.9 1.1-2.6-4.6-3.2 3z" fill="#fff" stroke="#000"/></svg>
     <div id="strip"></div>
     <div id="page"><i></i><i></i><i></i><i></i></div>
 
@@ -26,8 +27,8 @@
       </div></div>
       <div id="rest">
         <div id="eyes" aria-hidden="true">
-          <span class="eye"><b class="pupil"></b></span>
-          <span class="eye"><b class="pupil"></b></span>
+          <div class="slot a"><i class="eye"></i></div>
+          <div class="slot b"><i class="eye"></i></div>
         </div>
         <span id="time" dir="ltr"></span>
       </div>
@@ -35,6 +36,7 @@
   </main>
 
   <aside id="panel" aria-label="prototype controls">
+    <div class="row"><span>theme</span><div class="seg" data-k="theme"><button data-v="dark">dark</button><button data-v="light">light</button></div></div>
     <div class="row"><span>lang</span><div class="seg" data-k="lang"><button data-v="ar">AR</button><button data-v="en">EN</button></div></div>
     <div class="row"><span>mode</span><div class="seg" data-k="mode"><button data-v="overlay">overlay</button><button data-v="appbar">appbar</button><button data-v="floating">floating</button></div></div>
     <div class="row"><span>position</span><div class="seg" data-k="pos"><button data-v="left">left</button><button data-v="center">center</button><button data-v="right">right</button></div></div>

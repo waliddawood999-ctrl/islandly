@@ -2,7 +2,7 @@
 
 Author: Claude · 2026-10-29 · Status: **design + HTML prototype only.** Native implementation is Codex's (`src/main/**`, `native/**`). Nothing here changes a contract: the keys and events it needs are *requests* listed in §6 and in `docs/HANDOFF.md`.
 
-Prototype: `dev/t19/prototype/index.html` (open it in any browser; `?lang=ar|en&mode=overlay|appbar|floating&pos=left|center|right&material=acrylic|glass&motion=full|reduced|off&eco=1&fullscreen=1&eyes=0`; the control strip under the island switches everything live). Frames and GIFs: `dev/t19/sheets/motion-*.png|gif`. Re-render and audit: `node dev/t19/prototype/shots.mjs && python3 dev/t19/prototype/sheets.py`.
+Prototype: `dev/t19/prototype/index.html` (open it in any browser; `?lang=ar|en&theme=dark|light&mode=overlay|appbar|floating&pos=left|center|right&material=acrylic|glass&motion=full|reduced|off&eco=1&fullscreen=1&eyes=0`; the control strip under the island switches everything live). Frames and GIFs: `dev/t19/sheets/motion-*.png|gif` (gaze boards: `motion-C-gaze-{overlay,appbar,floating}.png` and `-far.png`). Re-render and audit: `node dev/t19/prototype/shots.mjs && python3 dev/t19/prototype/sheets.py`. The idle-eyes concept boards that were approved are in `dev/t19/concept-eyes/`.
 
 **What is measured and what is not.** Every number marked *sim* comes from running the prototype's spring integrator with a manual 1 ms clock (so it is exact for the maths, not a measurement of Windows). Everything marked *budget* or *est.* is a design target for Codex to verify with the existing perf guard (`docs/perf.md`); no native code was written or run for this spec.
 
@@ -14,7 +14,7 @@ Prototype: `dev/t19/prototype/index.html` (open it in any browser; `?lang=ar|en&
 | Hover opens a panel after a **280 ms dwell**; a 1 Hz ticker is the only idle timer | `native/Islandly.cs` (`hoverDwell`, `ticker`) | No cursor polling exists today: B and C must not add a busy loop |
 | Expanded panels are Electron windows started on demand; **cold open 775–1306 ms**, first packaged open 1304 ms | `docs/perf.md` | A 250 ms liquid animation cannot be driven by the panel. The **host animates a placeholder shape first** (§3.6) |
 | Region update cost measured at **0.064 ms** mean on a real HWND | `docs/HANDOFF.md` (T15) | Re-clipping every frame for 250 ms is affordable |
-| Idle budget: RAM < 180 MB, CPU < 1 %; measured idle ≈ 40 MB / 0.4 % on the CI runner | `docs/perf.md` | Spec adds **no resident timer faster than 2 Hz** and nothing at all while hidden/Eco/Off |
+| Idle budget: RAM < 180 MB, CPU < 1 %; measured idle ≈ 40 MB / 0.4 % on the CI runner | `docs/perf.md` | The spec adds **no new timer** for A and B (they run only while animating); the opt-in eyes use a **10 Hz coalescable timer while visible** (§4.5) and nothing at all while hidden/Eco/Off |
 | Settings: `motion` full/reduced/off, `ecoMode`, `eco:changed` (effective Eco) | HANDOFF §1/§2 | B and C obey these; Eco is treated as Reduced for B and **Off** for C |
 
 Units: all sizes below are **px at scale 1.0**; multiply by `scale × DPI/96`. Times are ms. Colours are the existing palette (`--accent #a78bfa`, `--green #34d399`).
@@ -32,8 +32,8 @@ Units: all sizes below are **px at scale 1.0**; multiply by `scale × DPI/96`. T
 
 | Setting | A Floating | B Liquid expand | C Idle eyes |
 |---|---|---|---|
-| **Full** | static style | BODY + DROP springs, anticipation swell, droplet lobe | live: tracking, blinks, sleepy state |
-| **Reduced** (and **Eco**) | static style | BODY replaced by a **120 ms ease-out** (τ = 40 ms), no droplet, no anticipation, no overshoot | A **static** pair of eyes (open, pupils centred) for Reduced; **hidden** in Eco |
+| **Full** | static style | BODY + DROP springs, anticipation swell, droplet lobe | live: gaze, blinks, sleepy lids, happy squint |
+| **Reduced** (and **Eco**) | static style | BODY replaced by a **120 ms ease-out** (τ = 40 ms), no droplet, no anticipation, no overshoot | **Static** eyes (open, resting tilt, no gaze, no blink) for Reduced; **hidden** in Eco |
 | **Off** | static style | instant size change, no frames | hidden |
 
 Eco follows the existing rule "Eco limits Full to Reduced"; C is the only place Eco goes further (hidden), because it is purely decorative.
@@ -138,36 +138,67 @@ Reduced/Off skip the placeholder cross-fade: the panel appears when ready, the s
 - **Loop:** drive frames from a short-lived thread blocking on `DwmFlush()` (or a `WM_TIMER` at 8 ms as fallback) **only while any spring is moving**; stop and free it at rest. Frame budget **≤ 2 ms CPU/frame** (*budget*); a full open is ≈ 17 frames at 60 Hz (≈ 34 ms CPU, *est.*), idle cost 0.
 - 144 Hz: step in real elapsed time, not frame count.
 
-## 4. C. Idle eyes
+## 4. C. Idle eyes (style approved by Walid: concept v2; gaze fix applied)
 
 ### 4.1 Where and when
-Collapsed pill only, when there is no other compact content (no timer, media, privacy or low-battery label). Eyes replace the green clock dot; the time stays: `[eyes] [time]` (mirrored in RTL). **Hidden** (the green dot comes back) when: fullscreen app active, Eco, Motion Off, `idleEyes` false, island opening (f > 0.05), or any compact activity takes the pill. In **Reduced**: static open eyes.
+In the collapsed pill, **eyes + time** (confirmed): `[eyes] [time]`, mirrored in Arabic (eyes at the start, on the right) with the **same eye shape and the same tilt in both directions**. The eyes replace the green clock dot. They show only when no other compact content owns the pill (timer, media, privacy label, low battery). **Hidden** (the dot comes back) in: fullscreen, Eco, Motion Off, `idleEyes` false, while the island opens (f > 0.05). **Reduced:** static open eyes at the resting tilt (no gaze, no blink, no lid).
 
-### 4.2 Shapes (px at scale 1)
+### 4.2 Shape (px at scale 1; × scale × DPI)
 | Part | Spec |
 |---|---|
-| Eye | capsule **10 × 13**, radius 6, fill **`#ece6ff`** |
-| Gap between eyes | **7**; group sits at the label start, **12 px** from the time |
-| Pupil | **5 × 6** ellipse, fill **`#1b1530`**, travels **±2.5 px (x), ±2.0 px (y)** inside the eye |
-| Lid | not an overlay: the eye is **clipped from the top** by `lid × 100 %` (so any material shows through) |
-| Minimum clearance | group ≥ 12 px from the pill's end, eyes never overlap the time (audited in `shots.mjs`) |
+| Eye | one **solid capsule 13 × 26**, fully rounded ends (radius 6.5), **no pupil, no outline** |
+| Resting tilt | **−11°** (top leans left), both eyes parallel; the same in LTR and RTL |
+| Two eyes | centres **22 apart**; the group's bounding box is ≈ **40 × 28** (78 % of the 36 px height; 4 px free above and below at rest) |
+| Eyes ↔ time | **≥ 16 px** at rest (CSS gap 16 + box slack), **≥ 6 px** at the extreme gaze (checked by the audit) |
+| Colour | dark island: `#f7f8fc`; light island: `#0c0c12` (near-black, strong contrast); the light/dark choice follows the island's tint exactly like the text does (`on-light`) |
+| Lid (sleepy) | not an overlay: the upright slot of each eye is **clipped from the top** by `lid × slot height`, so the cut edge is horizontal on screen and any material shows through |
 
-### 4.3 States
-| State | Condition | Lid | Pupils | Blink |
+### 4.3 The gaze (fixed: obvious, 2-D, continuous angle)
+One smoothed vector **g ∈ [−1,1]²** drives everything; offset, lean, squash and foreshortening are all derived from it, so they cannot disagree.
+
+```
+d   = cursor − pillCentre            dist = |d|
+s   = smoothstep(clamp(dist / 50, 0, 1))              // full strength after 50 px
+gain = awake ? 1.0 : 0.6                              // awake: cursor within 240 px of the pill centre
+target = (d / dist) · s · gain                        // the real angle, always, near or far; 0 if the pointer left the screen
+g += (target − g) · (1 − exp(−4·dt))                  // 4 per second: time constant 250 ms; vector smoothing, so the angle never jumps at ±180°
+```
+| Derived value | Formula | At full gaze |
+|---|---|---|
+| Group offset | `x = 7·g.x`, `y = clamp(4·g.y + droop − 0.5·squint, ±4)` | up to **±7 px** sideways, **±4 px** up/down (was ±5 / ±2) |
+| Lean (the 3-D turn) | both eyes rotate to `−11° + 7°·g.x`, i.e. **toward the cursor** | −18° looking left, −4° looking right |
+| Far-eye squash | the eye on the far side gets width `1 − 0.18·|g.x|` (cursor right: the left eye; cursor left: the right eye) | **0.82** |
+| Foreshortening | both eyes get length `1 − 0.12·|g.y|` | **0.88** looking straight down/up |
+| Droop (sleepy only) | `+2.5 px · lid/0.54` | |
+
+*sim*, the five requested positions (cursor measured from the pill centre; gaze after 2 s):
+
+| Cursor | g | group offset | tilt (both eyes) | far-eye width | length |
+|---|---|---|---|---|---|
+| left (−170, 0) | (−1.00, 0) | **−7 px**, 0 | −18° | right eye 0.82 | 1.00 |
+| right (+170, 0) | (+1.00, 0) | **+7 px**, 0 | −4° | left eye 0.82 | 1.00 |
+| below-left (−120, +85) | (−0.82, +0.58) | −5.7 px, **+2.3 px** | −16.7° | right eye 0.85 | 0.93 |
+| below-right (+120, +85) | (+0.82, +0.58) | +5.7 px, **+2.3 px** | −5.3° | left eye 0.85 | 0.93 |
+| directly below (0, +95) | (0, +1.00) | 0, **+4 px** | −11° | both 1.00 | **0.88** |
+
+Gaze accuracy (checked in every theme × language × mode of the QA run): the angle of **g equals the angle to the cursor within 4°**, including far positions (330 px away), where the magnitude is 0.60 and the lids are sleepy. Glide response to a cursor jump from below to the right (*sim*): 33 % of the way at 100 ms, **63 % at 250 ms**, 86.5 % at 500 ms, 98.2 % at 1 s.
+
+### 4.4 States
+| State | Condition | Lid | Gaze | Blink |
 |---|---|---|---|---|
-| **Awake / follow** | cursor within **240 px** of the pill centre | 0 | toward the cursor: `dir · min(1, dist/160) · (2.5, 2.0)` | every **3.0–6.5 s**, 170 ms; **12 %** chance of a quick second blink 120 ms later |
-| **Sleepy** | cursor farther than 240 px | **0.42** (42 % closed) | down, `(0, +1.5)` | every **8–14 s**, slow: 380 ms |
-| Transition | | exponential smoothing, **τ = 70 ms** waking, **τ = 220 ms** falling asleep | same τ | |
+| **Awake** | cursor within 240 px | 0 | full (above) | auto, every **3–4 s**, **280 ms** |
+| **Sleepy** | cursor farther than 240 px, or left the screen | eases to **0.54** (τ 220 ms; wakes with τ 70 ms): flat-topped, half-closed filled eyes, drooping 2.5 px, 10 % shorter | still follows the angle at 60 % (or rests at the centre if the pointer left) | slow, every **8–14 s**, 380 ms |
+| **Happy squint** | pointer on the pill | 0 | as awake, fades out | eyes become 1.1 × wider and **0.6 ×** as long (τ 90 ms), nudged up 0.5 px |
+| **Blink** | timer | | | the *filled eye itself* narrows to **10 % of its width** (1.3 px, still solid) and back: close 40 % of 280 ms (ease-in, quadratic), hold 8 %, open 52 % (ease-out); blink and gaze combine by multiplication |
+| **Hidden** | fullscreen, Eco, Motion Off, `idleEyes` false, opening, other compact content | | | |
 
-Blink curve (fraction of the blink length): close during the first **35 %**, hold **10 %**, open during the last **55 %**; the lid peaks at **0.92**, never fully closed.
-
-*sim:* near ≈ 11–16 blinks/min (including doubles), far 5–6 blinks/min over 60 s of simulated time. The pupil reached −1.56 px / +2.46 px for a cursor 100 px left / 160 px right.
-
-### 4.4 Cost design (the battery-drain complaint is the main risk)
-- **No hook, no per-move events.** Awake tracking needs the cursor position: poll `GetCursorPos` at **30 Hz only while the cursor is within 240 px**; far away poll at **2 Hz** with a coalescable timer (`SetCoalescableTimer`, 500 ms, tolerance 250 ms) so Windows can batch the wake-up with others. (A low-level mouse hook or raw input would wake the host on every mouse move: rejected.)
-- **Repaint only on change:** redraw the tiny **≈ 40 × 16 px** eye rect when a pupil moved ≥ 0.25 px or the lid changed ≥ 1 %. A still cursor repaints nothing.
-- Blink timers are one-shot (random interval), cancelled when eyes are hidden. When hidden (fullscreen/Eco/Off/disabled) there are **no timers at all** beyond the existing 1 Hz ticker.
-- *Budget:* awake ≤ 0.1 % CPU average, far ≤ 0.02 %, hidden 0 (to be added as an `eyes` case to the native perf guard; the **< 1 %** global guard stays). **Default: `idleEyes = false`** (opt-in), because of the battery-drain complaint and because it is decorative.
+### 4.5 Cost design (the battery-drain complaint is the main risk)
+- **No hook, no raw input.** A low-level hook or raw-input sink wakes the host on every mouse move and is what antivirus products flag. The host instead reads `GetCursorPos` on a **coalescable timer**: **10 Hz** while the eyes are visible and idle, **30 Hz** only while the cursor has moved in the last 1.5 s or the gaze is still converging (|g − target| > 0.02), nothing at all while hidden.
+- Gaze must *track continuously* (also below the bar and far away), so there is no "far = 2 Hz" mode any more; far tracking uses the same 10 Hz baseline, and the 250 ms smoothing interpolates between samples while the 30 Hz frame timer runs.
+- **Repaint only on change:** the eyes' dirty rectangle is ≈ **44 × 32 px**; skip the repaint when g moved < 0.02 (≈ 0.15 px of travel) and the lid/blink did not change.
+- Blink timers are one-shot (random interval); cancelled when hidden. When hidden, no timers beyond the existing 1 Hz ticker.
+- *Budget (to be measured, not measured):* resting/idle ≤ 0.05 % CPU, while the user moves the mouse ≤ 0.5 % of one core, hidden 0; the global **< 1 %** and **< 180 MB** guards stay. Add `eyes-idle`, `eyes-moving`, `eyes-hidden` cases to the native perf guard.
+- **Default: `idleEyes = false`** (opt-in).
 
 ## 5. Settings UI (design; not wired, see §6)
 Appearance section, under "Windows under the island": 
@@ -175,16 +206,16 @@ Appearance section, under "Windows under the island":
 | Control | Type | ar | en | Hint (en) |
 |---|---|---|---|---|
 | `floating` | switch | جزيرة عائمة | Floating island | Detaches the island from the top edge with a soft shadow. Works with both modes. |
-| `idleEyes` | switch | عينان عند الخمول | Idle eyes | Two small eyes follow the cursor when the island is resting. Off in full screen, in Eco and when motion is off. |
+| `idleEyes` | switch | عينان عند الخمول | Idle eyes | Two small eyes look at your cursor when the island is resting. Off in full screen, in Eco and when motion is off. |
 
 The Settings preview already renders material × mode × size × position; it gains the floating look and an eyes glyph. Both rows follow the T19 switch style, and `idleEyes` is shown disabled with the existing amber note when Eco/Motion Off applies ("Eco is on" style, like `settings.motion.ecoLimit`).
 
 ## 6. Requests to Codex (contract changes, none made here)
 1. Settings keys (HANDOFF §1): **`floating`** boolean, default `false`; **`idleEyes`** boolean, default `false`. Broadcast with `settings:update` like the others; host reads them in `Position()`/paint.
-2. Host: B animation, halo, anticipation, placeholder card, §3.6 hand-off; A style (+ AppBar strip 58); C eyes with the cost design in §4.4.
+2. Host: B animation, halo, anticipation, placeholder card, §3.6 hand-off; A style (+ AppBar strip 58); C eyes with the gaze model in §4.3 and the cost design in §4.5.
 3. Event **`panel:ready`** (or equivalent) from the Electron panel to the host for the cross-fade; today the host only knows "launched".
-4. Perf guard: new cases `liquid-open` (CPU during 300 ms, frame time ≤ 2 ms) and `eyes-awake/far/hidden` (CPU, wakeups/s) in `test/ci-native-perf.ps1`.
+4. Perf guard: new cases `liquid-open` (CPU during 300 ms, frame time ≤ 2 ms) and `eyes-idle/moving/hidden` (CPU, wakeups/s) in `test/ci-native-perf.ps1`.
 5. Manual Windows check list (never claimed from CI): 100/150/200 % DPI, two monitors, AppBar mode, acrylic vs glass, 60/144 Hz, RTL position clamp, fullscreen hide.
 
 ## 7. Limits of the prototype
-HTML springs are the same maths but run in Chromium; the droplet outline is a CSS path, not Direct2D; acrylic is `backdrop-filter`; screenshots/GIFs are produced on a manual clock (GIFs are slowed ×5: 8 ms of animation per 40 ms frame), so they show shape, not real-time feel. No real-device timing, power or GPU measurement exists for any of A–C.
+HTML springs are the same maths but run in Chromium; the eyes' gaze, lean and squash are CSS transforms of two `<i>` capsules, not Direct2D shapes; the droplet outline is a CSS path, not Direct2D; acrylic is `backdrop-filter`; screenshots/GIFs are produced on a manual clock (GIFs are slowed ×5: 8 ms of animation per 40 ms frame), so they show shape, not real-time feel. No real-device timing, power or GPU measurement exists for any of A–C.

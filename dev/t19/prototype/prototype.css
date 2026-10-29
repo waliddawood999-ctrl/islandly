@@ -23,16 +23,25 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 #desk[data-mode='floating'] #body { filter: drop-shadow(0 14px 14px rgba(0, 0, 0, 0.38)) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3)); }
 #desk:not([data-mode='floating']) #body { filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.3)); }
 
-#rest { left: 0; top: 0; display: flex; align-items: center; justify-content: center; gap: 12px; width: var(--pw); height: var(--ph); pointer-events: none; }
+#rest { left: 0; top: 0; display: flex; align-items: center; justify-content: center; gap: 16px; width: var(--pw); height: var(--ph); pointer-events: none; }
 #time { font-size: 14px; font-weight: 700; letter-spacing: 0.3px; font-variant-numeric: tabular-nums; }
-#eyes { display: flex; gap: 7px; align-items: center; }
+#eyes { position: relative; width: 42px; height: 30px; flex: none; }
 #island[data-eyes='off'] #eyes, #island[data-eyes='hidden'] #eyes { display: none; }
 #island[data-eyes='off'] #rest::before, #island[data-eyes='hidden'] #rest::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 8px rgba(52, 211, 153, 0.7); }
 
-/* C: eyes. Each eye is a 10 x 13 capsule (px at scale 1); the pupil travels at most 2.5 px; the lid is the clip-path of the eye from the top, so any material shows through */
-.eye { position: relative; width: 10px; height: 13px; border-radius: 6px; background: #ece6ff; overflow: hidden; clip-path: inset(calc(var(--lid, 0) * 100%) 0 0 0); }
-.pupil { position: absolute; left: 50%; top: 50%; width: 5px; height: 6px; margin: -3px 0 0 -2.5px; border-radius: 50%; background: #1b1530; transform: translate(var(--px, 0px), var(--py, 0px)); }
-#desk[data-material='acrylic'] 
+/* C: eyes = two solid capsules 13 x 26 px, parallel, tilted 11 deg, no pupils, no outline. JS sets the group offset, per-eye lean
+   (tilt), width and length scale. The sleepy lid is a clip on the upright slot, so its edge is horizontal on screen. */
+.slot { position: absolute; top: 0; width: 24px; height: 30px; clip-path: inset(calc(var(--lid, 0) * 100%) 0 0 0); }
+.slot.a { left: -3px; } .slot.b { left: 21px; }
+.eye { position: absolute; left: 50%; top: 50%; width: 13px; height: 26px; margin: -13px 0 0 -6.5px; border-radius: 999px; background: var(--eye); }
+#desk[data-theme='dark'] { --eye: #f7f8fc; } #desk[data-theme='light'] { --eye: #0c0c12; }
+#desk[data-theme='light'] #island { color: #0c0c10; }
+#desk[data-theme='light'] #shape { background: #eceef4; }
+#desk[data-theme='light'][data-material='acrylic'] #shape { background: rgba(236, 238, 244, 0.78); }
+#desk[data-theme='light'] #page { background: #f4f5f9; }
+#cursor { position: absolute; z-index: 20; display: none; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5)); }
+#desk[data-showcursor='1'] #cursor { display: block; }
+
 #card { top: 0; padding: 16px 18px; opacity: 0; display: flex; flex-direction: column; gap: 12px; pointer-events: none; }
 .muted { color: var(--muted); font-size: 13px; }
 .c-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
@@ -54,3 +63,9 @@ html[dir='rtl'] #card, html[dir='rtl'] .c-head, html[dir='rtl'] .c-next { direct
 
 /* in Arabic the eyes sit at the start (right) and the time follows, as the label order reads */
 html[dir='rtl'] #rest { flex-direction: row-reverse; }
+
+/* light theme: the expanded card gets dark text */
+#desk[data-theme='light'] #card { color: #0c0c10; --muted: rgba(20, 20, 28, 0.62); }
+#desk[data-theme='light'] .c-chips span { background: rgba(0, 0, 0, 0.07); }
+#desk[data-theme='light'] #nextName, #desk[data-theme='light'] #nextIn { color: #8a5a00; }
+#desk[data-theme='light'] .c-next { background: linear-gradient(135deg, rgba(251, 191, 36, 0.3), rgba(251, 191, 36, 0.1)); }

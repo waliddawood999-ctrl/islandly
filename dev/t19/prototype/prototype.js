@@ -2,7 +2,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const q = new URLSearchParams(location.search);
-  const S = { lang: q.get('lang') || 'en', mode: q.get('mode') || 'overlay', pos: q.get('pos') || 'center', material: q.get('material') || 'glass', motion: q.get('motion') || 'full', eyes: q.get('eyes') || '1', ctx: q.get('eco') ? 'eco' : q.get('fullscreen') ? 'fullscreen' : 'normal' };
+  const S = { theme: q.get('theme') || 'dark', lang: q.get('lang') || 'en', mode: q.get('mode') || 'overlay', pos: q.get('pos') || 'center', material: q.get('material') || 'glass', motion: q.get('motion') || 'full', eyes: q.get('eyes') || '1', ctx: q.get('eco') ? 'eco' : q.get('fullscreen') ? 'fullscreen' : 'normal' };
   const manual = q.get('manual') === '1';
 
   // ---- constants (MOTION_SPEC.md §B, §C)
@@ -17,7 +17,7 @@
   const DWELL = 120; // ms inside the halo before opening (native today: 280)
   const LEAVE = 200; // ms outside the card before closing
   const ANTICIPATE = 48; // px: the pill starts to swell this far from it
-  const NEAR = 240; // px: eyes wake and follow
+  const NEAR = 240; // px: eyes wake; beyond it they get sleepy lids but keep looking at the cursor (60 % travel)
   const t0 = performance.now();
   let fake = 0;
   const now = () => (manual ? fake : performance.now() - t0);
@@ -33,7 +33,7 @@
   let f = 0, vf = 0, d = 0, vd = 0; // body spring, droplet spring
   let target = 0, ant = 0; // 0 collapsed, 1 expanded; ant = anticipation swell 0..0.1
   let pointer = { x: -999, y: -999 }, inHalo = 0, outCard = 0, lastT = now();
-  const eye = { lid: 0.42, px: 0, py: 1.5, blink: 0, blinkAt: 0, blinkLen: 170, blinkT: -1, double: false };
+  const eye = { blinkAt: 0, blinkLen: 280, blinkT: -1 };
 
   const pill = () => {
     const gap = GAP[S.mode];
@@ -94,36 +94,62 @@
     if (!go) return;
   }
 
-  // ---- C: eyes
-  function nextBlink(t, sleepy) { eye.blinkAt = t + (sleepy ? rnd(8000, 14000) : rnd(3000, 6500)); }
+  // ---- C: eyes (MOTION_SPEC.md section 4). Two filled capsules, no pupils. The gaze is one smoothed vector g in [-1, 1]^2
+  // that follows the real angle to the cursor; offset, lean, far-eye squash and foreshortening are all derived from it.
+  const GAZE = { x: 7, y: 4, lean: 7, farSquash: 0.18, foreshorten: 0.12, ramp: 50, rate: 4, farGain: 0.6, yLimit: 4 };
+  const g = { x: 0, y: 0 }; // smoothed gaze
+  let squint = 0, lidNow = 0.54;
+  const slots = [...document.querySelectorAll('.slot')], eyeEls = [...document.querySelectorAll('.eye')], eyesBox = $('eyes');
+  function nextBlink(t, sleepy) { eye.blinkAt = t + (sleepy ? rnd(8000, 14000) : rnd(3000, 4000)); }
+  const smooth = (x) => x * x * (3 - 2 * x);
   function stepC(ms, t) {
     const hidden = S.eyes === '0' || S.ctx !== 'normal' || S.motion === 'off';
     island.dataset.eyes = S.eyes === '0' ? 'off' : hidden ? 'hidden' : 'on';
     if (hidden) return;
     const p = pill();
     const cx = p.x + PILL.w / 2, cy = p.y + PILL.h / 2;
+    const present = pointer.x > -900;
     const dx = pointer.x - cx, dy = pointer.y - cy, dist = Math.hypot(dx, dy);
-    const near = dist < NEAR && f < 0.05;
-    const still = S.motion === 'reduced'; // static eyes: open, centred, no blink, no tracking
-    const wantLid = still ? 0 : near ? 0 : 0.42; // sleepy lids: 42 %
-    let wx = 0, wy = 1.5;
-    if (still) { wx = 0; wy = 0; } else if (near) { const m = Math.min(1, dist / 160); wx = (dx / (dist || 1)) * 2.5 * m; wy = (dy / (dist || 1)) * 2.0 * m; }
-    const tau = near ? 70 : 220; // ms, exponential smoothing
-    const k = 1 - Math.exp(-ms / tau);
-    eye.lid += (wantLid - eye.lid) * k; eye.px += (wx - eye.px) * k; eye.py += (wy - eye.py) * k;
+    const still = S.motion === 'reduced'; // static eyes: open, centred, no tracking, no blink
+    const awake = present && dist < NEAR && f < 0.05;
+    const inPill = present && pointer.x >= p.x && pointer.x <= p.x + PILL.w && pointer.y >= p.y && pointer.y <= p.y + PILL.h;
+    // gaze target: the unit direction to the cursor, ramped in over the first 50 px, 60 % travel when the cursor is far
+    const s = smooth(clamp(dist / GAZE.ramp, 0, 1)) * (awake ? 1 : GAZE.farGain);
+    const tx = still || !present || !dist ? 0 : (dx / dist) * s;
+    const ty = still || !present || !dist ? 0 : (dy / dist) * s;
+    const kg = 1 - Math.exp((-ms * GAZE.rate) / 1000); // 4 per second: time constant 250 ms
+    g.x += (tx - g.x) * kg; g.y += (ty - g.y) * kg;
+    const wantLid = still ? 0 : awake ? 0 : 0.54;
+    const kl = 1 - Math.exp(-ms / (awake ? 70 : 220));
+    lidNow += (wantLid - lidNow) * kl;
+    squint += ((inPill && !still ? 1 : 0) - squint) * (1 - Math.exp(-ms / 90));
+    // blink: 280 ms (380 ms when sleepy); the filled eye narrows to 10 % of its width and back
+    let blinkW = 1;
     if (!still) {
-      if (!eye.blinkAt) nextBlink(t, !near);
-      if (eye.blinkT < 0 && t >= eye.blinkAt) { eye.blinkT = 0; eye.blinkLen = near ? 170 : 380; }
+      if (!eye.blinkAt) nextBlink(t, !awake);
+      if (eye.blinkT < 0 && t >= eye.blinkAt) { eye.blinkT = 0; eye.blinkLen = awake ? 280 : 380; }
       if (eye.blinkT >= 0) {
         eye.blinkT += ms;
-        const u = eye.blinkT / eye.blinkLen; // 0..1: close for 35 %, hold 10 %, open for 55 %
-        eye.blink = u < 0.35 ? u / 0.35 : u < 0.45 ? 1 : u < 1 ? 1 - (u - 0.45) / 0.55 : 0;
-        if (u >= 1) { eye.blinkT = -1; eye.blink = 0; if (near && !eye.double && Math.random() < 0.12) { eye.double = true; eye.blinkAt = t + 120; } else { eye.double = false; nextBlink(t, !near); } }
+        const u = eye.blinkT / eye.blinkLen;
+        const c = u < 0.4 ? (u / 0.4) ** 2 : u < 0.48 ? 1 : u < 1 ? (1 - (u - 0.48) / 0.52) ** 2 : 0;
+        blinkW = 1 - 0.9 * c;
+        if (u >= 1) { eye.blinkT = -1; nextBlink(t, !awake); }
       }
-    } else eye.blink = 0;
-    const lid = Math.max(eye.lid, eye.blink * 0.92); // a blink never closes fully: 92 %
-    island.style.setProperty('--lid', lid.toFixed(3));
-    document.querySelectorAll('.eye').forEach((e) => { e.style.setProperty('--lid', lid.toFixed(3)); e.firstElementChild.style.setProperty('--px', eye.px.toFixed(2) + 'px'); e.firstElementChild.style.setProperty('--py', eye.py.toFixed(2) + 'px'); });
+    }
+    eye.g = { x: +g.x.toFixed(3), y: +g.y.toFixed(3) }; eye.lid = lidNow; eye.squint = squint; eye.blinkW = blinkW;
+    const tilt = -11 + g.x * GAZE.lean; // both eyes lean toward the cursor
+    const droop = 2.5 * (lidNow / 0.54);
+    const x = g.x * GAZE.x;
+    const y = clamp(g.y * GAZE.y + droop - 0.5 * squint, -GAZE.yLimit, GAZE.yLimit);
+    eyesBox.style.transform = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px)`;
+    const fore = 1 - GAZE.foreshorten * Math.abs(g.y) - 0.1 * (lidNow / 0.54);
+    const sy = fore * (1 - 0.4 * squint);
+    const farA = g.x > 0 ? 1 - GAZE.farSquash * g.x : 1; // cursor on the right: the left eye is the far one
+    const farB = g.x < 0 ? 1 + GAZE.farSquash * g.x : 1;
+    const wq = (1 + 0.1 * squint) * blinkW;
+    eyeEls[0].style.transform = `rotate(${tilt.toFixed(2)}deg) scale(${(farA * wq).toFixed(3)}, ${sy.toFixed(3)})`;
+    eyeEls[1].style.transform = `rotate(${tilt.toFixed(2)}deg) scale(${(farB * wq).toFixed(3)}, ${sy.toFixed(3)})`;
+    slots.forEach((e) => e.style.setProperty('--lid', lidNow.toFixed(3)));
   }
 
   // ---- B trigger: approach, dwell, leave (hysteresis)
@@ -157,7 +183,8 @@
     const T = TXT[S.lang];
     document.documentElement.lang = S.lang;
     document.documentElement.dir = S.lang === 'ar' ? 'rtl' : 'ltr';
-    desk.dataset.mode = S.mode; desk.dataset.material = S.material;
+    desk.dataset.mode = S.mode; desk.dataset.material = S.material; desk.dataset.theme = S.theme; desk.dataset.showcursor = manual && pointer.x > -900 ? '1' : '0';
+    $('cursor').style.cssText = `left:${pointer.x}px;top:${pointer.y}px`;
     $('time').textContent = '10:42';
     $('bigTime').textContent = '10:42';
     $('date').textContent = T.date; $('hijri').textContent = T.hijri; $('nextName').textContent = T.next; $('nextAt').textContent = T.at; $('nextIn').textContent = '00:38';
@@ -177,10 +204,12 @@
     live: false,
     set(k, v) { S[k] = v; paint(); },
     open(on) { target = on ? 1 : 0; },
-    pointer(x, y) { pointer = { x, y }; },
+    pointer(x, y) { pointer = { x, y }; desk.dataset.showcursor = manual && x > -900 ? '1' : '0'; $('cursor').style.cssText = `left:${x}px;top:${y}px`; },
     step(ms) { // manual clock: advance in 1 ms slices so the springs behave as in a live run
       for (let i = 0; i < ms; i++) { fake += 1; frame(1); }
     },
+    blinkNow() { eye.blinkAt = now(); eye.blinkT = -1; },
+    setBlinkT(ms) { eye.blinkT = ms; eye.blinkLen = 280; stepC(0, now()); },
     state() { return { f, d, vf, vd, target, eye: { ...eye } }; },
     spring: { BODY, DROP },
   });

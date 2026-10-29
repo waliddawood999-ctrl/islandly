@@ -28,15 +28,31 @@ for lang in ['ar', 'en']:
         rows.append([load(f'B-{lang}-{mode}-center-{mat}-reverse-t30.png', C), load(f'B-{lang}-{mode}-center-{mat}-reverse-t90.png', C), load(f'B-{lang}-{mode}-center-{mat}-open.png', C)])
     sheet(rows, f'motion-B-{lang}.png')
 sheet([[load(f'B-ar-floating-right-glass-t{t}.png', C) for t in ['060', '150', '260']], [load(f'B-en-floating-left-glass-t{t}.png', C) for t in ['060', '150', '260']], [load('B-motion-reduced-open.png', C), load('B-motion-off-open.png', C)]], 'motion-B-positions-reduced-off.png')
-states = ['far-sleepy', 'near-left', 'near-right', 'near-below', 'blink', 'reduced-static', 'eco-hidden', 'fullscreen-hidden', 'motion-off-hidden']
-for lang in ['ar', 'en']:
+# ---- C: gaze boards (cursor left, right, below-left, below-right, directly below, + above-right, far cases), states, timelines
+from PIL import ImageDraw
+def label(img, text):
+    out = Image.new('RGB', (img.width, img.height + 22), (24, 25, 34))
+    out.paste(img, (0, 0))
+    ImageDraw.Draw(out).text((8, img.height + 6), text, fill=(205, 210, 230))
+    return out
+names = [('left', 'cursor left'), ('right', 'cursor right'), ('below-left', 'below-left'), ('below-right', 'below-right'), ('below', 'directly below')]
+extra = [('far-below-left', 'far below-left: sleepy lids, same angle'), ('far-right', 'far right: sleepy lids, same angle')]
+def pad(im, h):
+    c = Image.new('RGB', (im.width, h), (24, 25, 34)); c.paste(im, (0, 0)); return c
+def gaze_sheet(mode, items, out, scale=0.62):
     rows = []
-    for mode in ['overlay', 'appbar', 'floating']:
-        for chunk in (states[:5], states[5:]):
-            rows.append([load(f'C-{lang}-{mode}-acrylic-{s}.png', None, 0.45) for s in chunk])
-    sheet(rows, f'motion-C-{lang}.png')
-sheet([[load(f'C-{l}-{m}-glass-{s}.png', None, 0.45) for s in ['far-sleepy', 'near-left', 'blink']] for l in ['ar', 'en'] for m in ['overlay', 'appbar', 'floating']], 'motion-C-glass.png')
-for g, name in [('B-ar-floating', 'motion-B-ar-floating'), ('B-en-overlay', 'motion-B-en-overlay'), ('B-en-appbar', 'motion-B-en-appbar'), ('B-ar-appbar', 'motion-B-ar-appbar'), ('C-eyes-en', 'motion-C-eyes-en')]:
+    for theme in ['dark', 'light']:
+        for lang in ['en', 'ar']:
+            rows.append([label(load(f'C-gaze-{theme}-{lang}-{mode}-gaze-{n}.png', None, scale), f'{theme} {lang.upper()} - {t}') for n, t in items])
+    h = max(i.height for r in rows for i in r)
+    sheet([[pad(i, h) for i in r] for r in rows], out)
+for mode in ['overlay', 'appbar', 'floating']:
+    gaze_sheet(mode, names, f'motion-C-gaze-{mode}.png')
+    gaze_sheet(mode, extra, f'motion-C-gaze-{mode}-far.png', 0.9)
+sts = ['rest-awake', 'blink', 'sleepy-far', 'squint', 'reduced-static', 'eco-hidden', 'fullscreen-hidden', 'motion-off-hidden']
+sheet([[label(load(f'C-{t}-{l}-{s}.png', None, 0.5), f'{t} {l.upper()} · {s}') for s in sts] for t in ['dark', 'light'] for l in ['en', 'ar']], 'motion-C-states.png')
+sheet([[label(load(f'C-blink-t{t:03d}.png', None, 0.5), f'blink t={t} ms') for t in [0, 56, 112, 134, 190, 280]], [label(load(f'C-sleep-t{t:04d}.png', None, 0.5), f'falling asleep t={t} ms') for t in [0, 80, 160, 300, 500, 1200]]], 'motion-C-timelines.png')
+for g, name in [('B-ar-floating', 'motion-B-ar-floating'), ('B-en-overlay', 'motion-B-en-overlay'), ('B-en-appbar', 'motion-B-en-appbar'), ('B-ar-appbar', 'motion-B-ar-appbar'), ('C-eyes-dark-en', 'motion-C-eyes-dark-en'), ('C-eyes-light-ar', 'motion-C-eyes-light-ar')]:
     ims = [Image.open(f).convert('RGB') for f in sorted(glob.glob(o + f'gif/{g}-*.png'))]
     pal = ims[0].quantize(128, method=Image.MEDIANCUT)
     q = [i.quantize(palette=pal, dither=Image.NONE) for i in ims]

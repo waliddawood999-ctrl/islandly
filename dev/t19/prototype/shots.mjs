@@ -47,13 +47,14 @@ const AUDIT = (state) => {
     const hidden = document.getElementById('island').dataset.eyes !== 'on';
     if (!hidden) {
       const e = [...document.querySelectorAll('.eye')].map(R);
-      e.forEach((x) => { if (!inside(x, body)) bad.push('eye leaves the pill'); if (hit(x, t)) bad.push('eye overlaps the time'); });
+      e.forEach((x) => {
+        if (x.top < body.top + 1 || x.bottom > body.bottom - 1) bad.push('eye touches the top/bottom of the pill');
+        if (x.left < body.left + 8 || x.right > body.right - 8) bad.push('eye closer than 8 px to the pill end');
+        if (hit(x, t)) bad.push('eye overlaps the time');
+      });
       if (hit(e[0], e[1])) bad.push('eyes overlap each other');
-      const g = e[1].left - e[0].right;
-      if (g < 4) bad.push('eyes crowded: gap ' + g.toFixed(1));
-      const rest = R(document.getElementById('rest'));
-      const group = { left: Math.min(e[0].left, e[1].left, t.left), right: Math.max(e[0].right, e[1].right, t.right) };
-      if (group.left < body.left + 12 || group.right > body.right - 12) bad.push('eyes+time closer than 12 px to the pill edge');
+      const edge = Math.min(...e.map((x) => (x.left > t.left ? x.left - t.right : t.left - x.right)));
+      if (edge < 6) bad.push('eyes and time closer than 6 px: ' + edge.toFixed(1));
     }
   } else {
     const card = document.getElementById('card');
@@ -78,10 +79,11 @@ const audit = async (page, state, tag) => {
 const FRAMES = [0, 30, 60, 100, 150, 260];
 const combos = [];
 for (const lang of ['ar', 'en']) for (const mode of ['overlay', 'appbar', 'floating']) combos.push({ lang, mode, pos: 'center', material: mode === 'appbar' ? 'glass' : 'acrylic' });
+for (const [lang, mode] of [['ar', 'overlay'], ['en', 'floating'], ['en', 'appbar']]) combos.push({ lang, mode, pos: 'center', material: 'acrylic', theme: 'light' });
 combos.push({ lang: 'ar', mode: 'floating', pos: 'right', material: 'glass' }, { lang: 'en', mode: 'floating', pos: 'left', material: 'glass' });
 const report = [];
 for (const o of combos) {
-  const tag = `${o.lang}-${o.mode}-${o.pos}-${o.material}`;
+  const tag = `${o.lang}-${o.mode}-${o.pos}-${o.material}${o.theme === 'light' ? '-light' : ''}`;
   const page = await open({ ...o, motion: 'full' });
   await audit(page, 'collapsed', tag);
   let t = 0;
@@ -118,64 +120,119 @@ for (const motion of ['reduced', 'off']) {
 }
 
 // ---- C: eyes
-const STATES = [
-  ['far-sleepy', { x: 690, y: 330 }, {}],
-  ['near-left', { x: 250, y: 60 }, {}],
-  ['near-right', { x: 560, y: 60 }, {}],
-  ['near-below', { x: 360, y: 200 }, {}],
-  ['blink', { x: 360, y: 200 }, { blink: true }],
-  ['reduced-static', { x: 250, y: 60 }, { motion: 'reduced' }],
-  ['eco-hidden', { x: 250, y: 60 }, { eco: '1' }],
-  ['fullscreen-hidden', { x: 250, y: 60 }, { fullscreen: '1' }],
-  ['motion-off-hidden', { x: 250, y: 60 }, { motion: 'off' }],
+// pointer positions relative to the pill centre (cx = 360, cy = gap + 18)
+const gapOf = { overlay: 8, appbar: 8, floating: 14 };
+const GAZE_AT = [
+  ['left', -170, 0], ['right', 170, 0], ['below-left', -120, 85], ['below-right', 120, 85], ['below', 0, 95],
+  ['above-right', 120, -10], ['far-below-left', -330, 230], ['far-right', 330, 40],
 ];
-for (const lang of ['ar', 'en'])
-  for (const mode of ['overlay', 'appbar', 'floating'])
-    for (const material of ['acrylic', 'glass'])
-      for (const [name, at, extra] of STATES) {
-        if (material === 'glass' && !['far-sleepy', 'near-left', 'blink'].includes(name)) continue;
-        const tag = `${lang}-${mode}-${material}-${name}`;
-        const page = await open({ lang, mode, material, motion: 'full', ...Object.fromEntries(Object.entries(extra).filter(([k]) => k !== 'blink')) }, 4);
-        await page.evaluate((p) => { window.proto.pointer(p.x, p.y); window.proto.step(900); }, at);
-        if (extra.blink) {
-          // freeze at the lowest point of a blink: close = 35 % of 170 ms
-          await page.evaluate(() => { const e = window.proto.state().eye; return e; });
-          await page.evaluate(() => { for (let i = 0; i < 9000; i++) { window.proto.step(1); const s = window.proto.state().eye; if (s.blinkT >= 60 && s.blinkT <= 62) break; } });
-        }
+const STATES = [
+  ['rest-awake', null, {}], ['blink', null, { blink: true }], ['sleepy-far', [330, 40], {}], ['squint', 'pill', {}],
+  ['reduced-static', [-170, 0], { motion: 'reduced' }], ['eco-hidden', [-170, 0], { eco: '1' }], ['fullscreen-hidden', [-170, 0], { fullscreen: '1' }], ['motion-off-hidden', [-170, 0], { motion: 'off' }],
+];
+const gazeRows = [];
+for (const theme of ['dark', 'light'])
+  for (const lang of ['ar', 'en'])
+    for (const mode of ['overlay', 'appbar', 'floating']) {
+      const cy = gapOf[mode] + 18;
+      const base = { theme, lang, mode, material: theme === 'light' ? 'acrylic' : 'glass', motion: 'full' };
+      // gaze board: one page per combination, the pointer moves through the positions
+      const page = await open(base, 2);
+      for (const [name, dx, dy] of GAZE_AT) {
+        const tag = `${theme}-${lang}-${mode}-gaze-${name}`;
+        await page.evaluate(([x, y]) => { window.proto.pointer(x, y); window.proto.step(2000); }, [360 + dx, cy + dy]);
         await audit(page, 'collapsed', tag);
-        {
-          const pos = await page.evaluate(() => { const r = document.getElementById('shape').getBoundingClientRect(); const d = document.getElementById('desk').getBoundingClientRect(); return { x: r.left - d.left, y: r.top - d.top, w: r.width, h: r.height }; });
-          await clip(page, path.join(out, `C-${tag}.png`), { x: pos.x - 24, y: Math.max(0, pos.y - 10), width: pos.w + 48, height: pos.h + 20 });
-        }
-        await page.close();
+        const st = await page.evaluate(() => window.proto.state().eye);
+        const rec = { theme, lang, mode, name, gx: st.g.x, gy: st.g.y, lid: +st.lid.toFixed(2) };
+        gazeRows.push(rec);
+        const near = !name.startsWith('far');
+        await clip(page, path.join(out, `C-gaze-${tag}.png`), near ? { x: 360 - 190, y: 0, width: 380, height: 150 } : { x: 360 - 190, y: 0, width: 380, height: 60 });
       }
+      await page.close();
+    }
+// gaze assertions on the dark/en/overlay run (every combination uses the same maths)
+const expect = (ok, msg) => ok || problems.push('gaze: ' + msg);
+// the gaze angle must equal the real angle to the cursor (within 4 degrees), in every combination, near and far
+for (const r of gazeRows) {
+  const [, dx, dy] = GAZE_AT.find((a) => a[0] === r.name);
+  const want = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const got = (Math.atan2(r.gy, r.gx) * 180) / Math.PI;
+  const d = Math.abs(((got - want + 540) % 360) - 180);
+  expect(d < 4, `${r.theme}-${r.lang}-${r.mode} ${r.name}: angle ${got.toFixed(1)} vs cursor ${want.toFixed(1)}`);
+  const mag = Math.hypot(r.gx, r.gy);
+  expect(r.name.startsWith('far') ? mag > 0.5 && mag < 0.65 && r.lid > 0.4 : mag > 0.97, `${r.name}: magnitude ${mag.toFixed(2)}, lid ${r.lid}`);
+}
 
-// eyes behaviour numbers: pupil travel, blink cadence over 60 s of simulated time, far vs near
+// states board
+for (const theme of ['dark', 'light'])
+  for (const lang of ['ar', 'en'])
+    for (const [name, at, extra] of STATES) {
+      const mode = 'overlay';
+      const tag = `${theme}-${lang}-${name}`;
+      const page = await open({ theme, lang, mode, material: theme === 'light' ? 'acrylic' : 'glass', motion: 'full', ...Object.fromEntries(Object.entries(extra).filter(([k]) => k !== 'blink')) }, 4);
+      const cy = gapOf[mode] + 18;
+      await page.evaluate(([p, cy]) => {
+        if (p === 'pill') window.proto.pointer(360, cy); else if (p) window.proto.pointer(360 + p[0], cy + p[1]); else window.proto.pointer(360 + 120, cy + 70);
+        window.proto.step(1500);
+      }, [at, cy]);
+      if (extra.blink) await page.evaluate(() => { const P = window.proto; P.blinkNow(); for (let i = 0; i < 400; i++) { P.step(1); const e = P.state().eye; if (e.blinkT >= 112) break; } });
+      await audit(page, 'collapsed', tag);
+      await clip(page, path.join(out, `C-${tag}.png`), { x: 360 - 90, y: 0, width: 180, height: 60 });
+      await page.close();
+    }
+
+// blink / sleepy timelines (dark, English): exact frames from the simulation
 {
-  const page = await open({ lang: 'en', mode: 'overlay', motion: 'full' });
+  const page = await open({ theme: 'dark', lang: 'en', mode: 'overlay', material: 'glass', motion: 'full' }, 4);
+  await page.evaluate(() => { window.proto.pointer(480, 80); window.proto.step(1500); });
+  for (const t of [0, 56, 112, 134, 190, 280]) {
+    await page.evaluate((t) => { const P = window.proto; P.blinkNow(); P.step(1); P.setBlinkT(t); }, t);
+    await clip(page, path.join(out, `C-blink-t${String(t).padStart(3, '0')}.png`), { x: 270, y: 0, width: 180, height: 60 });
+  }
+  await page.close();
+}
+{
+  // sleepy fall-asleep, from awake to far
+  const page = await open({ theme: 'dark', lang: 'en', mode: 'overlay', material: 'glass', motion: 'full' }, 4);
+  await page.evaluate(() => { window.proto.pointer(480, 80); window.proto.step(1500); window.proto.pointer(340, 360); });
+  let t = 0;
+  for (const at of [0, 80, 160, 300, 500, 1200]) {
+    await page.evaluate((ms) => window.proto.step(ms), at - t); t = at;
+    await clip(page, path.join(out, `C-sleep-t${String(at).padStart(4, '0')}.png`), { x: 270, y: 0, width: 180, height: 60 });
+  }
+  await page.close();
+}
+// numbers for the spec: gaze response at 100/250/500/1000 ms after the cursor jumps to the right
+{
+  const page = await open({ theme: 'dark', lang: 'en', mode: 'overlay', material: 'glass', motion: 'full' }, 1);
   const r = await page.evaluate(() => {
-    const P = window.proto; const res = {};
-    P.pointer(-999, -999); P.step(1500); res.sleepy = P.state().eye;
-    P.pointer(260, 56); P.step(900); res.left = P.state().eye;
-    P.pointer(520, 56); P.step(900); res.right = P.state().eye;
-    const count = (px, py, ms) => { P.pointer(px, py); P.step(900); let n = 0, was = false, maxLid = 0; for (let i = 0; i < ms; i++) { P.step(1); const b = P.state().eye.blinkT >= 0; if (b && !was) n++; was = b; } return n; };
-    res.blinksIn60sNear = count(360, 120, 60000);
-    res.blinksIn60sFar = count(700, 340, 60000);
+    const P = window.proto; P.pointer(360, 26 + 120); P.step(2500); const res = {};
+    P.pointer(360 + 170, 26); let t = 0;
+    for (const at of [100, 250, 500, 1000]) { P.step(at - t); t = at; res['t' + at] = +P.state().eye.g.x.toFixed(3); }
     return res;
   });
-  console.log('EYES', JSON.stringify(r));
+  console.log('GLIDE', JSON.stringify(r));
+  const rows = await (async () => {
+    const o = [];
+    for (const [name, dx, dy] of GAZE_AT.slice(0, 5)) {
+      const v = await page.evaluate(([dx, dy]) => { const P = window.proto; P.pointer(360 + dx, 26 + dy); P.step(2500); const e = P.state().eye; const x = document.getElementById('eyes').style.transform; const ts = [...document.querySelectorAll('.eye')].map((el) => el.style.transform); return { g: e.g, x, ts }; }, [dx, dy]);
+      o.push([name, v]);
+    }
+    return o;
+  })();
+  console.log('GAZE TABLE'); for (const [n, v] of rows) console.log(' ', n.padEnd(12), JSON.stringify(v.g), v.x, v.ts.join(' | '));
   await page.close();
 }
 
 // ---- GIFs: B open + hold + close at 1/5 speed; C cursor sweep at real speed
-async function frames(o, name, plan, stepMs, gh = 250) {
-  const page = await open(o, 1);
+async function frames(o, name, plan, stepMs, gh = 250, crop = null) {
+  const page = await open(o, crop ? 2 : 1);
   let i = 0;
   for (const seg of plan) {
     await page.evaluate(seg.pre || (() => {}));
     for (let k = 0; k < seg.n; k++) {
       await page.evaluate(([ms, fn]) => { if (fn) new Function('P', 'k', fn)(window.proto, 0); window.proto.step(ms); }, [stepMs, seg.each || null]);
-      await clip(page, path.join(out, 'gif', `${name}-${String(i++).padStart(3, '0')}.png`), { x: 0, y: 0, width: 720, height: gh });
+      await clip(page, path.join(out, 'gif', `${name}-${String(i++).padStart(3, '0')}.png`), crop ? { x: crop.x, y: 0, width: crop.w, height: gh } : { x: 0, y: 0, width: 720, height: gh });
     }
   }
   await page.close();
@@ -186,13 +243,17 @@ for (const [lang, mode] of [['ar', 'floating'], ['en', 'overlay'], ['en', 'appba
     { n: 10 },
     { pre: () => window.proto.open(false), n: 40 },
   ], 8);
-await frames({ lang: 'en', mode: 'overlay', material: 'glass', motion: 'full' }, 'C-eyes-en', [
-  { pre: () => window.proto.pointer(700, 330), n: 25 },
-  { pre: () => window.proto.pointer(120, 90), n: 25 },
-  { pre: () => window.proto.pointer(600, 90), n: 25 },
-  { pre: () => window.proto.pointer(360, 160), n: 40 },
-  { pre: () => window.proto.pointer(720, 360), n: 30 },
-], 40);
+const eyePath = (theme, lang) => frames({ theme, lang, mode: 'overlay', material: theme === 'light' ? 'acrylic' : 'glass', motion: 'full' }, `C-eyes-${theme}-${lang}`, [
+  { pre: () => window.proto.pointer(190, 26), n: 14 }, // left
+  { pre: () => window.proto.pointer(250, 120), n: 14 }, // below-left
+  { pre: () => window.proto.pointer(360, 125), n: 14 }, // below
+  { pre: () => window.proto.pointer(470, 120), n: 14 }, // below-right
+  { pre: () => window.proto.pointer(550, 26), n: 14 }, // right
+  { pre: () => { window.proto.pointer(550, 26); window.proto.blinkNow(); }, n: 10 }, // blink while looking right
+  { pre: () => window.proto.pointer(700, 330), n: 24 }, // far away: sleepy, still looking at it
+  { pre: () => window.proto.pointer(360, 26), n: 14 }, // on the pill: happy squint
+], 40, 150, { x: 170, w: 380 });
+await eyePath('dark', 'en'); await eyePath('light', 'ar');
 
 console.log('B combos', report.length);
 console.log('page errors:', errors.length ? errors : 'none');
