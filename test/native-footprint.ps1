@@ -87,6 +87,8 @@ try {
     Write-Output "NATIVE FOOTPRINT: idle $($idle.averageMB) MB; panel $($panel.averageMB) MB; after-close $($afterClose.averageMB) MB; panel latency $($result.panelOpenLatencyMs -join ', ') ms"
     if (!$result.acceptanceUnder180) { throw 'Idle RAM acceptance failed: must be below 180 MB before and after opening panels' }
 } finally {
+    if (Test-Path "$probe/status.json") { Write-Output ('LAST STATUS: ' + (Get-Content "$probe/status.json" -Raw)) }
+    foreach ($log in @('native-panels.log','error.log')) { if (Test-Path "$profile/$log") { Write-Output "$log :"; Get-Content "$profile/$log" | Select-Object -Last 35 } }
     if (!$hostProcess.HasExited) { Command 'exit'; if (!$hostProcess.WaitForExit(10000)) { $hostProcess.Kill(); throw 'Native host did not exit gracefully' } }
     foreach ($id in $owned) { if (Get-Process -Id $id -ErrorAction SilentlyContinue) { throw "Owned PID $id survived application shutdown" } }
     if ($Mode -eq 'reserved-bar') {

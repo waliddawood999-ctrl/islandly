@@ -584,5 +584,7 @@ function startNativeSession() {
       return { ...snapshot, clipboard: clipboardHistory.items, clipboardPending: [] };
     },
   });
-  win.once('ready-to-show', () => nativeSession.loaded().catch(err => { logError('native load', err); app.quit(); }));
+  const loaded = () => nativeSession.loaded().catch(err => { logError('native load', err); app.quit(); });
+  if (win.webContents.isLoading()) win.once('ready-to-show', loaded);
+  else loaded();
 }
