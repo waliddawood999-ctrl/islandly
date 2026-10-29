@@ -8,7 +8,14 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Electron packaging failed' }
     $package = Join-Path $root 'out/IslandlyPanels-win32-x64'
     Copy-Item "$root/native/bin/Islandly.exe" "$package/Islandly.exe" -Force
-    # Keep only the platform's native dependency binaries; retain license files.
+    # This ZIP targets Windows x64; other koffi binaries cannot be loaded by it.
+    $koffiBuild = Join-Path $package 'resources/app/node_modules/koffi/build/koffi'
+    if (!(Test-Path (Join-Path $koffiBuild 'win32_x64/koffi.node'))) { throw 'Packaged Windows x64 koffi binary missing' }
+    Get-ChildItem $koffiBuild -Directory | Where-Object { $_.Name -ne 'win32_x64' } | Remove-Item -Recurse -Force
+    # App languages are Arabic/English. Keep both Chromium English variants and Arabic.
+    Get-ChildItem (Join-Path $package 'locales') -Filter '*.pak' | Where-Object { $_.BaseName -notin @('ar','en-US','en-GB') } | Remove-Item -Force
+    Get-ChildItem $package -Recurse -File | Sort-Object Length -Descending | Select-Object -First 20 @{Name='MB';Expression={[math]::Round($_.Length/1MB,2)}},FullName | Format-Table -AutoSize
+    # Preserve runtime GPU/software-rendering components and all licenses.
     & 7z a -tzip -mx=9 "$root/out/Islandly-native-win64.zip" "$package/*"
     if ($LASTEXITCODE -ne 0) { throw 'ZIP compression failed' }
     $size=(Get-Item "$root/out/Islandly-native-win64.zip").Length/1MB

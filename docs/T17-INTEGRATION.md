@@ -55,3 +55,5 @@ Measured source 86cbffa, [guard run 40871409380](https://github.com/waliddawood9
 | AppBar | 40.67 | 42.96 | 0.365 | 420.45 | 31.89 / 36.96 | 0.416 | 1481 / 817 | 4570 |
 
 Raw evidence: [overlay](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40871409380/artifacts/12896605986), [AppBar](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40871409380/artifacts/12895783460). Both pass every idle RAM sample <180 MB and mean CPU <1%. Windows CI measurements, not laptop/manual playback testing.
+
+- Packaging size pass: excludes non-Windows/non-x64 koffi binaries and unused Chromium language packs while preserving Arabic, en-US/en-GB, all application fonts/licenses and GPU/software-rendering components. Prints the largest runtime files for audit. The <100MB target is best-effort; do not remove required runtime support or change archive compatibility to claim it.
