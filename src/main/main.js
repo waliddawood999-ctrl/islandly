@@ -1,5 +1,5 @@
 const path = require('path');
-const { app, BrowserWindow, screen, ipcMain, Tray, Menu, globalShortcut, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, Tray, Menu, globalShortcut, nativeImage, shell, powerMonitor } = require('electron');
 const settings = require('./settings');
 const { MediaBridge } = require('./media');
 const { ClipboardHistory } = require('./clipboard');
@@ -11,6 +11,8 @@ const { Updater, markBootOk } = require('./updater');
 const { runOnce } = require('./ps');
 const { logError } = require('./log');
 const prayer = require('./services/prayer');
+const { QuranService } = require('./services/quran');
+const { register: registerIslamicIpc } = require('./services/islamic-ipc');
 const { Weather } = require('./services/weather');
 const { SysInfo } = require('./services/sysinfo');
 const { Breaks } = require('./services/breaks');
@@ -42,7 +44,8 @@ let envelope = { w: 160, h: 60 }; // the size the island needs right now, in CSS
 let fullscreenActive = false;
 let foregroundApp = { app: '', title: '' };
 let media, clipboardHistory, shelf, calendar, bluetooth, updater, fsWatcher, weather, sysinfo, breaks, midnightTimer;
-let palette, tracker, privacy, github;
+let palette, tracker, privacy, github, prayerLive;
+const quran = new QuranService({ directory: () => app.getPath('userData') });
 const notesStore = jsonStore('notes.json', { todos: [] });
 
 function todayState() {
@@ -119,6 +122,7 @@ function createWindow() {
   win.once('ready-to-show', () => applyVisibility());
   win.webContents.on('did-finish-load', () => {
     markBootOk();
+    if (prayerLive) push('prayer:state', prayerLive.get());
     win.webContents.setZoomFactor(zoom());
   });
   win.webContents.on('render-process-gone', (_e, d) => logError('renderer gone', JSON.stringify(d)));
@@ -236,6 +240,9 @@ async function stashFromExplorer() {
 }
 
 function registerIpc() {
+  const isIsland = e => !!win && !win.isDestroyed() && e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame;
+  const isSettings = e => !!settingsWin && !settingsWin.isDestroyed() && e.sender === settingsWin.webContents && e.senderFrame === settingsWin.webContents.mainFrame;
+  registerIslamicIpc({ ipcMain, isIsland, isSettings, settings, prayer: () => prayerLive, quran });
   ipcMain.on('settings:get', (e) => (e.returnValue = settings.get()));
   ipcMain.on('island:envelope', (_e, env) => {
     if (!env || !Number.isFinite(env.w) || !Number.isFinite(env.h)) return;
@@ -333,9 +340,14 @@ app.whenReady().then(() => {
 
   media = new MediaBridge((payload) => {
     if (payload && payload.type === 'unavailable') logError('media unavailable:', payload.reason);
+    prayerLive?.mediaChanged(payload);
     push('media:update', payload);
   }, info.baseRoot);
   media.start();
+  prayerLive = new prayer.PrayerService({ getSettings: settings.get, onState: state => push('prayer:state', state), media });
+  prayerLive.start();
+  powerMonitor.on('resume', () => prayerLive.changed());
+  powerMonitor.on('unlock-screen', () => prayerLive.changed());
 
   clipboardHistory = new ClipboardHistory((list) => push('clipboard:update', list));
   if (settings.get().clipboard) clipboardHistory.start();
@@ -418,7 +430,9 @@ app.whenReady().then(() => {
     if (now.icsUrl !== prev.icsUrl) calendar.configure(now.icsUrl);
     if (now.clipboard !== prev.clipboard) now.clipboard ? clipboardHistory.start() : clipboardHistory.stop();
     if (now.hideFullscreen !== prev.hideFullscreen) applyVisibility();
-    const locKeys = ['city', 'lat', 'lng', 'prayerMethod', 'madhab', 'weather'];
+    const prayerKeys = ['city', 'lat', 'lng', 'cityName', 'prayerMethod', 'madhab', 'prayerPreMinutes', 'prayerIqamaMinutes', 'prayerAutoPause', 'ramadanMode'];
+    if (prayerKeys.some(k => JSON.stringify(now[k]) !== JSON.stringify(prev[k]))) prayerLive.changed();
+    const locKeys = ['city', 'lat', 'lng', 'prayerMethod', 'madhab', 'weather', 'ramadanMode'];
     if (locKeys.some((k) => now[k] !== prev[k])) {
       weather.configure(prayer.location(now), now.weather);
       push('today:update', todayState());
@@ -445,7 +459,7 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-  [media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks, tracker, privacy, github, palette].forEach((m) => m && m.stop && m.stop());
+  [prayerLive, media, calendar, bluetooth, updater, fsWatcher, clipboardHistory, weather, sysinfo, breaks, tracker, privacy, github, palette].forEach((m) => m && m.stop && m.stop());
   clearTimeout(midnightTimer);
 });
 

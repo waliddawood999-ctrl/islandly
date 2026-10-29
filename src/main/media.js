@@ -17,6 +17,8 @@ class MediaBridge {
     this.ps = null;
     this.nextId = 1;
     this.pending = new Map();
+    this.playback = null;
+    this.adhanApp = null;
     this.ready = false; // true once the helper has answered once (PowerShell needs a moment to start)
   }
 
@@ -26,7 +28,7 @@ class MediaBridge {
       return;
     }
     this.worker = new Worker(path.join(__dirname, 'media-worker.js'), { workerData: { baseRoot: this.baseRoot } });
-    this.worker.on('message', (m) => this.onUpdate(m));
+    this.worker.on('message', (m) => { this.playback = m.type === 'media' ? m : null; this.onUpdate(m); });
     this.worker.on('error', (err) => this.onUpdate({ type: 'unavailable', reason: String(err) }));
     setTimeout(() => this.warmUp(), 4000);
   }
@@ -94,6 +96,23 @@ class MediaBridge {
     if (action === 'seek') return this.send(`seek ${Number(value).toFixed(3)}`);
     if (['playpause', 'next', 'prev'].includes(action)) return this.send(action);
     return Promise.resolve({ ok: false });
+  }
+
+  isPlaying() { return !!(this.playback?.active && this.playback.playing); }
+
+  async pauseForAdhan() {
+    if (!this.isPlaying()) return { ok: false };
+    const result = await this.send('pause'); // explicit SMTC pause, never a toggling media key
+    if (result?.ok && result.app) this.adhanApp = result.app;
+    return { ok: !!result?.ok && !!result.app };
+  }
+
+  async resumeAfterAdhan() {
+    if (!this.adhanApp) return { ok: false };
+    const app = this.adhanApp;
+    const result = await this.send('play ' + Buffer.from(app).toString('base64'));
+    if (result?.ok && this.adhanApp === app) this.adhanApp = null;
+    return { ok: !!result?.ok };
   }
 
   capabilities() {
