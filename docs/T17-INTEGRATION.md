@@ -42,3 +42,16 @@ Base: dev 3cfd490. Combine only #2, #3, #4, #6, #10, #12, #14, #16, #17, in that
 | #17 | `docs/HANDOFF.md`, `docs/TASKS.md`, `src/main/bluetooth.js`, `src/main/clipboard.js`, `src/main/fullscreen.js`, `src/main/main.js`, `src/main/perf.js`, `src/main/preload.js`, `src/main/ps.js`, `src/main/services/privacy.js`, `src/main/services/store.js`, `src/main/services/weather.js`, `src/main/settings-preload.js`, `src/main/settings.js` | Keep T9 event notifications/cancellation/shared host and native-aware accounting. Add T14 power controller/pause APIs and subscription crash/reload cleanup; single policy and perf owner. Union settings/defaults/API allowlists and all validation. Remove duplicated GitHub pause method from the otherwise clean textual application. |
 
 No textual conflicts in #2/#3/#4/#6. Remaining changes are integration fixes described above, not imports from excluded PRs.
+
+- Final manifest audit: later scoped package snapshots had restored legacy start/base fields. Retained T9's `node scripts/start-native.js` entry and full-install compatibility `islandlyBase: 3`; source-only updates must not cross the native-install boundary. This is a technical conflict resolution, not a new release policy.
+
+## Native measurement evidence
+
+Measured source 86cbffa, [guard run 40871409380](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40871409380), 15-second warmup and 60 one-second samples per phase; counts native host plus every owned Windows Job process, without working-set trimming. Every idle snapshot owns only Islandly.
+
+| Mode | Idle avg MB | Idle peak MB | Idle CPU % | Settings avg MB | After-close avg/peak MB | After-close CPU % | Cold settings/expand ms | Shutdown ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Overlay | 40.17 | 42.46 | 0.363 | 415.97 | 30.59 / 36.65 | 0.311 | 1306 / 775 | 4578 |
+| AppBar | 40.67 | 42.96 | 0.365 | 420.45 | 31.89 / 36.96 | 0.416 | 1481 / 817 | 4570 |
+
+Raw evidence: [overlay](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40871409380/artifacts/12896605986), [AppBar](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40871409380/artifacts/12895783460). Both pass every idle RAM sample <180 MB and mean CPU <1%. Windows CI measurements, not laptop/manual playback testing.

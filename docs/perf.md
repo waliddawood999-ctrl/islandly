@@ -147,3 +147,16 @@ Both commands print idle/settings/returned-idle averages, cold-open latencies, s
 Run `npm start` for ordinary native-host startup. `npm run package:native` builds `out/Islandly-native-win64.zip`; [the validated Windows preview](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40809880548/artifacts/12870405443) includes native `Islandly.exe` and on-demand `IslandlyPanels.exe`. The full-package compatibility base is now 3: src/assets-only updates cannot install or replace the native host. The Linux packaging script requires a Windows-built `ISLANDLY_NATIVE_EXE`. Prior T3/T6/T7 integration must retain this full-install boundary and exactly one AppBar owner in managed sessions.
 
 Native visual gaps for Claude are listed in HANDOFF: GDI rasterization/translucency/shadow/animation differences, generic tray icon/English native menu, and missing rich compact artwork/waveforms or app-specific localized indicators. Existing renderer/settings UI/palette/font/CSS files are untouched. T9 remains in review for laptop confirmation and UI-owner review; CI acceptance does not constitute manual desktop/playback acceptance.
+
+## T17 integrated candidate — 2026-10-29
+
+Source 86cbffa; full native guards [40871409380](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40871409380) pass on Windows CI. Same 15s warmup / 60 one-second samples per workload and complete native-host/Job process inventory as T9; no heap-only accounting, omitted GPU/Utility processes or working-set trimming. Every idle/returned-idle sample contains exactly one native host, no Electron or helper.
+
+| Mode | Idle RAM avg / peak MB | Idle CPU | Settings RAM avg MB | After-close RAM avg / peak MB | After-close CPU |
+|---|---:|---:|---:|---:|---:|
+| Overlay | 40.17 / 42.46 | 0.363% | 415.97 | 30.59 / 36.65 | 0.311% |
+| AppBar | 40.67 / 42.96 | 0.365% | 420.45 | 31.89 / 36.96 | 0.416% |
+
+Cold settings/expanded readiness: overlay 1306/775ms, AppBar 1481/817ms. Full shutdown after close: 4578/4570ms. All native idle samples are under 180MB; both CPU means under 1%. Relative to accepted T9 idle 39.43/39.76MB, integrated means are +0.74/+0.91MB. Raw [overlay](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40871409380/artifacts/12896605986) and [AppBar](https://github.com/waliddawood999-ctrl/islandly/actions/runs/40871409380/artifacts/12895783460) snapshots retain all workloads.
+
+Reproduce on Windows: `npm ci`, `npm test`, then `powershell -NoProfile -ExecutionPolicy Bypass -File test/ci-native-perf.ps1 -Mode overlay` and repeat `-Mode reserved-bar`. The script prepares the on-demand runtime before measurement, then starts the native candidate directly. Settings use canonical appbar; reserved-bar is only the probe label. No local laptop measurement is claimed.

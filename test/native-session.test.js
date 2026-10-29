@@ -1,4 +1,6 @@
+// Native entry points cannot be installed as a source-only update onto the old Electron-only base.
 const assert = require('node:assert/strict');
+assert.equal(require('../package.json').islandlyBase, 3, 'native host requires the full-install compatibility base');
 const { PassThrough } = require('node:stream');
 const { NativeSession } = require('../src/main/native-session');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
