@@ -27,9 +27,19 @@ jobs:
       - name: Reserved-bar ownership and work-area recovery with on-demand panels
         shell: pwsh
         run: ./test/native-footprint.ps1 -Output native-perf-reserved-bar.json -Mode reserved-bar
+      - name: Package native launcher and on-demand runtime
+        run: npm run package:native
+      - name: Packaged startup, state handoff and crash containment
+        shell: pwsh
+        run: ./test/native-footprint.ps1 -Smoke -Mode reserved-bar -Executable out/IslandlyPanels-win32-x64/Islandly.exe
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: t9-native-footprint
           path: native-perf-*.json
           if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        with:
+          name: islandly-native-windows-preview
+          path: out/Islandly-native-win64.zip
+          if-no-files-found: error

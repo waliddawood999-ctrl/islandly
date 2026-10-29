@@ -190,6 +190,8 @@ function openSettings() {
 
 // ---------------------------------------------------------------- tray
 
+function nativeHostPath() { return app.isPackaged ? path.join(path.dirname(process.execPath), 'Islandly.exe') : path.join(info.baseRoot, 'native', 'bin', 'Islandly.exe'); }
+
 function trayMenuTemplate() {
   const s = settings.get();
   const radio = (key, value, label) => ({ label, type: 'radio', checked: s[key] === value, click: () => settings.set({ [key]: value }) });
@@ -229,8 +231,8 @@ function trayMenuTemplate() {
       {
         label: 'التشغيل مع ويندوز',
         type: 'checkbox',
-        checked: app.getLoginItemSettings().openAtLogin,
-        click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }),
+        checked: app.getLoginItemSettings(nativeManaged ? { path: nativeHostPath() } : undefined).openAtLogin,
+        click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked, ...(nativeManaged ? { path: nativeHostPath() } : {}) }),
       },
       { type: 'separator' },
       { label: `Islandly ${info.version}`, enabled: false },

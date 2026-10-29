@@ -1,6 +1,6 @@
 # Same 15 s warmup and 60 one-second samples as the Electron controls.
 # Counts native host plus every PID in its Windows Job Object, without working-set trimming.
-param([string]$Output = "$PSScriptRoot/../native-perf-result.json", [ValidateSet('overlay','reserved-bar')][string]$Mode = 'overlay', [switch]$Smoke)
+param([string]$Output = "$PSScriptRoot/../native-perf-result.json", [ValidateSet('overlay','reserved-bar')][string]$Mode = 'overlay', [switch]$Smoke, [string]$Executable = '')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Add-Type -AssemblyName System.Windows.Forms
@@ -26,7 +26,7 @@ if ($Smoke) {
     $fixture = @{ mode='focus'; total=7200; remaining=7200; running=$true; endAt=$timerDeadline; selected='timer'; clipboard=@(); clipboardPending=@('native handoff fixture') } | ConvertTo-Json
     [IO.File]::WriteAllText("$profile/native-session.json",$fixture,[Text.UTF8Encoding]::new($false))
 }
-$exe = Join-Path $root 'native/bin/Islandly.exe'
+$exe = if ($Executable) { [IO.Path]::GetFullPath($Executable) } else { Join-Path $root 'native/bin/Islandly.exe' }
 $hostProcess = Start-Process $exe -ArgumentList @('--root',"`"$root`"",'--profile',"`"$profile`"",'--probe-dir',"`"$probe`"",'--mode',$Mode) -PassThru
 $owned = [System.Collections.Generic.HashSet[int]]::new()
 function Read-Status {
@@ -96,7 +96,7 @@ try {
     Command 'settings'
     $opened = Wait-Phase 'panel'
     $panel = Samples 'panel'
-    if ($Mode -eq 'reserved-bar' -and !(Read-Status).appBar) { throw 'AppBar lost while panel open' }
+    if ($Mode -eq 'reserved-bar' -and (!(Read-Status).appBar -or [WorkAreaProbe]::Top() -lt (Read-Status).appBarBottom)) { throw 'AppBar lost while panel open' }
     Command 'close'
     $closed = Wait-Phase 'idle'
     $afterClose = Samples 'idle'
