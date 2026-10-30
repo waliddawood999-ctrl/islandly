@@ -38,9 +38,32 @@ try {
  Install
  Assert (Test-Path "$dest/.islandly-install") 'Install marker missing'
  Assert (Test-Path $menu) 'Start shortcut missing'
- $shell=New-Object -ComObject WScript.Shell
- $shortcut=$shell.CreateShortcut($menu)
- Assert ([Environment]::ExpandEnvironmentVariables($shortcut.TargetPath) -eq "$dest\Islandly.exe") "Shortcut resolves to wrong user: $($shortcut.TargetPath)"
+ # WScript.Shell.TargetPath can be empty before Resolve when the link deliberately
+ # has no build-account ID list. Exercise real ShellExecute instead of that getter.
+ $probe=Join-Path $sandbox 'shortcut-probe';New-Item $probe -ItemType Directory | Out-Null
+ $linkProfile=Join-Path $sandbox 'shortcut-profile'
+ $launched=$null
+ try {
+  $launched=Start-Process $menu -ArgumentList "--profile `"$linkProfile`" --probe-dir `"$probe`"" -PassThru
+  $deadline=[DateTime]::UtcNow.AddSeconds(20);$status=$null
+  do {
+   Start-Sleep -Milliseconds 200
+   if(Test-Path "$probe/status.json") {
+    $stream=[IO.FileStream]::new("$probe/status.json",[IO.FileMode]::Open,[IO.FileAccess]::Read,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+    $reader=[IO.StreamReader]::new($stream)
+    try {$status=$reader.ReadToEnd() | ConvertFrom-Json}finally{$reader.Dispose()}
+   }
+  } while(!$status -and [DateTime]::UtcNow -lt $deadline)
+  Assert ($null -ne $status) 'Start menu shortcut did not launch the native host'
+  $actual=(Get-Process -Id $status.hostPid).Path
+  Assert ($actual -eq "$dest\Islandly.exe") "Shortcut launched the wrong account/path: $actual"
+  Assert (@($status.processes).Count -eq 1) 'Shortcut launched Electron at idle'
+  Set-Content "$probe/command.txt" 'exit' -NoNewline
+  $hostProcess=Get-Process -Id $status.hostPid
+  Assert ($hostProcess.WaitForExit(10000)) 'Shortcut host did not quit cleanly'
+ } finally {
+  if($launched -and !$launched.HasExited){$launched.Kill();$launched.WaitForExit()}
+ }
  $registration=Get-ItemProperty $arp
  Assert ($registration.InstallLocation -eq $dest) 'ARP installation location mismatch'
  Assert ($registration.UninstallString.Contains('Uninstall.cmd')) 'Missing ARP uninstaller'
