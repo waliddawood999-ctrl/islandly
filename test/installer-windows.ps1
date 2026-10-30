@@ -13,9 +13,16 @@ $run='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 if(Test-Path $arp){throw 'Test requires an account without an existing Islandly installation'}
 if((Get-ItemProperty $run -Name Islandly -ErrorAction SilentlyContinue)){throw 'Test requires no existing Islandly startup value'}
 function Assert($condition,[string]$message){if(!$condition){throw $message}}
+function Run-Installer([string]$argument='/quiet'){
+ if($argument -notin @('/quiet','/startup-on','/startup-off')){throw 'Unexpected installer argument'}
+ # Match the documented entrypoint: cmd already in the extracted folder. Avoid
+ # PowerShell's native-argument re-quoting of a CMD filename containing & and spaces.
+ $p=Start-Process $env:ComSpec -WorkingDirectory $Package -ArgumentList "/d /c Install.cmd $argument" -Wait -PassThru
+ return $p.ExitCode
+}
 function Install([string]$argument='/quiet'){
- & $env:ComSpec /d /c "`"`"$Package\Install.cmd`" $argument`""
- if($LASTEXITCODE -ne 0){throw "Installer exit $LASTEXITCODE for $argument"}
+ $code=Run-Installer $argument
+ if($code -ne 0){throw "Installer exit $code for $argument"}
 }
 function Hashes([string]$root){
  $result=@{};Get-ChildItem $root -Recurse -File | Where-Object Extension -in '.exe','.dll','.node' | ForEach-Object {$result[$_.FullName.Substring($root.Length)]=(Get-FileHash $_.FullName -Algorithm SHA256).Hash};return $result
@@ -53,8 +60,8 @@ try {
  $hostExe="$Package/payload/Islandly.exe"; $backup=[IO.File]::ReadAllBytes($hostExe)
  try {
   [IO.File]::AppendAllText($hostExe,'tampered')
-  & $env:ComSpec /d /c "`"`"$Package\Install.cmd`" /quiet`""
-  Assert ($LASTEXITCODE -ne 0) 'Tampered payload was accepted'
+  $code=Run-Installer
+  Assert ($code -ne 0) 'Tampered payload was accepted'
   Assert ((Get-FileHash "$dest/Islandly.exe").Hash -eq $installed['\Islandly.exe']) 'Rejected update damaged installation'
  } finally {[IO.File]::WriteAllBytes($hostExe,$backup)}
  # Exercise the exact command Windows Installed Apps receives, with quiet consent for CI.
