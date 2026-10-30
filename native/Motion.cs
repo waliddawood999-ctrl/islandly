@@ -98,7 +98,8 @@ sealed class NativeMotion:IDisposable {
     if(p!=lastPoint){lastPoint=p;lastMove=clock.ElapsedMilliseconds;eyeUntil=lastMove+1500;Input();}if(distance>=240){tracking=false;eyeUntil=clock.ElapsedMilliseconds+1500;}}}
   Step((clock.ElapsedMilliseconds-lastStep)/1000f);
   if(snapshot.blink>=.999f&&eyeDirtyBlink<.999&&!blinkTimer.Enabled)ScheduleBlink();
-  bool dirty=Math.Abs(snapshot.gx-eyeDirtyX)>=.02||Math.Abs(snapshot.gy-eyeDirtyY)>=.02||Math.Abs(snapshot.lid-eyeDirtyLid)>=.002||Math.Abs(snapshot.blink-eyeDirtyBlink)>=.002;
+  // Redraw only when something moved by at least half a pixel: gaze travels 4 x 3 px, the lid slot is 30 px, the blink changes a 13 px width.
+  bool dirty=Math.Abs(snapshot.gx-eyeDirtyX)*4>=.5||Math.Abs(snapshot.gy-eyeDirtyY)*3>=.5||Math.Abs(snapshot.lid-eyeDirtyLid)*30>=.5||Math.Abs(snapshot.blink-eyeDirtyBlink)*13>=.25;
   if(dirty){Draw(true);eyeDirtyX=snapshot.gx;eyeDirtyY=snapshot.gy;eyeDirtyLid=snapshot.lid;eyeDirtyBlink=snapshot.blink;}
   eyesTimer.Interval=clock.ElapsedMilliseconds-lastMove<1500?33:100;
   if(!tracking&&clock.ElapsedMilliseconds>eyeUntil){eyesTimer.Stop();ScheduleBlink();}
