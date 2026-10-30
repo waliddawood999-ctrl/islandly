@@ -26,7 +26,7 @@ static class MotionApi {
  public static void Check(int hr){if(hr<0)Marshal.ThrowExceptionForHR(hr);}
 }
 sealed class MotionOptions {
- public Rectangle screen;public float scale=1,center,top;public bool eyes,eco,fullscreen,compact,light,rtl,acrylic,floating,hidden,sliver,loading;public string mode="full",label="",date="";
+ public Rectangle screen;public float scale=1,center,top;public Rectangle hotZone;public bool eyes,eco,fullscreen,compact,light,rtl,acrylic,floating,hidden,sliver,loading;public string mode="full",label="",date="";
 }
 sealed class NativeMotion:IDisposable {
  readonly Form owner;readonly string adapter;readonly Action hover,leave;readonly bool diagnostics;
@@ -41,20 +41,25 @@ sealed class NativeMotion:IDisposable {
  readonly object workerGate=new object();Thread worker;
  public NativeMotion(Form form,Action onHover,Action onLeave,Action onClick,bool measure){owner=form;hover=onHover;leave=onLeave;diagnostics=measure;
   MotionApi.Check(MotionApi.MotionCreate(owner.Handle,out renderer));var adapterName=new System.Text.StringBuilder(256);MotionApi.MotionAdapter(renderer,adapterName,adapterName.Capacity);adapter=adapterName.ToString();
-  halo=new Halo();halo.MouseEnter+=delegate{PointerEvent();hover();};halo.MouseMove+=delegate{PointerEvent();};halo.MouseLeave+=delegate{leave();};halo.MouseClick+=delegate(object s,MouseEventArgs e){if(e.Button==MouseButtons.Left){PointerEvent();onClick();}};
+  halo=new Halo();halo.MouseEnter+=delegate{if(options.hidden&&!options.hotZone.IsEmpty){if(Reveal!=null)Reveal();return;}PointerEvent();hover();};halo.MouseMove+=delegate{PointerEvent();};halo.MouseLeave+=delegate{leave();};halo.MouseClick+=delegate(object s,MouseEventArgs e){if(e.Button==MouseButtons.Left){PointerEvent();onClick();}};
   eyesTimer.Interval=33;eyesTimer.Tick+=delegate{EyeTick();};blinkTimer.Tick+=delegate{blinkTimer.Stop();bool live=tracking&&eyesTimer.Enabled;MotionApi.Check(MotionApi.MotionBlink(renderer,live?1:0));if(live){eyeUntil=clock.ElapsedMilliseconds+600;lastMove=clock.ElapsedMilliseconds;StartEyes();}else ScheduleBlink();};
   fadeTimer.Interval=120;fadeTimer.Tick+=delegate{fadeTimer.Stop();fading=false;owner.Hide();halo.Hide();};
  }
  public event Action<double> FrameChanged;
+ public Action Reveal;
+ public void PlaceHaloNow(){PlaceHalo();}
  public bool Opening {get{return target!=0;}}
  public bool VisibleEyes {get{return snapshot.visible!=0;}}
  public object Report {get{return new{backend="Direct2D/DirectComposition",adapter=adapter,body=snapshot.body,drop=snapshot.drop,gx=snapshot.gx,gy=snapshot.gy,lid=snapshot.lid,blink=snapshot.blink,eyesVisible=snapshot.visible!=0&&owner.Visible,frameLoop=loop!=0,cursorTimer=eyesTimer.Enabled&&tracking,cursorReads=cursorReads,renders=renders,inputSequence=inputSequence,inputFirstMs=firstResponse,center=options.center,top=options.top,scale=options.scale,floating=options.floating,light=options.light,fullscreen=options.fullscreen,hidden=options.hidden,cardWidth=cardWidth,cardHeight=cardHeight};}}
- public void Configure(MotionOptions next){bool changed=options.eyes!=next.eyes||options.eco!=next.eco||options.mode!=next.mode||options.fullscreen!=next.fullscreen||options.compact!=next.compact||options.light!=next.light||options.rtl!=next.rtl||options.acrylic!=next.acrylic||options.floating!=next.floating||options.center!=next.center||options.top!=next.top||options.scale!=next.scale||options.label!=next.label||options.date!=next.date||options.hidden!=next.hidden||options.sliver!=next.sliver||options.screen!=next.screen||options.loading!=next.loading;
+ public void Configure(MotionOptions next){bool changed=options.eyes!=next.eyes||options.eco!=next.eco||options.mode!=next.mode||options.fullscreen!=next.fullscreen||options.compact!=next.compact||options.light!=next.light||options.rtl!=next.rtl||options.acrylic!=next.acrylic||options.floating!=next.floating||options.center!=next.center||options.top!=next.top||options.scale!=next.scale||options.label!=next.label||options.date!=next.date||options.hidden!=next.hidden||options.hotZone!=next.hotZone||options.sliver!=next.sliver||options.screen!=next.screen||options.loading!=next.loading;
   options=next;float s=options.scale;int w=Math.Min(options.screen.Width,(int)Math.Ceiling(600*s)),h=Math.Min(options.screen.Height,(int)Math.Ceiling(920*s));
   int left=Math.Max(options.screen.Left,Math.Min(options.screen.Right-w,(int)(options.center-w/2f)));
   var bounds=new Rectangle(left,options.screen.Top,w,h);if(owner.Bounds!=bounds)owner.Bounds=bounds;
   frame=new MotionApi.Frame{width=w,height=h,scale=s,center=(options.center-left)/s,top=(options.top-options.screen.Top)/s,left=(options.screen.Left-left)/s,right=(options.screen.Right-left)/s,cardWidth=cardWidth,cardHeight=cardHeight,opacity=fading?frame.opacity:1,anticipation=0,flags=(options.light?1:0)|(options.rtl?2:0)|(options.acrylic?4:0)|(options.floating?8:0)|(options.sliver?16:0)|(options.loading?64:0)};
-  if(options.hidden){Input();Step(0);Interlocked.Exchange(ref loop,0);StopEyes();halo.Hide();owner.Hide();firstResponse=clock.ElapsedMilliseconds-inputAt;return;}
+  if(options.hidden){Input();Step(0);Interlocked.Exchange(ref loop,0);StopEyes();owner.Hide();
+   // Hidden by fullscreen or 'show on approach': no timers run; one input-only strip (alpha 1/255, never activates) wakes the island when the mouse enters it.
+   if(options.hotZone.IsEmpty)halo.Hide();else{if(halo.Bounds!=options.hotZone)halo.Bounds=options.hotZone;if(!halo.Visible)halo.Show();}
+   firstResponse=clock.ElapsedMilliseconds-inputAt;return;}
   if(changed&&!fading){Input();Step(0);Draw(false);if(snapshot.visible!=0&&options.mode=="full"){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();}else StopEyes();}
   if(!fading&&owner.Visible)PlaceHalo();
   if(snapshot.moving!=0||resizing)StartLoop();else if(options.mode=="off")Interlocked.Exchange(ref loop,0);

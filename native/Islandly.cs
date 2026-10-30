@@ -140,8 +140,8 @@ sealed class IslandHost : Form {
         MouseMove += delegate { if(motion!=null)motion.PointerEvent(); };
         MouseLeave += delegate { LeaveHover(); };
         MouseClick += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) OpenPanel("expand","click"); };
-        leaveGrace.Interval=200; leaveGrace.Tick+=delegate { leaveGrace.Stop(); if(motion!=null&&!motion.ContainsPointer()){motion.LeaveApproach();if(hoverLaunch&&motion.Opening&&!ready){NativeLog.Write("hover-cancel","pointer outside current card+16 after200ms");cancelLaunch=true;motion.Open(false);Send("close");}}if(motion!=null&&!motion.Opening)Position(); };
-        hoverDwell.Interval = 120; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring) OpenPanel("expand","hover"); };
+        leaveGrace.Interval=200; leaveGrace.Tick+=delegate { leaveGrace.Stop(); if(motion!=null&&!motion.ContainsPointer()){motion.LeaveApproach();if(revealed){revealed=false;Position();}if(hoverLaunch&&motion.Opening&&!ready){NativeLog.Write("hover-cancel","pointer outside current card+16 after200ms");cancelLaunch=true;motion.Open(false);Send("close");}}if(motion!=null&&!motion.Opening)Position(); };
+        hoverDwell.Interval = 120; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring && !Fullscreen()) OpenPanel("expand","hover"); };
         launchRetry.Interval=1500;
         launchRetry.Tick+=delegate { launchRetry.Stop(); string requested=retryCommand; retryCommand=""; if(requested!="") OpenPanel(requested,"retry",true); };
         ticker.Interval = 1000; ticker.Tick += Tick; ticker.Start();
@@ -176,6 +176,7 @@ sealed class IslandHost : Form {
         consent = new ConsentWatcher(delegate(string label) { if(!closing) { privacyLabel = label; Position(); } });
         motion=new NativeMotion(this,ArmHover,LeaveHover,delegate{OpenPanel("expand","click");},probe!="" && Environment.GetCommandLineArgs().Contains("--motion-metrics"));
         motion.FrameChanged+=delegate(double time){if(launching&&!loadingPainted){loadingPainted=true;NativeLog.Write("loading-paint","inputToPaintMs="+(clock.ElapsedMilliseconds-requestAt));}};
+        motion.Reveal=delegate{if(!revealed){revealed=true;Position();}};
         foregroundWatcher=new ForegroundWatcher(this,Position);
         Position();Status();
     }
@@ -203,7 +204,7 @@ sealed class IslandHost : Form {
         if(!nativeAcrylic) NativeMaterial.Apply(Handle,false,nativeLight);
     }
     void DisplayChanged(object s, EventArgs e) { if (!closing && IsHandleCreated) BeginInvoke((Action)Position); }
-    string fullscreenSeen="";
+    bool revealed; string fullscreenSeen="";
     bool Fullscreen(bool preference=true) {
         if (preference && Setting("hideFullscreen","True").Equals("False",StringComparison.OrdinalIgnoreCase)) return false;
         IntPtr h = Native.GetForegroundWindow(); var name = new StringBuilder(128); Native.GetClassName(h,name,128);
@@ -223,7 +224,12 @@ sealed class IslandHost : Form {
         ApplyNativeMaterial();
         string mode=modeOverride == "" ? Setting("islandMode","overlay") : modeOverride;
         bool reserved = !barBlocked && (mode == "appbar" || mode == "reserved-bar");
-        bool hide = hidden || Fullscreen();
+        bool fs = Fullscreen();
+        bool approach = !fs && Setting("islandVisibility","always") == "approach";
+        if (!fs && !approach) revealed = false;
+        // Fullscreen: hidden unless the mouse revealed it at the top edge. Approach mode: hidden until the cursor nears, but never while a panel is loading/open or the pointer is on it.
+        bool away = (fs || approach) && !revealed && (fs || (child == null && !launching && !hoverArmed));
+        bool hide = hidden || away;
         bool wantBar = reserved && !hide;
         if (wantBar != bar) {
             if (bar) RemoveBar();
@@ -249,13 +255,15 @@ sealed class IslandHost : Form {
         bool floating=Setting("floating","False")=="True";
         if(floating) x=pos=="left"?screen.Left+(int)(20*scale):pos=="right"?screen.Right-w-(int)(20*scale):x;
         float anchorMargin=(floating?20:16)*scale;float center=pos=="left"?screen.Left+anchorMargin+69*scale:pos=="right"?screen.Right-anchorMargin-69*scale:screen.Left+screen.Width/2f,top=screen.Top+(sliver?0:(floating?14:8)*scale);
+        Rectangle hotZone=Rectangle.Empty;
+        if(motion!=null && hide && !hidden){ int zx=(int)(center-69*scale-(approach?24*scale:0)), zw=(int)(138*scale+(approach?48*scale:0)); hotZone=new Rectangle(zx,screen.Top,zw,approach?(int)(top-screen.Top+36*scale+16*scale):Math.Max(2,(int)(2*scale))); }
         if(motion!=null){
             bool light=nativeLight;
             bool compact=TimerHasState()||privacyLabel!=""||SystemInformation.PowerStatus.BatteryChargeStatus!=BatteryChargeStatus.NoSystemBattery&&SystemInformation.PowerStatus.BatteryLifePercent<.2f;
             string lang=Setting("uiLang",Setting("lang","ar"));if(lang=="auto")lang=Setting("lang","ar");
             string label=motion.Opening?DateTime.Now.ToString("HH:mm"):CompactLabel();if(Setting("digits","latn")=="arab")for(int i=0;i<10;i++)label=label.Replace((char)('0'+i),(char)('٠'+i));
-            motion.Configure(new MotionOptions{screen=screen,scale=scale,center=center,top=top,eyes=Setting("idleEyes","False")=="True",eco=nativeEco,mode=Setting("motion","full"),fullscreen=Fullscreen(false),compact=compact,sliver=sliver,light=light,rtl=lang!="en",acrylic=nativeAcrylic,floating=floating,hidden=hide,loading=launching||child!=null&&!ready,label=label,date=DateTime.Now.ToString("D",System.Globalization.CultureInfo.GetCultureInfo(lang=="en"?"en-US":"ar-SA"))});
-            if(!hide && !ready && !Visible)Show();
+            motion.Configure(new MotionOptions{screen=screen,scale=scale,center=center,top=top,eyes=Setting("idleEyes","False")=="True",eco=nativeEco,mode=Setting("motion","full"),fullscreen=Fullscreen(false),hotZone=hotZone,compact=compact,sliver=sliver,light=light,rtl=lang!="en",acrylic=nativeAcrylic,floating=floating,hidden=hide,loading=launching||child!=null&&!ready,label=label,date=DateTime.Now.ToString("D",System.Globalization.CultureInfo.GetCultureInfo(lang=="en"?"en-US":"ar-SA"))});
+            if(!hide && !ready && !Visible){Show();motion.PlaceHaloNow();}
             return;
         }
         SetBounds(x,(int)top,w,height);

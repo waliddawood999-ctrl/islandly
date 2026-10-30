@@ -16,6 +16,7 @@ const DEFAULTS = {
   position: 'center', // 'center' | 'left' | 'right'
   scale: 0.8, // UI size: 0.7 small, 0.8 medium, 1 large
   hideFullscreen: true,
+  islandVisibility: 'always', // 'always' | 'approach' (hidden until the cursor nears the island); read by the native host
   icsUrl: '',
   clipboard: true,
   updates: true,
@@ -53,6 +54,7 @@ function init() {
     if (!['acrylic', 'glass'].includes(data.material)) data.material = DEFAULTS.material;
     for (const key of ['ecoMode', 'ecoAuto', 'floating', 'idleEyes']) if (typeof data[key] !== 'boolean') data[key] = DEFAULTS[key];
     if (!['full', 'reduced', 'off'].includes(data.motion)) data.motion = DEFAULTS.motion;
+    if (!['always', 'approach'].includes(data.islandVisibility)) data.islandVisibility = DEFAULTS.islandVisibility;
   } catch (_) {
     /* first run */
   }
@@ -71,6 +73,7 @@ function set(patch) {
     if (key === 'digits' && !['latn', 'arab'].includes(patch[key])) continue;
     if (key === 'motion' && !['full', 'reduced', 'off'].includes(patch[key])) continue;
     if (key === 'material' && !['acrylic', 'glass'].includes(patch[key])) continue;
+    if (key === 'islandVisibility' && !['always', 'approach'].includes(patch[key])) continue;
     if (!(key in patch)) continue;
     if (key === 'prayerIqamaMinutes') {
       if (patch[key] && typeof patch[key] === 'object' && !Array.isArray(patch[key])) {

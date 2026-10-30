@@ -103,6 +103,14 @@ try{
  $deadline=[DateTime]::UtcNow.AddSeconds(5);while(!(Test-Path "$probe/fullscreen-ready")){if($fullscreenProcess.HasExited-or [DateTime]::UtcNow-gt $deadline){throw 'Fullscreen fixture did not start'};Start-Sleep -Milliseconds 20}
  try{Refresh;$fullscreen=Read-Status;if(!$fullscreen.motion.fullscreen-or $fullscreen.motion.eyesVisible-or $fullscreen.motion.cursorTimer){throw 'Real fullscreen foreground did not hide eyes/timers'}}finally{Close-Fullscreen}
  Refresh
+ # 'Show on mouse approach': hidden (no eyes, no timers) until the cursor nears the island, hidden again when it leaves; 'always' restores it.
+ function Wait-Island($visible){$until=[DateTime]::UtcNow.AddSeconds(3);do{Refresh;$s=Read-Status;if([bool]$s.motion.eyesVisible-eq $visible){return $s};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow-lt $until);throw "Island visibility never became $visible"}
+ $configuration.islandVisibility='approach';Save-Settings;$s=Wait-Island $false
+ if($s.motion.cursorTimer-or $s.motion.frameLoop){throw 'Approach mode left timers running while hidden'}
+ [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$s.motion.center,[int]($s.motion.top+10));$s=Wait-Island $true
+ [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$s.motion.center,[int]($s.motion.top+500));$s=Wait-Island $false
+ $configuration.islandVisibility='always';Save-Settings;$s=Wait-Island $true
+ Write-Output 'NATIVE ISLAND VISIBILITY: approach hides, cursor near reveals, leaving hides, always restores'
  # Real Win32 message dispatch: input timestamp is captured at UI dispatch, never at a later timer.
  $frames=@();$inputs=@()
  for($n=0;$n-lt 12;$n++){
