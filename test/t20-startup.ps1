@@ -27,7 +27,7 @@ try {
  if($s.processStartedMs-$s.requestMs-lt 32000){throw 'Ready timer started before process resume'}
  $log=Get-Content "$dir/profile/native-panels.log" -Raw
  if($log-notmatch 'loading-paint.*inputToPaintMs=([0-9]+)'){throw 'Native loading feedback not painted'}
- if([int]$Matches[1]-ge 50){throw 'Native loading feedback exceeds50ms'}
+ if([int]$Matches[1]-ge 50){Write-Output ('LOADING FEEDBACK DIAGNOSTIC: '+(($log-split"`n")|Where-Object{$_-match 'loading-paint|fullscreen-check|hover|launch|expand'}|Select-Object -First 12)-join ' | ');throw "Native loading feedback $($Matches[1]) ms exceeds 50 ms"}
  Command 'close';Until {(Status).phase-eq'idle'} 'all panel processes gone'
  if(@((Status).processes).Count-ne 1){throw 'Delayed panel process leaked'}
  Write-Output "T20 STARTUP PASS: responsive UI during32s create delay, timer after ResumeThread, first-ready after32s, primary conflict/fallback, loading paint under50ms, full shutdown"
