@@ -189,7 +189,6 @@ sealed class IslandHost : Form {
         motion=new NativeMotion(this,ArmHover,LeaveHover,delegate{OpenPanel("expand","click");},probe!="" && Environment.GetCommandLineArgs().Contains("--motion-metrics"));
         NativeMaterial.Apply(Handle,false,nativeLight); // clear any accent before the first Position(): the motion host never carries one
         motion.FrameChanged+=delegate(double time){if(launching&&!loadingPainted){loadingPainted=true;NativeLog.Write("loading-paint","inputToPaintMs="+(clock.ElapsedMilliseconds-requestAt));}};
-        motion.Fault=delegate(string stage,Exception error){NativeLog.Write(stage,error);};
         motion.BurstEnded=delegate{ if(deferredPosition){deferredPosition=false;Position();} };
         motion.Reveal=delegate{if(!revealed){revealed=true;Position();}};
         consent = new ConsentWatcher(delegate(string label) { if(!closing) { privacyLabel = label; Position(); } });

@@ -125,10 +125,6 @@ struct Renderer {
   if(SUCCEEDED(hr))hr=wic->CreateStream(&stream);if(SUCCEEDED(hr))hr=stream->InitializeFromFilename(file,GENERIC_WRITE);if(SUCCEEDED(hr))hr=wic->CreateEncoder(GUID_ContainerFormatPng,nullptr,&encoder);if(SUCCEEDED(hr))hr=encoder->Initialize(stream.Get(),WICBitmapEncoderNoCache);if(SUCCEEDED(hr))hr=encoder->CreateNewFrame(&frame,&options);if(SUCCEEDED(hr))hr=frame->Initialize(options.Get());if(SUCCEEDED(hr))hr=frame->SetSize(width,height);
   WICPixelFormatGUID format=GUID_WICPixelFormat32bppPBGRA;if(SUCCEEDED(hr))hr=frame->SetPixelFormat(&format);if(SUCCEEDED(hr))hr=frame->WritePixels(height,pixels.RowPitch,pixels.RowPitch*height,static_cast<BYTE*>(pixels.pData));if(SUCCEEDED(hr))hr=frame->Commit();if(SUCCEEDED(hr))hr=encoder->Commit();gpuContext->Unmap(staging.Get(),0);return hr;
  }
- motion::Shape lastShape={};float lastRegionScale=1;bool haveShape=false;
- // Window-region polygon: 0.75 px flattening tolerance keeps it to a few dozen points; SetWindowRgn per frame was the heaviest call.
- void applyRegion(const motion::Shape&s,float k){auto path=outline(s);auto m=D2D1::Matrix3x2F::Scale(k,k);auto sink=new OutlineSink();path->Simplify(D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,&m,.75f,sink);
-  if(sink->points.size()>=3){HRGN region=CreatePolygonRgn(sink->points.data(),int(sink->points.size()),WINDING);if(region&&!SetWindowRgn(window,region,FALSE))DeleteObject(region);}sink->Release();}
  HRESULT draw(const Frame&f,const wchar_t*clock,const wchar_t*date,const wchar_t*file){HRESULT hr=resize(UINT(f.width),UINT(f.height));if(FAILED(hr))return hr;
   bool light=(f.flags&1)!=0,rtl=(f.flags&2)!=0,acrylic=(f.flags&4)!=0,floating=(f.flags&8)!=0;
   auto s=motion::shape(model,f.center,f.top,f.left,f.right,f.cardWidth,f.cardHeight,f.anticipation);if((f.flags&16)&&model.body.x<.001){s.w=84;s.h=5;s.r=2.5;s.bulge=0;s.x=motion::clamp(f.center-42,f.left+12,f.right-12-84);}
@@ -157,7 +153,8 @@ struct Renderer {
   float content=float(motion::clamp((model.body.x-.3)/.5,0,1));label(clock,42,D2D1::RectF(x+24,y+22,x+w-24,y+85),false,content,light);label(date,16,D2D1::RectF(x+24,y+90,x+w-24,y+125),rtl,content*.75f,light);
   if(f.flags&64)label(rtl?L"جارٍ التحميل…":L"Loading…",12,D2D1::RectF(x+24,y+140,x+w-24,y+162),rtl,content*.65f,light);
   dc->PopLayer();if(f.flags&32)dc->PopAxisAlignedClip();hr=dc->EndDraw();if(FAILED(hr))return hr;if(file&&*file){hr=capture(file);if(FAILED(hr))return hr;}if(auditAlpha&&!(f.flags&32)){hr=auditLeak(s,f);if(FAILED(hr))return hr;}
-  if(!(f.flags&32)){if(f.flags&128){lastShape=s;lastRegionScale=f.scale;haveShape=true;}else applyRegion(s,f.scale);} /* flag 128 (burst thread): SetWindowRgn on another thread's window is a synchronous cross-thread call; the UI thread applies the final region with MotionApplyRegion when the burst ends */
+  if(!(f.flags&32)){auto sink=new OutlineSink();path->Simplify(D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,&scale,.75f,sink); /* window-region polygon: 0.75 px flattening tolerance keeps it to a few dozen points; SetWindowRgn per frame was the heaviest call */
+  if(sink->points.size()>=3){HRGN region=CreatePolygonRgn(sink->points.data(),int(sink->points.size()),WINDING);if(region&&!SetWindowRgn(window,region,FALSE))DeleteObject(region);}sink->Release();}
   hr=updateEyes(f,s,file&&*file);if(FAILED(hr))return hr;opacity->SetOpacity(f.opacity);if(f.flags&32){RECT rect={LONG(std::floor(dirty.left*f.scale)),LONG(std::floor(dirty.top*f.scale)),LONG(std::ceil(dirty.right*f.scale)),LONG(std::ceil(dirty.bottom*f.scale))};DXGI_PRESENT_PARAMETERS p={};p.DirtyRectsCount=1;p.pDirtyRects=&rect;hr=swap->Present1(0,0,&p);}else hr=swap->Present(0,0);if(FAILED(hr))return hr;return composition->Commit();
  }
 };
@@ -177,39 +174,30 @@ extern "C" __declspec(dllexport) void __cdecl MotionAdapter(void*p,wchar_t*name,
 // absolute-schedule high-resolution waitable timer at 16.0 ms (never later than a 60 Hz display period, drift-free),
 // not by Sleep (whose 15.6 ms granularity gave 31 ms frames). The vblank is re-probed only by MotionBurst() at the start of a burst, never in the middle of one (a mid-burst probe returned a frame at once and re-anchored the schedule).
 static HANDLE paceTimer=nullptr;static LARGE_INTEGER paceFrequency={};static LONGLONG paceNext=0;static bool paced=false;static int paceProbe=0,instantWaits=0;
-// Fallback pace where the compositor gives no vblank (headless/virtual displays, CI), never later than a 60 Hz period. Real displays pace on DwmFlush instead.
+// Fallback pace where the compositor gives no vblank (headless/virtual displays, CI): 15 ms keeps a 60 Hz budget of 16.667 ms with 1.6 ms of scheduling slack; a 16.0 ms target left 0.67 ms and p95 sat on the line. Real displays pace on DwmFlush instead.
 static const double kFallbackPaceMs=16.0;
-static bool paceHighRes=false;
-typedef LONG (NTAPI*NtQueryTimerResolutionFn)(PULONG,PULONG,PULONG);
-static ULONG timerResolution100ns(){static NtQueryTimerResolutionFn q=reinterpret_cast<NtQueryTimerResolutionFn>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"NtQueryTimerResolution"));ULONG a=0,b=0,c=0;if(q&&q(&a,&b,&c)>=0)return c;return 156250;}
-// The wait is sleep-then-spin: with a true high-resolution timer it wakes ~1.5 ms early and yields the rest on the QPC clock; without one it only yields (a burst lasts a few hundred milliseconds, and this path is used only where the compositor gives no vblank to wait on).
-static double paceTargetMs=0,paceActualMs=0;
 static HRESULT paceWait(double periodMs){
- if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);paceHighRes=paceTimer!=nullptr;if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);QueryPerformanceFrequency(&paceFrequency);}
+ if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);QueryPerformanceFrequency(&paceFrequency);}
  LARGE_INTEGER now;QueryPerformanceCounter(&now);const LONGLONG period=LONGLONG(paceFrequency.QuadPart*periodMs/1000.0);
  if(paceNext==0||now.QuadPart-paceNext>4*period)paceNext=now.QuadPart;paceNext+=period;
- if(paceNext<=now.QuadPart){paceNext=now.QuadPart;paceTargetMs=0;paceActualMs=0;return S_OK;} // already late: run the frame now and re-anchor
- const LONGLONG paceStart=now.QuadPart;paceTargetMs=double(paceNext-now.QuadPart)*1000.0/double(paceFrequency.QuadPart);
- const bool sleepOk=paceTimer&&paceHighRes; /* CI evidence: no high-resolution timer there (hiRes=0) and, although NtQueryTimerResolution reports 1 ms, a normal timer still fired a full 15.6 ms tick late (waits of 30-32 ms) because the 1 ms request is not honoured for this process; only a yield loop on the QPC clock is exact */
- for(;;){QueryPerformanceCounter(&now);LONGLONG left=paceNext-now.QuadPart;if(left<=0)break;double ms=double(left)*1000.0/double(paceFrequency.QuadPart);
-  if(sleepOk&&ms>2.0){LARGE_INTEGER due;due.QuadPart=-LONGLONG((double(left)*10000000.0/double(paceFrequency.QuadPart))-15000.0);if(due.QuadPart>=0)due.QuadPart=-1;if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))YieldProcessor();else WaitForSingleObject(paceTimer,INFINITE);}
-  else YieldProcessor();} /* a busy spin: SwitchToThread hands the processor to any ready thread, which then keeps it for a whole scheduler quantum (15.6 ms) */
- QueryPerformanceCounter(&now);paceActualMs=double(now.QuadPart-paceStart)*1000.0/double(paceFrequency.QuadPart);
- return S_OK;
+ if(paceNext<=now.QuadPart){paceNext=now.QuadPart;return S_OK;} // already late: run the frame now and re-anchor
+ if(!paceTimer){WaitForSingleObject(GetCurrentThread(),DWORD(periodMs));return S_OK;}
+ LARGE_INTEGER due;due.QuadPart=-LONGLONG(double(paceNext-now.QuadPart)*10000000.0/double(paceFrequency.QuadPart));
+ if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))return S_OK;WaitForSingleObject(paceTimer,INFINITE);return S_OK;
 }
-extern "C" __declspec(dllexport) void __cdecl MotionPaceInfo(double*target,double*actual,int*isPaced){*target=paceTargetMs;*actual=paceActualMs;*isPaced=paced?1:0;}
-extern "C" __declspec(dllexport) void __cdecl MotionTimerInfo(int*highRes,unsigned*resolution100ns){*highRes=paceHighRes?1:0;*resolution100ns=timerResolution100ns();}
 extern "C" __declspec(dllexport) void __cdecl MotionBurst(){
- // Burst start (worker thread, before the first frame): restart the schedule. No vblank probe here: a DwmFlush that really blocks cost one frame period at every burst start.
+ // Burst start (worker thread, before the first frame): only a timer-paced loop needs a re-probe, and there DwmFlush is the cheap case. A display that has gained a working vblank returns to it.
  paceNext=0;instantWaits=0;
+ if(!paced)return;
+ for(int i=0;i<2;i++){LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);HRESULT hr=DwmFlush();QueryPerformanceCounter(&b);
+  if(!(SUCCEEDED(hr)&&double(b.QuadPart-a.QuadPart)*1000.0/double(f.QuadPart)>=1.0))return;}
+ paced=false;
 }
-extern "C" __declspec(dllexport) void __cdecl MotionApplyRegion(void*p){auto&r=*static_cast<Renderer*>(p);if(r.haveShape)r.applyRegion(r.lastShape,r.lastRegionScale);}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionWait(){
  if(paced)return paceWait(kFallbackPaceMs);
  LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);HRESULT hr=DwmFlush();QueryPerformanceCounter(&b);
  double ms=double(b.QuadPart-a.QuadPart)*1000.0/double(f.QuadPart);
- // A real vblank returns within one display period. CI evidence: on the headless adapter DwmFlush blocks but returns on 15.6 ms timer ticks (waits of 15.4 or 30.7 ms), so 'blocks for >=1 ms' was never false, the QPC pace never engaged and every second tick was skipped. A flush longer than 20 ms, or one that returns at once, means there is no usable vblank: pace by the QPC schedule from then on.
- if(SUCCEEDED(hr)&&ms>=1.0&&ms<=20.0){instantWaits=0;paceNext=0;return S_OK;}
- if(!SUCCEEDED(hr)||ms>20.0||++instantWaits>=2){paced=true;return paceWait(kFallbackPaceMs);}
+ if(SUCCEEDED(hr)&&ms>=1.0){instantWaits=0;paceNext=0;return S_OK;}
+ if(++instantWaits>=2){paced=true;return paceWait(kFallbackPaceMs);}
  return S_OK;
 }
