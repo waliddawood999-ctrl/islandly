@@ -166,10 +166,12 @@ sealed class IslandHost : Form {
     protected override bool ShowWithoutActivation { get { return true; } }
     protected override CreateParams CreateParams { get { var p = base.CreateParams; p.ExStyle |= 0x08200080; return p; } }
     string Setting(string key, string fallback) { object v; return settings.TryGetValue(key,out v) ? Convert.ToString(v,System.Globalization.CultureInfo.InvariantCulture) : fallback; }
+    // The file watchers read right after the writer touched the file: never hold it against the writer (File.ReadAllText shares read-only and made the next Set-Content fail with a sharing violation).
+    static string ReadShared(string path) { using(var stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete)) using(var reader=new StreamReader(stream)) return reader.ReadToEnd(); }
     bool ReadSettings() {
         string file = Path.Combine(profile,"settings.json");
         try { var stamp = File.GetLastWriteTimeUtc(file); if (stamp == settingsStamp) return false;
-            var next = json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file)); if(next == null) return false; /* the watcher fires while the writer has truncated the file: an empty read deserializes to null and is retried on the next event */ settings = next; settingsStamp = stamp; UpdateEco();return true;
+            var next = json.Deserialize<Dictionary<string,object>>(ReadShared(file)); if(next == null) return false; /* the watcher fires while the writer has truncated the file: an empty read deserializes to null and is retried on the next event */ settings = next; settingsStamp = stamp; UpdateEco();return true;
         } catch {return false;}
     }
     protected override void OnHandleCreated(EventArgs e) {
@@ -525,7 +527,7 @@ sealed class IslandHost : Form {
         if(settingsChanged||TimerHasState()||child!=null||launching)Position();else if(clockMinute!=DateTime.Now.Hour*60+DateTime.Now.Minute)MinuteChanged();
         if(probe != "") {
             string commandFile = Path.Combine(probe,"command.txt");
-            string command = ""; if(File.Exists(commandFile)) { try { command = File.ReadAllText(commandFile).Trim(); if(command != "") File.Delete(commandFile); } catch(IOException) { command = ""; } } // the watcher can fire before the writer finished: an empty or locked file is retried
+            string command = ""; if(File.Exists(commandFile)) { try { command = ReadShared(commandFile).Trim(); if(command != "") File.Delete(commandFile); } catch(IOException) { command = ""; } } // the watcher can fire before the writer finished: an empty or locked file is retried
             if(command != "") {
                 if(command == "measure") measuring = true;
                 else if(command == "exit") Close();
