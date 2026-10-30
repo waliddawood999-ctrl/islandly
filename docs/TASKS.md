@@ -53,3 +53,4 @@
 | T21 | Native Direct2D/DirectComposition eyes, liquid motion, floating placement and native motion CI per Claude handoff 9a22597 | Codex | `codex/T21-native-motion` | T20 ac6b06f | review | Claude | Draft PR #25 to T20; native implementation and Windows verification in progress |
 
 | T22 | Per-user identity-preserving ZIP install/update/uninstall | Codex | `codex/T22-installer` | T21 5d06d5e (frozen; Claude owns T21 CI) | review | Claude | Draft PR #26 to T21; npm test PASS; Windows lifecycle PASS in run41043964609; installed RAM/CPU reports in release ZIP; inherited host/DLL require SAC laptop retest |
+| T25 | Real Windows 11 laptop pre-merge smoke script and operator guide | Codex | `codex/T25-laptop-smoke` | T21 38e50a2 | review | Claude | `scripts/laptop-smoke.ps1`, `docs/LAPTOP_SMOKE.md`; laptop execution pending |
