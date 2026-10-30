@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
+#include <dxgi1_3.h>
 #include <d2d1_1.h>
 #include <d2d1_1helper.h>
 #include <dcomp.h>
@@ -31,6 +32,11 @@ struct OutlineSink:ID2D1SimplifiedGeometrySink {
  void STDMETHODCALLTYPE AddBeziers(const D2D1_BEZIER_SEGMENT*,UINT)override{}
  void STDMETHODCALLTYPE EndFigure(D2D1_FIGURE_END)override{} HRESULT STDMETHODCALLTYPE Close()override{return S_OK;}
 };
+// Frame-latency waitable object of the composition swap chain (one renderer per process): the single clock of a burst. presentedEvent is set after every successful Present so the burst thread waits for the frame it just asked the UI thread for.
+// Per-phase wall time of the last draw (ms): PopLayer+EndDraw, window region, eyes, Present, Commit. Read by the frame diagnostics only.
+static double drawTimes[5]={0,0,0,0,0};
+static double nowMs(){static LARGE_INTEGER f={};LARGE_INTEGER c;if(!f.QuadPart)QueryPerformanceFrequency(&f);QueryPerformanceCounter(&c);return double(c.QuadPart)*1000.0/double(f.QuadPart);}
+static HANDLE latencyWait=nullptr;static HANDLE presentedEvent=CreateEventW(nullptr,FALSE,FALSE,nullptr);
 struct Renderer {
  HWND window;motion::Model model;
  ComPtr<ID3D11Device> gpu;ComPtr<ID3D11DeviceContext> gpuContext;ComPtr<IDXGISwapChain1> swap;
@@ -38,7 +44,8 @@ struct Renderer {
  ComPtr<IDCompositionEffectGroup> opacity;ComPtr<IDCompositionDevice> composition;ComPtr<IDCompositionTarget> target;ComPtr<IDCompositionVisual> visual;
  ComPtr<IDCompositionSurface> eyeSurface;ComPtr<IDCompositionVisual> slots[2],eyes[2];ComPtr<IDCompositionScaleTransform> eyeScale[2];ComPtr<IDCompositionRotateTransform> eyeRotate[2];ComPtr<IDCompositionTransform> eyeTransform[2];ComPtr<IDCompositionRectangleClip> eyeClip[2];ComPtr<IDCompositionEffectGroup> eyeOpacity[2];
  float eyeDpi=0,baseEyeScale[2]={1,1};bool eyeLight=false,gpuOnlyBlink=false;ULONGLONG gpuBlinkAt=0;double gpuBlinkDuration=0;
- ComPtr<IDWriteFactory> text;ComPtr<ID2D1SolidColorBrush> brush;UINT width=0,height=0;
+ ComPtr<IDWriteFactory> text;ComPtr<ID2D1SolidColorBrush> brush;UINT width=0,height=0;bool latencyFlag=false;
+ ~Renderer(){if(latencyWait){CloseHandle(latencyWait);latencyWait=nullptr;}}
  ComPtr<ID2D1Layer> maskLayer; // created once: allocating a layer every frame cost GPU/WARP memory churn
  struct TextFormat{int key;ComPtr<IDWriteTextFormat> format;};std::vector<TextFormat> formats; // created once per (size, direction)
 
@@ -56,10 +63,14 @@ struct Renderer {
   hr=dc->CreateSolidColorBrush(D2D1::ColorF(1,1,1,1),&brush);if(FAILED(hr))return hr;dc->CreateLayer(&maskLayer);for(float size:{12.f,15.f,16.f,42.f}){textFormat(size,false);textFormat(size,true);} /* warm the first paint: layer and DirectWrite formats exist before the first frame */ return S_OK;
  }
  HRESULT resize(UINT w,UINT h){if(width==w&&height==h)return S_OK;dc->SetTarget(nullptr);HRESULT hr;
-  if(swap)hr=swap->ResizeBuffers(2,w,h,DXGI_FORMAT_B8G8R8A8_UNORM,0);
+  if(swap)hr=swap->ResizeBuffers(3,w,h,DXGI_FORMAT_B8G8R8A8_UNORM,latencyFlag?UINT(DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT):0u);
   else {ComPtr<IDXGIDevice> dxgi;gpu.As(&dxgi);ComPtr<IDXGIAdapter> adapter;dxgi->GetAdapter(&adapter);ComPtr<IDXGIFactory2> f;adapter->GetParent(IID_PPV_ARGS(&f));
-   DXGI_SWAP_CHAIN_DESC1 desc={};desc.Width=w;desc.Height=h;desc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;desc.SampleDesc.Count=1;desc.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;desc.BufferCount=2;desc.SwapEffect=DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;desc.AlphaMode=DXGI_ALPHA_MODE_PREMULTIPLIED;
-   hr=f->CreateSwapChainForComposition(gpu.Get(),&desc,nullptr,&swap);if(SUCCEEDED(hr))hr=visual->SetContent(swap.Get());}
+   DXGI_SWAP_CHAIN_DESC1 desc={};desc.Width=w;desc.Height=h;desc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;desc.SampleDesc.Count=1;desc.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;desc.BufferCount=3; /* three buffers: with two, the next back buffer was still held by the compositor and PopLayer/EndDraw blocked for a whole timer tick (CI: end=15-17 ms, present 0.1 ms, consecutive frames) */desc.SwapEffect=DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;desc.AlphaMode=DXGI_ALPHA_MODE_PREMULTIPLIED;
+   desc.Flags=DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;latencyFlag=true;
+   hr=f->CreateSwapChainForComposition(gpu.Get(),&desc,nullptr,&swap);
+   if(FAILED(hr)){desc.Flags=0;latencyFlag=false;hr=f->CreateSwapChainForComposition(gpu.Get(),&desc,nullptr,&swap);} /* no waitable object on this system: the timer/DwmFlush pacing stays */
+   if(SUCCEEDED(hr)&&latencyFlag){ComPtr<IDXGISwapChain2> swap2;if(SUCCEEDED(swap.As(&swap2))&&SUCCEEDED(swap2->SetMaximumFrameLatency(1))){HANDLE h=swap2->GetFrameLatencyWaitableObject();if(h){if(latencyWait)CloseHandle(latencyWait);latencyWait=h;}}}
+   if(SUCCEEDED(hr))hr=visual->SetContent(swap.Get());}
   if(FAILED(hr))return hr;ComPtr<IDXGISurface> surface;hr=swap->GetBuffer(0,IID_PPV_ARGS(&surface));if(FAILED(hr))return hr;
   ComPtr<ID2D1Bitmap1> bitmap;auto props=D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET|D2D1_BITMAP_OPTIONS_CANNOT_DRAW,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
   hr=dc->CreateBitmapFromDxgiSurface(surface.Get(),&props,&bitmap);if(FAILED(hr))return hr;dc->SetTarget(bitmap.Get());width=w;height=h;return composition->Commit();
@@ -132,10 +143,6 @@ struct Renderer {
   if(SUCCEEDED(hr))hr=converted->Initialize(source.Get(),format,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom);
   if(SUCCEEDED(hr))hr=frame->WriteSource(converted.Get(),nullptr);if(SUCCEEDED(hr))hr=frame->Commit();if(SUCCEEDED(hr))hr=encoder->Commit();gpuContext->Unmap(staging.Get(),0);return hr;
  }
- motion::Shape lastShape={};float lastRegionScale=1;bool haveShape=false;
- // Window-region polygon: 0.75 px flattening tolerance keeps it to a few dozen points; SetWindowRgn per frame was the heaviest call.
- void applyRegion(const motion::Shape&s,float k){auto path=outline(s);auto m=D2D1::Matrix3x2F::Scale(k,k);auto sink=new OutlineSink();path->Simplify(D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,&m,.75f,sink);
-  if(sink->points.size()>=3){HRGN region=CreatePolygonRgn(sink->points.data(),int(sink->points.size()),WINDING);if(region&&!SetWindowRgn(window,region,FALSE))DeleteObject(region);}sink->Release();}
  HRESULT draw(const Frame&f,const wchar_t*clock,const wchar_t*date,const wchar_t*file){HRESULT hr=resize(UINT(f.width),UINT(f.height));if(FAILED(hr))return hr;
   bool light=(f.flags&1)!=0,rtl=(f.flags&2)!=0,acrylic=(f.flags&4)!=0,floating=(f.flags&8)!=0;
   auto s=motion::shape(model,f.center,f.top,f.left,f.right,f.cardWidth,f.cardHeight,f.anticipation);if((f.flags&16)&&model.body.x<.001){s.w=84;s.h=5;s.r=2.5;s.bulge=0;s.x=motion::clamp(f.center-42,f.left+12,f.right-12-84);}
@@ -144,7 +151,9 @@ struct Renderer {
   auto path=outline(s);
   auto scale=D2D1::Matrix3x2F::Scale(f.scale,f.scale);dc->SetTransform(scale);dc->BeginDraw();
   D2D1_RECT_F dirty=D2D1::RectF(float(s.x)+(rtl?78.f:2.f),float(s.y),float(s.x)+(rtl?136.f:60.f),float(s.y)+36);
-  if(f.flags&32)dc->PushAxisAlignedClip(dirty,D2D1_ANTIALIAS_MODE_ALIASED);
+  if(f.flags&128)dirty=D2D1::RectF(std::max(0.f,float(s.x)-2),std::max(0.f,float(s.y)-2),float(s.x+s.w)+2,float(s.y+s.h)+2); /* label/date-only redraw of the collapsed pill: the clip is the pill plus 2 px, the layer mask still keeps everything inside the outline, and the window region is untouched */
+  const bool clipped=(f.flags&(32|128))!=0;
+  if(clipped)dc->PushAxisAlignedClip(dirty,D2D1_ANTIALIAS_MODE_ALIASED);
   dc->Clear(D2D1::ColorF(0,0,0,0));
   brush->SetColor(light?D2D1::ColorF(.94f,.94f,.96f,acrylic?.46f:.94f):D2D1::ColorF(12/255.f,12/255.f,15/255.f,acrylic?.46f:.9f));dc->FillGeometry(path.Get(),brush.Get());
   if(!maskLayer)dc->CreateLayer(&maskLayer);dc->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),path.Get()),maskLayer.Get());
@@ -163,11 +172,17 @@ struct Renderer {
   }else{brush->SetColor(D2D1::ColorF(.33f,.8f,.5f,a));dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x+(rtl?120:18),y+18),3,3),brush.Get());label(clock,15,D2D1::RectF(x+25,y,x+w-10,y+h),false,a,light);}
   float content=float(motion::clamp((model.body.x-.3)/.5,0,1));label(clock,42,D2D1::RectF(x+24,y+22,x+w-24,y+85),false,content,light);label(date,16,D2D1::RectF(x+24,y+90,x+w-24,y+125),rtl,content*.75f,light);
   if(f.flags&64)label(rtl?L"جارٍ التحميل…":L"Loading…",12,D2D1::RectF(x+24,y+140,x+w-24,y+162),rtl,content*.65f,light);
-  dc->PopLayer();if(f.flags&32)dc->PopAxisAlignedClip();hr=dc->EndDraw();if(FAILED(hr))return hr;if(file&&*file){hr=capture(file);if(FAILED(hr))return hr;}if(auditAlpha&&!(f.flags&32)){hr=auditLeak(s,f);if(FAILED(hr))return hr;}
-  if(!(f.flags&32)){if(f.flags&128){lastShape=s;lastRegionScale=f.scale;haveShape=true;}else applyRegion(s,f.scale);} /* flag 128 (burst thread): SetWindowRgn on another thread's window is a synchronous cross-thread call; the UI thread applies the final region with MotionApplyRegion when the burst ends */
-  hr=updateEyes(f,s,file&&*file);if(FAILED(hr))return hr;opacity->SetOpacity(f.opacity);if(f.flags&32){RECT rect={LONG(std::floor(dirty.left*f.scale)),LONG(std::floor(dirty.top*f.scale)),LONG(std::ceil(dirty.right*f.scale)),LONG(std::ceil(dirty.bottom*f.scale))};DXGI_PRESENT_PARAMETERS p={};p.DirtyRectsCount=1;p.pDirtyRects=&rect;hr=swap->Present1(0,0,&p);}else hr=swap->Present(0,0);if(FAILED(hr))return hr;return composition->Commit();
+  double t0=nowMs();dc->PopLayer();if(clipped)dc->PopAxisAlignedClip();hr=dc->EndDraw();if(FAILED(hr))return hr;drawTimes[0]=nowMs()-t0;if(file&&*file){hr=capture(file);if(FAILED(hr))return hr;}if(auditAlpha&&!clipped){hr=auditLeak(s,f);if(FAILED(hr))return hr;}
+  double t1=nowMs();
+  if(!clipped){auto sink=new OutlineSink();path->Simplify(D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,&scale,.75f,sink); /* window-region polygon: 0.75 px flattening tolerance keeps it to a few dozen points; SetWindowRgn per frame was the heaviest call */
+  if(sink->points.size()>=3){HRGN region=CreatePolygonRgn(sink->points.data(),int(sink->points.size()),WINDING);if(region&&!SetWindowRgn(window,region,FALSE))DeleteObject(region);}sink->Release();}
+  drawTimes[1]=nowMs()-t1;double t2=nowMs();
+  hr=updateEyes(f,s,file&&*file);if(FAILED(hr))return hr;opacity->SetOpacity(f.opacity);drawTimes[2]=nowMs()-t2;double t3=nowMs();if(clipped){RECT rect={std::max(0L,LONG(std::floor(dirty.left*f.scale))),std::max(0L,LONG(std::floor(dirty.top*f.scale))),std::min(LONG(width),LONG(std::ceil(dirty.right*f.scale))),std::min(LONG(height),LONG(std::ceil(dirty.bottom*f.scale)))}; /* a dirty rectangle outside the back buffer is DXGI_ERROR_INVALID_CALL (top=0 pill: y-2 < 0) */
+   if(rect.right>rect.left&&rect.bottom>rect.top){DXGI_PRESENT_PARAMETERS p={};p.DirtyRectsCount=1;p.pDirtyRects=&rect;hr=swap->Present1(0,0,&p);}else hr=DXGI_ERROR_INVALID_CALL;
+   if(hr==DXGI_ERROR_INVALID_CALL)hr=swap->Present(0,0);}else hr=swap->Present(0,0);if(FAILED(hr))return hr;drawTimes[3]=nowMs()-t3;if(presentedEvent)SetEvent(presentedEvent);double t4=nowMs();HRESULT committed=composition->Commit();drawTimes[4]=nowMs()-t4;return committed;
  }
 };
+extern "C" __declspec(dllexport) void __cdecl MotionDrawTimes(double*out){for(int i=0;i<5;i++)out[i]=drawTimes[i];}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionCreate(HWND hwnd,void**out){if(!out)return E_POINTER;*out=nullptr;auto r=new Renderer();HRESULT hr=r->initialize(hwnd);if(FAILED(hr)){delete r;return hr;}*out=r;return S_OK;}
 extern "C" __declspec(dllexport) void __cdecl MotionDestroy(void*p){delete static_cast<Renderer*>(p);}
 extern "C" __declspec(dllexport) void __cdecl MotionStep(void*p,float dt,int flags,float dx,float dy,int pointer,int target,Snapshot*out){auto&r=*static_cast<Renderer*>(p);auto&m=r.model;m.eyes=(flags&1)!=0;m.eco=(flags&2)!=0;m.mode=(flags&8)?2:(flags&4)?1:0;m.fullscreen=(flags&16)!=0;m.compact=(flags&32)!=0;if(pointer>=0)m.pointer(dx,dy,pointer!=0,pointer==2);if(r.gpuOnlyBlink){double elapsed=(GetTickCount64()-r.gpuBlinkAt)/1000.;if(elapsed<r.gpuBlinkDuration)m.blinkStart=m.age-elapsed;else m.blinkStart=-1;r.gpuOnlyBlink=false;}m.nextBlink=1e30;m.target(target!=0);m.step(dt);*out={float(m.body.x),float(m.drop.x),float(m.gx),float(m.gy),float(m.lid),float(m.squint),float(m.blink),m.eyeVisible()?1:0,m.moving()?1:0};}
@@ -183,31 +198,37 @@ extern "C" __declspec(dllexport) void __cdecl MotionAdapter(void*p,wchar_t*name,
 // Where that does not block (virtual/headless displays, CI runners: it returns at once or fails) the loop is paced by an
 // absolute-schedule high-resolution waitable timer at 16.0 ms (never later than a 60 Hz display period, drift-free),
 // not by Sleep (whose 15.6 ms granularity gave 31 ms frames). The vblank is re-probed only by MotionBurst() at the start of a burst, never in the middle of one (a mid-burst probe returned a frame at once and re-anchored the schedule).
+static bool burstFirst=true,latencyBroken=false;static int instantLatency=0;
 static HANDLE paceTimer=nullptr;static LARGE_INTEGER paceFrequency={};static LONGLONG paceNext=0;static bool paced=false;static int paceProbe=0,instantWaits=0;
-// Fallback pace where the compositor gives no vblank (headless/virtual displays, CI), never later than a 60 Hz period. Real displays pace on DwmFlush instead.
+// Fallback pace where the compositor gives no vblank (headless/virtual displays, CI): 15 ms keeps a 60 Hz budget of 16.667 ms with 1.6 ms of scheduling slack; a 16.0 ms target left 0.67 ms and p95 sat on the line. Real displays pace on DwmFlush instead.
 static const double kFallbackPaceMs=16.0;
-static bool paceHighRes=false;
-typedef LONG (NTAPI*NtQueryTimerResolutionFn)(PULONG,PULONG,PULONG);
-static ULONG timerResolution100ns(){static NtQueryTimerResolutionFn q=reinterpret_cast<NtQueryTimerResolutionFn>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"NtQueryTimerResolution"));ULONG a=0,b=0,c=0;if(q&&q(&a,&b,&c)>=0)return c;return 156250;}
-// The wait is sleep-then-spin: with a true high-resolution timer it wakes ~1.5 ms early and yields the rest on the QPC clock; without one it only yields (a burst lasts a few hundred milliseconds, and this path is used only where the compositor gives no vblank to wait on).
 static HRESULT paceWait(double periodMs){
- if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);paceHighRes=paceTimer!=nullptr;if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);QueryPerformanceFrequency(&paceFrequency);}
+ if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);QueryPerformanceFrequency(&paceFrequency);}
  LARGE_INTEGER now;QueryPerformanceCounter(&now);const LONGLONG period=LONGLONG(paceFrequency.QuadPart*periodMs/1000.0);
  if(paceNext==0||now.QuadPart-paceNext>4*period)paceNext=now.QuadPart;paceNext+=period;
  if(paceNext<=now.QuadPart){paceNext=now.QuadPart;return S_OK;} // already late: run the frame now and re-anchor
- const bool sleepOk=paceTimer&&paceHighRes; /* CI evidence: no high-resolution timer there (hiRes=0) and, although NtQueryTimerResolution reports 1 ms, a normal timer still fired a full 15.6 ms tick late (waits of 30-32 ms) because the 1 ms request is not honoured for this process; only a yield loop on the QPC clock is exact */
- for(;;){QueryPerformanceCounter(&now);LONGLONG left=paceNext-now.QuadPart;if(left<=0)break;double ms=double(left)*1000.0/double(paceFrequency.QuadPart);
-  if(sleepOk&&ms>2.0){LARGE_INTEGER due;due.QuadPart=-LONGLONG((double(left)*10000000.0/double(paceFrequency.QuadPart))-15000.0);if(due.QuadPart>=0)due.QuadPart=-1;if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))YieldProcessor();else WaitForSingleObject(paceTimer,INFINITE);}
-  else YieldProcessor();} /* a busy spin: SwitchToThread hands the processor to any ready thread, which then keeps it for a whole scheduler quantum (15.6 ms) */
- return S_OK;
+ if(!paceTimer){WaitForSingleObject(GetCurrentThread(),DWORD(periodMs));return S_OK;}
+ LARGE_INTEGER due;due.QuadPart=-LONGLONG(double(paceNext-now.QuadPart)*10000000.0/double(paceFrequency.QuadPart));
+ if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))return S_OK;WaitForSingleObject(paceTimer,INFINITE);return S_OK;
 }
-extern "C" __declspec(dllexport) void __cdecl MotionTimerInfo(int*highRes,unsigned*resolution100ns){*highRes=paceHighRes?1:0;*resolution100ns=timerResolution100ns();}
 extern "C" __declspec(dllexport) void __cdecl MotionBurst(){
- // Burst start (worker thread, before the first frame): restart the schedule. No vblank probe here: a DwmFlush that really blocks cost one frame period at every burst start.
- paceNext=0;instantWaits=0;
+ // Burst start (worker thread, before the first frame): only a timer-paced loop needs a re-probe, and there DwmFlush is the cheap case. A display that has gained a working vblank returns to it.
+ paceNext=0;instantWaits=0;burstFirst=true;if(presentedEvent)ResetEvent(presentedEvent);
+ if(!paced)return;
+ for(int i=0;i<2;i++){LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);HRESULT hr=DwmFlush();QueryPerformanceCounter(&b);
+  if(!(SUCCEEDED(hr)&&double(b.QuadPart-a.QuadPart)*1000.0/double(f.QuadPart)>=1.0))return;}
+ paced=false;
 }
-extern "C" __declspec(dllexport) void __cdecl MotionApplyRegion(void*p){auto&r=*static_cast<Renderer*>(p);if(r.haveShape)r.applyRegion(r.lastShape,r.lastRegionScale);}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionWait(){
+ // One clock per burst: the swap chain's frame-latency waitable object (maximum latency 1) signals when the compositor has released the previous frame, so Present never blocks. The burst thread first waits until the UI thread has presented the tick it was just handed, then for the compositor. If the object is missing, times out, or returns at once six times in a row (no compositor pacing: headless), the DwmFlush/timer path below takes over.
+ if(latencyWait&&!latencyBroken){
+  if(!burstFirst&&presentedEvent&&WaitForSingleObject(presentedEvent,40)!=WAIT_OBJECT_0)return paceWait(kFallbackPaceMs);
+  burstFirst=false;
+  LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);DWORD r=WaitForSingleObject(latencyWait,40);QueryPerformanceCounter(&b);
+  if(r!=WAIT_OBJECT_0)return paceWait(kFallbackPaceMs);
+  if(double(b.QuadPart-a.QuadPart)*1000.0/double(f.QuadPart)<0.5){if(++instantLatency>=6)latencyBroken=true;}else instantLatency=0;
+  return S_OK;
+ }
  if(paced)return paceWait(kFallbackPaceMs);
  LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);HRESULT hr=DwmFlush();QueryPerformanceCounter(&b);
  double ms=double(b.QuadPart-a.QuadPart)*1000.0/double(f.QuadPart);
