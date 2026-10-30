@@ -1,6 +1,9 @@
 @echo off
 setlocal DisableDelayedExpansion
 chcp 65001 >nul
+set "ACTIVATED="
+if not defined LOCALAPPDATA goto failed
+if not defined APPDATA goto failed
 set "DEST=%LOCALAPPDATA%\Islandly"
 set "SOURCE=%~dp0payload"
 set "MENU=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Islandly.lnk"

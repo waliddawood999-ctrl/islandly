@@ -4,6 +4,10 @@ $Package=[IO.Path]::GetFullPath($Package)
 $oldLocal=$env:LOCALAPPDATA; $oldRoaming=$env:APPDATA
 $sandbox=Join-Path $env:TEMP ('Islandly OneDrive العربية ! & '+[guid]::NewGuid())
 $env:LOCALAPPDATA=Join-Path $sandbox 'Local'; $env:APPDATA=Join-Path $sandbox 'Roaming'
+$download=Join-Path $sandbox 'OneDrive Desktop العربية ! & extracted'
+New-Item $download -ItemType Directory -Force | Out-Null
+Copy-Item (Join-Path $Package '*') $download -Recurse -Force
+$Package=$download
 $arp='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Islandly'
 $run='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 if(Test-Path $arp){throw 'Test requires an account without an existing Islandly installation'}
@@ -27,7 +31,7 @@ try {
  Assert (Test-Path $menu) 'Start shortcut missing'
  $shell=New-Object -ComObject WScript.Shell
  $shortcut=$shell.CreateShortcut($menu)
- Assert ($shortcut.TargetPath -eq "$dest\Islandly.exe") "Shortcut resolves to wrong user: $($shortcut.TargetPath)"
+ Assert ([Environment]::ExpandEnvironmentVariables($shortcut.TargetPath) -eq "$dest\Islandly.exe") "Shortcut resolves to wrong user: $($shortcut.TargetPath)"
  $registration=Get-ItemProperty $arp
  Assert ($registration.InstallLocation -eq $dest) 'ARP installation location mismatch'
  Assert ($registration.UninstallString.Contains('Uninstall.cmd')) 'Missing ARP uninstaller'
