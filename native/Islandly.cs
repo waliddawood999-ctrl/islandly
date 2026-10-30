@@ -18,6 +18,13 @@ using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
 static class Native {
+    [DllImport("dwmapi.dll",EntryPoint="DwmGetWindowAttribute")] public static extern int DwmGetWindowInt(IntPtr h,int attribute,out int value,int size);
+    [DllImport("user32.dll",EntryPoint="GetWindowLongPtrW")] public static extern IntPtr GetWindowLongPtr(IntPtr h,int index);
+    [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h,ref Point point);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h,out RECT rect);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int left, top, right, bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct APPBARDATA { public int cbSize; public IntPtr hWnd; public uint callback, edge; public RECT rect; public IntPtr param; }
     [StructLayout(LayoutKind.Sequential)] public struct IOCOUNTERS { public ulong a,b,c,d,e,f; }
@@ -192,7 +199,7 @@ sealed class IslandHost : Form {
         motion.BurstEnded=delegate{ if(deferredPosition){deferredPosition=false;Position();} };
         motion.Reveal=delegate{if(!revealed){revealed=true;Position();}};
         consent = new ConsentWatcher(delegate(string label) { if(!closing) { privacyLabel = label; Position(); } });
-        foregroundWatcher=new ForegroundWatcher(this,delegate{ if(motion!=null&&motion.Bursting){deferredPosition=true;return;} Position(); }); // foreground/location events never run Position() in the middle of a liquid burst; it runs when the burst ends
+        foregroundWatcher=new ForegroundWatcher(this,ForegroundChanged); // foreground/location events never run Position() in the middle of a liquid burst; it runs when the burst ends
         Position();Status();
     }
     void ArmHover(){hoverArmed=true;leaveGrace.Stop();Position();if(motion!=null)motion.PointerEvent();hoverDwell.Start();}
@@ -221,41 +228,40 @@ sealed class IslandHost : Form {
         nativeAcrylic=requested=="acrylic" && NativeMaterial.Apply(Handle,true,nativeLight);
         if(!nativeAcrylic) NativeMaterial.Apply(Handle,false,nativeLight);
     }
-    void DisplayChanged(object s, EventArgs e) { if (!closing && IsHandleCreated) BeginInvoke((Action)Position); }
+    void DisplayChanged(object s, EventArgs e) { if (!closing && IsHandleCreated) BeginInvoke((Action)delegate{if(fullscreenCache!=null)fullscreenCache.Invalidate();deferredPosition=false;Position();}); }
     string barKeyApplied=""; MotionOptions lastMotion; bool deferredPosition;
     bool revealed; string fullscreenSeen=""; readonly uint ownPid=(uint)Process.GetCurrentProcess().Id;
-    // Real fullscreen = a foreign foreground window covering its whole monitor (monitor rect from GetMonitorInfo, visible frame from DWM), or Windows reporting a busy/D3D-fullscreen/presentation session. Islandly's own windows (owner, halo) never count.
-    // Position() asks twice (policy and eye option) and runs on foreground/hover events: reuse one verdict per foreground window for 500 ms so DWM/shell queries stay off the pointer path.
-    IntPtr[] fullscreenWindow=new IntPtr[2]; long[] fullscreenAt=new long[2]; bool[] fullscreenVerdict=new bool[2];
-    bool Fullscreen(bool preference=true) {
-        int slot=preference?1:0; IntPtr h=Native.GetForegroundWindow(); long now=clock.ElapsedMilliseconds;
-        if(h==fullscreenWindow[slot] && now-fullscreenAt[slot]<500 && now>=fullscreenAt[slot]) return fullscreenVerdict[slot];
-        bool result=FullscreenNow(preference); fullscreenWindow[slot]=h; fullscreenAt[slot]=now; fullscreenVerdict[slot]=result; return result;
+    FullscreenCache fullscreenCache;
+    IntPtr revealedForeground;
+    void ForegroundChanged(){IntPtr current=Native.GetForegroundWindow();if(current!=revealedForeground){revealed=false;revealedForeground=current;}if(fullscreenCache!=null)fullscreenCache.Invalidate();if(motion!=null&&motion.Bursting&&!Fullscreen(false)){deferredPosition=true;return;}deferredPosition=false;Position();}
+    FullscreenObservation CaptureFullscreen(IntPtr h){
+        var o=new FullscreenObservation{window=h};if(h==IntPtr.Zero)return o;
+        Native.GetWindowThreadProcessId(h,out o.process);o.owned=h==Handle||o.process==ownPid||child!=null&&JobPids().Contains((int)o.process);
+        var name=new StringBuilder(128);Native.GetClassName(h,name,128);o.className=name.ToString();
+        if(o.owned||o.className=="Progman"||o.className=="WorkerW"||o.className=="Shell_TrayWnd"||o.className=="Shell_SecondaryTrayWnd")return o;
+        o.visible=Native.IsWindowVisible(h);o.minimized=Native.IsIconic(h);o.maximized=Native.IsZoomed(h);o.caption=(Native.GetWindowLongPtr(h,-16).ToInt64()&0xc00000)!=0;
+        int cloaked;Native.DwmGetWindowInt(h,14,out cloaked,sizeof(int));o.cloaked=cloaked!=0;
+        if(!o.visible||o.minimized||o.cloaked)return o;
+        Native.RECT r;var mi=new Native.MONITORINFO{size=Marshal.SizeOf(typeof(Native.MONITORINFO))};
+        if(Native.DwmGetWindowAttribute(h,9,out r,Marshal.SizeOf(typeof(Native.RECT)))!=0&&!Native.GetWindowRect(h,out r))return o;
+        IntPtr monitor=Native.MonitorFromWindow(h,2);if(monitor==IntPtr.Zero||!Native.GetMonitorInfo(monitor,ref mi))return o;
+        o.frame=Rectangle.FromLTRB(r.left,r.top,r.right,r.bottom);o.monitor=Rectangle.FromLTRB(mi.monitor.left,mi.monitor.top,mi.monitor.right,mi.monitor.bottom);
+        // DWM's extended frame can lag a borderless window's first layout by a
+        // composition frame (observed2px inset). Actual client coverage is a
+        // synchronous fullscreen fact, not a tolerance on nearly-full windows.
+        if(!o.caption){Native.RECT client;Point origin=Point.Empty;if(Native.GetClientRect(h,out client)&&Native.ClientToScreen(h,ref origin)){
+            var content=new Rectangle(origin.X,origin.Y,client.right-client.left,client.bottom-client.top);
+            if(content.Left<=o.monitor.Left&&content.Top<=o.monitor.Top&&content.Right>=o.monitor.Right&&content.Bottom>=o.monitor.Bottom)o.frame=content;
+        }}
+        o.monitorName=Screen.FromHandle(h).DeviceName;o.valid=o.frame.Width>0&&o.frame.Height>0&&o.monitor.Width>0&&o.monitor.Height>0;
+        if(!o.Fullscreen&&o.NearMonitor&&!o.caption){try{int state;if(Native.SHQueryUserNotificationState(out state)==0)o.shellState=state;}catch(EntryPointNotFoundException){}}
+        return o;
     }
-    bool FullscreenNow(bool preference) {
-        if (preference && Setting("hideFullscreen","True").Equals("False",StringComparison.OrdinalIgnoreCase)) return false;
-        IntPtr h = Native.GetForegroundWindow(); var name = new StringBuilder(128); Native.GetClassName(h,name,128);
-        bool result=false; Native.RECT r=new Native.RECT(); Native.MONITORINFO mi=new Native.MONITORINFO(); string why=""; int quns=0;
-        uint pid=0; if(h!=IntPtr.Zero) Native.GetWindowThreadProcessId(h,out pid);
-        if (h == IntPtr.Zero) why="no-foreground";
-        else if (h == Handle || pid == ownPid) why="own-window";
-        else if (name.ToString() == "Progman" || name.ToString() == "WorkerW" || name.ToString() == "Shell_TrayWnd") why="shell";
-        else {
-            if (Native.DwmGetWindowAttribute(h,9,out r,Marshal.SizeOf(typeof(Native.RECT))) != 0 && !Native.GetWindowRect(h,out r)) why="no-rect";
-            else {
-                IntPtr monitor=Native.MonitorFromWindow(h,2); mi.size=Marshal.SizeOf(typeof(Native.MONITORINFO));
-                if(monitor==IntPtr.Zero||!Native.GetMonitorInfo(monitor,ref mi)) why="no-monitor";
-                else if(preference && Screen.FromHandle(h).DeviceName != TargetScreen().DeviceName) why="other-screen";
-                else { result = r.left <= mi.monitor.left && r.top <= mi.monitor.top && r.right >= mi.monitor.right && r.bottom >= mi.monitor.bottom; why=result?"covers":"smaller"; }
-            }
-            // Exclusive-mode games and presentations may not cover the monitor with a normal window rect: ask the shell as well (busy, D3D fullscreen, presentation mode).
-            long coverArea=(long)Math.Max(0,Math.Min(r.right,mi.monitor.right)-Math.Max(r.left,mi.monitor.left))*Math.Max(0,Math.Min(r.bottom,mi.monitor.bottom)-Math.Max(r.top,mi.monitor.top)), monitorArea=(long)Math.Max(1,mi.monitor.right-mi.monitor.left)*Math.Max(1,mi.monitor.bottom-mi.monitor.top);
-            // Only a window that nearly fills its monitor can be a fullscreen game/presentation: skips the shell query (a COM round trip) for every ordinary foreground change.
-            if (!result && why!="other-screen" && coverArea*10>=monitorArea*9) { try { if(Native.SHQueryUserNotificationState(out quns)==0 && (quns==2||quns==3||quns==4)) { result=true; why="shell-state-"+quns; } } catch(EntryPointNotFoundException) {} }
-        }
-        // Diagnostic for CI: log only when the foreground window or the verdict changes (no per-tick I/O).
-        string seen=h.ToInt64()+"|"+result+"|"+why;
-        if(preference && probe!="" && seen!=fullscreenSeen){fullscreenSeen=seen;NativeLog.Write("fullscreen-check","fg="+h.ToInt64()+" class="+name+" pid="+pid+" rect="+r.left+","+r.top+","+r.right+","+r.bottom+" monitor="+mi.monitor.left+","+mi.monitor.top+","+mi.monitor.right+","+mi.monitor.bottom+" own="+Handle.ToInt64()+" quns="+quns+" why="+why+" result="+result);}
+    bool Fullscreen(bool preference=true){
+        if(fullscreenCache==null)fullscreenCache=new FullscreenCache(Native.GetForegroundWindow,CaptureFullscreen);
+        var o=fullscreenCache.Read();bool result=preference?o.HideIsland(!Setting("hideFullscreen","True").Equals("False",StringComparison.OrdinalIgnoreCase),TargetScreen().DeviceName):o.Fullscreen;
+        string seen=o.window.ToInt64()+"|"+result+"|"+o.frame;
+        if(preference&&probe!=""&&seen!=fullscreenSeen){fullscreenSeen=seen;NativeLog.Write("fullscreen-check","fg="+o.window.ToInt64()+" class="+o.className+" pid="+o.process+" rect="+o.frame+" monitor="+o.monitor+" shell="+o.shellState+" result="+result);}
         return result;
     }
     void Position() {

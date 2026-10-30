@@ -1,0 +1,136 @@
+name: T24 island requirements QA
+on:
+  pull_request:
+    branches: [codex/T21-native-motion]
+  push:
+    branches: [codex/T24-island-qa] # PR #28 conflicts with its base, and GitHub does not start pull_request runs for a PR it cannot merge
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [overlay, reserved-bar]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - shell: pwsh
+        run: ./scripts/build-native.ps1
+      - name: Deterministic fullscreen observation and invalidation regressions
+        shell: pwsh
+        run: ./test/native-fullscreen-policy.ps1
+      - name: Real foreground, top-edge reveal, Windows themes and composited open/close frames
+        shell: pwsh
+        run: ./test/island-requirements.ps1 -Mode ${{ matrix.mode }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t24-desktop-${{ matrix.mode }}
+          path: out/t24
+          if-no-files-found: error
+  shape-and-layout:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - shell: pwsh
+        run: ./scripts/build-native.ps1
+      - name: Every 60Hz open/close frame, exact rounded-shape alpha, light/dark and RTL/LTR
+        shell: pwsh
+        run: ./test/island-shape-qa.ps1
+      - name: Re-render native eyes and context frames for all renderer scenes
+        shell: pwsh
+        run: ./test/native-motion-qa.ps1
+      - run: npx playwright install chromium
+      - name: Full portrait/content/collision audit at100/125/150 percent (both languages, themes, materials and modes)
+        shell: pwsh
+        run: |
+          $env:CHROMIUM_PATH=(& node -p "require('playwright').chromium.executablePath()")
+          $env:T21_VISUAL_OUT="$PWD/out/t24/layout"
+          node test/t20-visual.cjs
+          if($LASTEXITCODE-ne 0){throw 'Portrait/content geometry or screenshot audit failed'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t24-shape-and-layout
+          path: |
+            out/t24
+            out/t21/screenshots
+          if-no-files-found: error
+  memory:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [overlay, reserved-bar]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Provision the panel runtime (Electron 45 downloads its binary on first require, npm ci does not)
+        run: node -e "const p=require('electron');if(!require('fs').existsSync(p))throw Error('Electron binary missing: '+p);console.log(p)"
+      - shell: pwsh
+        run: ./scripts/build-native.ps1
+      - name: Idle and panel RAM (every sample below 180 MB, raw-sample guard)
+        shell: pwsh
+        run: |
+          ./test/native-footprint.ps1 -Mode ${{ matrix.mode }} -Output native-perf-island-${{ matrix.mode }}.json
+          node test/performance-check.js native-perf-island-${{ matrix.mode }}.json ${{ matrix.mode }}
+          if($LASTEXITCODE -ne 0){throw 'Idle RAM raw-sample guard failed'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t24-memory-${{ matrix.mode }}
+          path: |
+            native-perf-island-*.json
+            out/status-diagnostics/**
+          if-no-files-found: warn
+  packaging:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Package native launcher and on-demand runtime
+        shell: pwsh
+        run: ./scripts/package-native.ps1 -SkipArchive
+      - name: Archive identity-checked unsigned package
+        shell: pwsh
+        run: ./scripts/archive-native.ps1
+      - name: Packaged startup, state handoff and complete shutdown
+        shell: pwsh
+        run: ./test/native-footprint.ps1 -Smoke -Mode reserved-bar -Executable out/Islandly-native-win64/Islandly.exe
+      - name: Exact reference EXE hash and full executable inventory (no new unsigned EXE/DLL)
+        run: node scripts/windows-identity.js out/Islandly-native-win64
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t24-packaging
+          path: |
+            out/Islandly-native-win64/EXECUTABLE-IDENTITY.json
+            out/Islandly-native-win64/EXE-SHA256.txt
+            out/status-diagnostics/**
+          if-no-files-found: warn
