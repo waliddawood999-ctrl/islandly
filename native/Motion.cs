@@ -33,7 +33,7 @@ sealed class NativeMotion:IDisposable {
  readonly Halo halo;
  IntPtr renderer;MotionOptions options=new MotionOptions();MotionApi.Snapshot snapshot;
  MotionApi.Frame frame;
- int target,loop,pending;volatile bool disposed;bool tracking;long eyeUntil,lastMove,lastStep,inputAt;Point lastPoint;float dx,dy,anticipation;int pointer=-1;
+ int target,loop,pending;volatile bool disposed;bool tracking,hasPoint;long eyeUntil,lastMove,lastStep,inputAt;Point lastPoint;float dx,dy,anticipation;int pointer=-1;
  readonly List<object> samples=new List<object>();long cursorReads,renders,inputSequence;double firstResponse=-1,lastFrame,eyeDirtyX,eyeDirtyY,eyeDirtyLid,eyeDirtyBlink;bool fading;float paintedBody=-1,paintedDrop=-1,paintedGx,paintedGy,paintedLid,paintedBlink;int paintedEyes=-1;string paintedLabel="";
  float cardWidth=360,cardHeight=440;
  readonly object workerGate=new object();Thread worker;
@@ -63,6 +63,9 @@ sealed class NativeMotion:IDisposable {
   // The web window is already painted underneath. Only the native placeholder fades.
   if(options.eco||options.mode!="full"){owner.Hide();halo.Hide();return;}fading=true;Interlocked.Exchange(ref loop,0);MotionApi.Check(MotionApi.MotionFade(renderer));fadeTimer.Start();
  }
+ public bool ContainsPointer(){Point p;cursorReads++;if(!MotionApi.GetCursorPos(out p))return false;float s=options.scale,w=(138+(cardWidth-138)*snapshot.body)*s,h=(36+(cardHeight-36)*snapshot.body)*s;
+  float x=Math.Max(options.screen.Left+12*s,Math.Min(options.screen.Right-12*s-w,options.center-w/2));return p.X>=x-16*s&&p.X<=x+w+16*s&&p.Y>=options.top-16*s&&p.Y<=options.top+h+16*s;
+ }
  public void Hide(){StopEyes();halo.Hide();owner.Hide();}
  void PlaceHalo(){if(disposed||options.hidden||!owner.Visible)return;float s=options.scale;float f=snapshot.body;float w=(138+(cardWidth-138)*f)*s,h=(36+(cardHeight-36)*f)*s;
   int x=(int)Math.Max(options.screen.Left+12*s,Math.Min(options.screen.Right-12*s-w,options.center-w/2));
@@ -70,11 +73,11 @@ sealed class NativeMotion:IDisposable {
   // A separate input-only HWND avoids acrylic blurring the invisible halo.
   if(halo.Bounds!=rect)halo.Bounds=rect;if(!halo.Visible)halo.Show();owner.BringToFront();
  }
- public void PointerEvent(){if(disposed||options.hidden)return;Point p;cursorReads++;if(!MotionApi.GetCursorPos(out p))return;float s=options.scale;dx=(p.X-options.center)/s;dy=(p.Y-(options.top+18*s))/s;float distance=(float)Math.Sqrt(dx*dx+dy*dy);
+ public void PointerEvent(){if(disposed||options.hidden)return;Point p;cursorReads++;if(!MotionApi.GetCursorPos(out p))return;if(hasPoint&&p==lastPoint)return;hasPoint=true;Step((clock.ElapsedMilliseconds-lastStep)/1000f);float s=options.scale;dx=(p.X-options.center)/s;dy=(p.Y-(options.top+18*s))/s;float distance=(float)Math.Sqrt(dx*dx+dy*dy);
   pointer=(Math.Abs(dx)<=69&&Math.Abs(dy)<=18)?2:1;tracking=distance<240;
   if(lastPoint!=p){lastPoint=p;lastMove=clock.ElapsedMilliseconds;eyeUntil=lastMove+1500;}
-  anticipation=options.mode=="full"&&!options.eco&&target==0?.1f*Math.Max(0,1-distance/48):0;frame.anticipation=anticipation;
-  Input();Step(.001f);Draw(false);if(snapshot.visible!=0&&options.mode=="full")StartEyes();
+  float oldAnticipation=anticipation;anticipation=options.mode=="full"&&!options.eco&&target==0?.1f*Math.Max(0,1-distance/48):0;frame.anticipation=anticipation;
+  Step(0);if(snapshot.visible!=0||Math.Abs(oldAnticipation-anticipation)>.00001f){Input();Draw(false);}if(snapshot.visible!=0&&options.mode=="full")StartEyes();
  }
  void StartEyes(){if(snapshot.visible==0||options.mode!="full"||options.eco)return;eyesTimer.Interval=33;eyesTimer.Start();}
  void StopEyes(){eyesTimer.Stop();blinkTimer.Stop();tracking=false;pointer=-1;}

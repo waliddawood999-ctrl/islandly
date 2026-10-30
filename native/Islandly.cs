@@ -101,7 +101,7 @@ sealed class IslandHost : Form {
     bool nativeEco, nativeAcrylic;
     string appliedMaterial = "";
     Size clippedSize=Size.Empty;
-    ForegroundWatcher foregroundWatcher; NativeMotion motion; bool cancelLaunch; readonly System.Windows.Forms.Timer leaveGrace=new System.Windows.Forms.Timer();
+    ForegroundWatcher foregroundWatcher; NativeMotion motion; bool cancelLaunch,hoverLaunch; readonly System.Windows.Forms.Timer leaveGrace=new System.Windows.Forms.Timer();
 
     public IslandHost(string[] args) {
         packaged = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"panels/Islandly.exe"));
@@ -140,7 +140,7 @@ sealed class IslandHost : Form {
         MouseMove += delegate { if(motion!=null)motion.PointerEvent(); };
         MouseLeave += delegate { LeaveHover(); };
         MouseClick += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) OpenPanel("expand","click"); };
-        leaveGrace.Interval=200; leaveGrace.Tick+=delegate { leaveGrace.Stop(); if(motion!=null && motion.Opening && !ready) { cancelLaunch=true; motion.Open(false); Send("close"); } };
+        leaveGrace.Interval=200; leaveGrace.Tick+=delegate { leaveGrace.Stop(); if(hoverLaunch && motion!=null && motion.Opening && !ready && !motion.ContainsPointer()) { cancelLaunch=true; motion.Open(false); Send("close"); } };
         hoverDwell.Interval = 120; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring) OpenPanel("expand","hover"); };
         launchRetry.Interval=1500;
         launchRetry.Tick+=delegate { launchRetry.Stop(); string requested=retryCommand; retryCommand=""; if(requested!="") OpenPanel(requested,"retry",true); };
@@ -307,7 +307,7 @@ sealed class IslandHost : Form {
         if(policyBlockedHover && origin=="hover") return;
         if(closing || launching || clock.ElapsedMilliseconds<nextLaunchAt) return;
         if(child!=null) { if(ready) Send(command); return; }
-        cancelLaunch=false; if(command=="expand"&&motion!=null)motion.Open(true);
+        cancelLaunch=false;hoverLaunch=origin=="hover"; if(command=="expand"&&motion!=null)motion.Open(true);
         launchRetry.Stop(); retryCommand=""; launching=true; requestAt=clock.ElapsedMilliseconds; loadingPainted=false; Position(); Update();
         try { await OpenPanelCore(command,origin); if(cancelLaunch){EndSession();return;} policyBlockedHover=false; }
         catch(Exception ex) {
