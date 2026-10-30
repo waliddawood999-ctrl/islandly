@@ -259,10 +259,14 @@ const Island = (() => {
         h('button', {
           class: 'dot' + (f === active ? ' on' : ''),
           title: t(f.id),
+          'aria-label': t(f.id),
+          'aria-current': f === active ? 'true' : null,
           'data-interactive': '1',
           onclick: () => select(i),
         })
-      )
+      ),
+      // Settings are always one click away from any open panel (T19)
+      h('button', { class: 'dots-gear', title: t('settings'), 'aria-label': t('settings'), 'data-interactive': '1', onclick: () => API.send('settings:open') }, html(ICONS.gear))
     );
   }
 

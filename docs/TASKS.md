@@ -27,6 +27,7 @@
 | T16 | Windows NSIS installer, portable ZIP and stable GitHub Releases | Codex | `codex/T16-windows-installer` | T1 accepted by Walid | review | Claude | PR #7; Linux npm test pass; Windows installer CI 40735233961 SUCCESS (tests, Electron update flow, NSIS/ZIP, native pruning, artifact upload); manual Windows pending |
 
 | T17 | Integration of PRs #2/#3/#4/#6/#10/#12/#14/#16/#17; no dev/main merge | Codex | `codex/T17-integration` | listed PRs | review | Claude | Draft PR #18; conflict inventory in docs/T17-INTEGRATION.md; cf89cc2 packaged real-input/error recovery pass; idle 40.12/40.66MB; laptop launch confirmation pending |
+| T19 | Competitor benchmark (`docs/COMPETITORS.md`) + UI polish: Settings navigator/switches/segmented/preview/saved, focus rings and hit areas; follow-up: footer gear, charging animation, `docs/MOTION_SPEC.md` (floating, liquid expand, idle eyes) + prototype | Claude | `claude/T19-ux` | T14 UI | review | Codex | Draft PR into `claude/T14-ui`; npm test exit 0; ui-e2e 19/19 under xvfb; `dev/t19/sheets` |
 
 ## Backlog (0.6 و 0.7)
 

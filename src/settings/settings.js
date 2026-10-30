@@ -10,6 +10,16 @@ current.digits = current.digits || 'latn';
 I18N.configure(current);
 I18N.apply();
 
+// Every change is written at once; a small "Saved" confirmation tells the user it took effect (T19).
+let savedTimer = 0;
+function save(patch) {
+  const done = api.set(patch);
+  $('saved').classList.add('on');
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => $('saved').classList.remove('on'), 1400);
+  return done;
+}
+
 const fields = ['position', 'autoHide', 'prayerMethod', 'madhab', 'islandMode', 'material'];
 const checks = ['hideFullscreen', 'clipboard', 'updates', 'prayerAlerts', 'weather', 'timeTracking', 'micCamIndicator', 'ecoMode', 'ecoAuto'];
 
@@ -23,43 +33,52 @@ if (api.material)
         $('material').querySelector('option[value="acrylic"]').disabled = true;
         $('materialHint').hidden = false;
         $('material').value = 'glass';
+        paintPreview();
       }
     })
     .catch(() => {});
 
 fields.forEach((k) => {
   $(k).value = current[k];
-  $(k).addEventListener('change', () => api.set({ [k]: $(k).value }));
+  $(k).addEventListener('change', () => {
+    current[k] = $(k).value;
+    save({ [k]: $(k).value });
+    paintPreview();
+  });
 });
 checks.forEach((k) => {
   $(k).checked = !!current[k];
   $(k).addEventListener('change', () => {
     current[k] = $(k).checked;
-    api.set({ [k]: $(k).checked });
+    save({ [k]: $(k).checked });
   });
 });
 
 $('uiLang').value = current.uiLang;
 $('uiLang').addEventListener('change', () => {
   current.uiLang = $('uiLang').value;
-  api.set({ uiLang: current.uiLang, lang: current.uiLang });
+  save({ uiLang: current.uiLang, lang: current.uiLang });
   relang();
 });
 $('digits').value = current.digits;
 $('digits').addEventListener('change', () => {
   current.digits = $('digits').value;
-  api.set({ digits: current.digits });
+  save({ digits: current.digits });
   relang();
 });
 
 $('scale').value = String(current.scale);
-$('scale').addEventListener('change', () => api.set({ scale: parseFloat($('scale').value) }));
+$('scale').addEventListener('change', () => {
+  current.scale = parseFloat($('scale').value);
+  save({ scale: current.scale });
+  paintPreview();
+});
 
 $('icsUrl').value = current.icsUrl || '';
 let icsTimer = 0;
 $('icsUrl').addEventListener('input', () => {
   clearTimeout(icsTimer);
-  icsTimer = setTimeout(() => api.set({ icsUrl: $('icsUrl').value.trim() }), 600);
+  icsTimer = setTimeout(() => save({ icsUrl: $('icsUrl').value.trim() }), 600);
 });
 
 // --- city / custom coordinates
@@ -83,7 +102,7 @@ const showCustom = () => ($('customBox').hidden = $('city').value !== 'custom');
 showCustom();
 $('city').addEventListener('change', () => {
   showCustom();
-  api.set({ city: $('city').value });
+  save({ city: $('city').value });
 });
 $('lat').value = current.lat || '';
 $('lng').value = current.lng || '';
@@ -98,18 +117,18 @@ const debounced = (fn, ms = 600) => {
 const saveCustom = debounced(() => {
   const lat = parseFloat($('lat').value);
   const lng = parseFloat($('lng').value);
-  if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) api.set({ lat, lng, cityName: $('cityName').value.trim() });
+  if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) save({ lat, lng, cityName: $('cityName').value.trim() });
 });
 ['lat', 'lng', 'cityName'].forEach((k) => $(k).addEventListener('input', saveCustom));
 
 $('breakEvery').value = String(current.breakEvery);
-$('breakEvery').addEventListener('change', () => api.set({ breakEvery: parseInt($('breakEvery').value, 10) }));
+$('breakEvery').addEventListener('change', () => save({ breakEvery: parseInt($('breakEvery').value, 10) }));
 
 $('shortcuts').value = current.shortcuts || '';
-$('shortcuts').addEventListener('input', debounced(() => api.set({ shortcuts: $('shortcuts').value })));
+$('shortcuts').addEventListener('input', debounced(() => save({ shortcuts: $('shortcuts').value })));
 
 $('workspaces').value = current.workspaces || '';
-$('workspaces').addEventListener('input', debounced(() => api.set({ workspaces: $('workspaces').value })));
+$('workspaces').addEventListener('input', debounced(() => save({ workspaces: $('workspaces').value })));
 
 // --- secrets: never read back, only replaced or cleared
 const secrets = [];
@@ -160,12 +179,110 @@ $('check').addEventListener('click', async () => {
 
 function relang() {
   I18N.configure(current); // re-translates every [data-i18n] in the window
+  paintSegments();
+  paintNav();
+  paintPreview();
   paintCities();
   secrets.forEach((paint) => paint());
   paintVersion();
   paintStatus();
   paintPerformance();
 }
+
+// --- Short choices (T19): position, size, digits and madhab are shown as segmented controls. The <select> stays the
+// source of truth (value, change event, settings:update), so nothing else in this file needs to know.
+const segmented = ['position', 'scale', 'digits', 'madhab'].map((id) => {
+  const select = $(id);
+  const label = select.closest('label');
+  const box = document.createElement('div');
+  box.className = 'seg field';
+  box.setAttribute('role', 'radiogroup');
+  const radios = [...select.options].map((o) => {
+    const wrap = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'seg-' + id;
+    input.value = o.value;
+    const text = document.createElement('span');
+    wrap.append(input, text);
+    box.append(wrap);
+    input.addEventListener('change', () => {
+      select.value = input.value;
+      select.dispatchEvent(new Event('change'));
+    });
+    return { o, input, text };
+  });
+  select.hidden = true;
+  label.classList.add('has-seg');
+  label.after(box);
+  return () => {
+    box.setAttribute('aria-label', label.querySelector('span').textContent);
+    radios.forEach(({ o, input, text }) => {
+      text.textContent = o.textContent;
+      input.checked = o.value === select.value;
+    });
+  };
+});
+function paintSegments() {
+  segmented.forEach((paint) => paint());
+  // long option texts are cut by the select box; the full text stays available on hover
+  document.querySelectorAll('select').forEach((sel) => (sel.title = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : ''));
+}
+paintSegments();
+
+// --- Live preview: the pill with the chosen material, mode, size and position
+function paintPreview() {
+  const box = $('preview');
+  box.dataset.material = $('material').value === 'glass' ? 'glass' : 'acrylic';
+  box.dataset.mode = $('islandMode').value === 'appbar' ? 'appbar' : 'overlay';
+  box.dataset.pos = ['left', 'right'].includes($('position').value) ? $('position').value : 'center';
+  box.querySelector('.pv-desk').style.setProperty('--s', String(parseFloat($('scale').value) || 0.8));
+  $('pvTime').textContent = `${I18N.num(9)}:${I18N.num(41, { minimumIntegerDigits: 2 })}`;
+}
+paintPreview();
+
+// --- Section navigator: chips built from the section titles, highlighting the section being read
+const navSections = [...document.querySelectorAll('section[data-nav]')];
+const navLinks = navSections.map((sec) => {
+  const a = document.createElement('a');
+  a.href = '#' + sec.id;
+  a.addEventListener('click', (e) => {
+    e.preventDefault();
+    sec.scrollIntoView({ block: 'start' });
+    sec.querySelector('h2').setAttribute('tabindex', '-1');
+    sec.querySelector('h2').focus({ preventScroll: true });
+  });
+  $('nav').append(a);
+  return a;
+});
+const NAV = { perf: 'settings.nav.perf', appearance: 'settings.nav.appearance', today: 'settings.nav.today', health: 'settings.nav.health', keys: 'settings.nav.keys', privacy: 'settings.nav.privacy', updates: 'settings.nav.updates' };
+function paintNav() {
+  navSections.forEach((sec, i) => (navLinks[i].textContent = t(NAV[sec.id])));
+}
+let navQueued = false;
+function spy() {
+  navQueued = false;
+  const edge = 130;
+  let on = 0;
+  navSections.forEach((sec, i) => {
+    if (sec.getBoundingClientRect().top <= edge) on = i;
+  });
+  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) on = navSections.length - 1;
+  navLinks.forEach((a, i) => {
+    if (i === on) {
+      if (a.getAttribute('aria-current') !== 'true') {
+        a.setAttribute('aria-current', 'true');
+        const nav = $('nav');
+        const r = a.getBoundingClientRect();
+        const n = nav.getBoundingClientRect();
+        if (r.left < n.left || r.right > n.right) nav.scrollBy({ left: r.left + r.width / 2 - (n.left + n.width / 2) });
+      }
+    } else a.removeAttribute('aria-current');
+  });
+}
+window.addEventListener('scroll', () => navQueued || ((navQueued = true), requestAnimationFrame(spy)), { passive: true });
+paintNav();
+spy();
 
 $('quit').addEventListener('click', () => api.quit());
 
@@ -203,7 +320,7 @@ function paintMotion() {
 document.querySelectorAll('input[name="motion"]').forEach((r) =>
   r.addEventListener('change', () => {
     current.motion = r.value;
-    api.set({ motion: r.value });
+    save({ motion: r.value });
     paintMotion();
   })
 );
@@ -271,6 +388,8 @@ if (api.on) {
       else $(key).value = value[key];
     }
     I18N.configure(current);
+    paintSegments();
+    paintPreview();
     paintPerformance();
   });
 }

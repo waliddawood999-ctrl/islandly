@@ -315,5 +315,15 @@
   "settings.ram.proc.powershell": "PowerShell",
   "settings.ram.proc.other": "أخرى",
   "settings.ram.meta": "عمليات PowerShell: {ps} · مدة التشغيل: {up}",
-  "settings.ram.hint": "القياس لما هو مفتوح الآن. الجزيرة المطوية تعمل بمضيف أصلي خفيف، وتُغلق اللوحات تماماً بعد إغلاقها (ميزانية الخمول: أقل من 180 ميغابايت)."
+  "settings.ram.hint": "القياس لما هو مفتوح الآن. الجزيرة المطوية تعمل بمضيف أصلي خفيف، وتُغلق اللوحات تماماً بعد إغلاقها (ميزانية الخمول: أقل من 180 ميغابايت).",
+  "settings.saved": "تم الحفظ",
+  "settings.preview": "معاينة",
+  "settings.nav": "الأقسام",
+  "settings.nav.perf": "الأداء",
+  "settings.nav.appearance": "المظهر",
+  "settings.nav.today": "الصلاة والطقس",
+  "settings.nav.health": "الصحة",
+  "settings.nav.keys": "المفاتيح",
+  "settings.nav.privacy": "الخصوصية",
+  "settings.nav.updates": "التحديثات"
 }

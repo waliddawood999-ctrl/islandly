@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Islandly motion prototype (T19)</title>
+  <link rel="stylesheet" href="../../../assets/fonts/typography.css">
+  <link rel="stylesheet" href="prototype.css">
+</head>
+<body>
+  <!-- Dev-only prototype of docs/MOTION_SPEC.md sections B (liquid expand) and C (idle eyes), plus the look of A (floating).
+       Query: ?lang=ar|en &mode=overlay|appbar|floating &pos=left|center|right &material=acrylic|glass
+              &motion=full|reduced|off &eco=1 &fullscreen=1 &eyes=0 &manual=1 (a fake clock for exact frames) -->
+
+  <main id="desk">
+    <svg id="cursor" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 1.5l10.5 6-4.4 1.3 2.6 4.6-1.9 1.1-2.6-4.6-3.2 3z" fill="#fff" stroke="#000"/></svg>
+    <div id="strip"></div>
+    <div id="page"><i></i><i></i><i></i><i></i></div>
+
+    <div id="island" data-eyes="on">
+      <div id="body"><div id="shape">
+        <section id="card">
+          <div class="c-head"><div id="bigTime" dir="ltr"></div><div class="c-dates"><div id="date"></div><div id="hijri" class="muted"></div></div></div>
+          <div class="c-next"><div><div id="nextName"></div><div id="nextAt" class="muted"></div></div><b id="nextIn" dir="ltr"></b></div>
+          <div class="c-chips"><span id="chip1"></span><span id="chip2"></span><span id="chip3"></span></div>
+        </section>
+      </div></div>
+      <div id="rest">
+        <div id="eyes" aria-hidden="true">
+          <div class="slot a"><i class="eye"></i></div>
+          <div class="slot b"><i class="eye"></i></div>
+        </div>
+        <span id="time" dir="ltr"></span>
+      </div>
+    </div>
+  </main>
+
+  <aside id="panel" aria-label="prototype controls">
+    <div class="row"><span>theme</span><div class="seg" data-k="theme"><button data-v="dark">dark</button><button data-v="light">light</button></div></div>
+    <div class="row"><span>lang</span><div class="seg" data-k="lang"><button data-v="ar">AR</button><button data-v="en">EN</button></div></div>
+    <div class="row"><span>mode</span><div class="seg" data-k="mode"><button data-v="overlay">overlay</button><button data-v="appbar">appbar</button><button data-v="floating">floating</button></div></div>
+    <div class="row"><span>position</span><div class="seg" data-k="pos"><button data-v="left">left</button><button data-v="center">center</button><button data-v="right">right</button></div></div>
+    <div class="row"><span>material</span><div class="seg" data-k="material"><button data-v="acrylic">acrylic</button><button data-v="glass">glass</button></div></div>
+    <div class="row"><span>motion</span><div class="seg" data-k="motion"><button data-v="full">full</button><button data-v="reduced">reduced</button><button data-v="off">off</button></div></div>
+    <div class="row"><span>eyes</span><div class="seg" data-k="eyes"><button data-v="1">on</button><button data-v="0">off</button></div></div>
+    <div class="row"><span>context</span><div class="seg" data-k="ctx"><button data-v="normal">normal</button><button data-v="eco">Eco</button><button data-v="fullscreen">fullscreen</button></div></div>
+  </aside>
+  <script src="prototype.js"></script>
+</body>
+</html>

@@ -9,9 +9,13 @@
 </head>
 <body>
   <!-- Every text comes from src/renderer/locales/<lang>.json through data-i18n (T11). -->
-  <h1 data-i18n="settings.title"></h1>
+  <header class="top">
+    <h1 data-i18n="settings.title"></h1>
+    <div id="saved" class="toast" role="status" aria-live="polite"><i aria-hidden="true"></i><span data-i18n="settings.saved"></span></div>
+    <nav id="nav" class="nav" data-i18n-aria-label="settings.nav"></nav>
+  </header>
 
-  <section id="perf" class="perf">
+  <section id="perf" class="perf" data-nav>
     <h2 data-i18n="settings.performance"></h2>
 
     <div class="opt">
@@ -54,8 +58,16 @@
       <p class="hint" data-i18n="settings.ram.hint"></p>
     </div>
   </section>
-  <section>
+  <section id="appearance" data-nav>
     <h2 data-i18n="settings.appearance"></h2>
+    <div class="preview" id="preview" data-material="acrylic" data-mode="overlay" data-pos="center" aria-hidden="true">
+      <span class="pv-cap" data-i18n="settings.preview"></span>
+      <div class="pv-desk">
+        <div class="pv-strip"></div>
+        <div class="pv-win"><i></i><i></i><i></i></div>
+        <div class="pv-pill"><span class="pv-live"></span><b id="pvTime" class="tnum"></b></div>
+      </div>
+    </div>
     <label><span data-i18n="settings.position"></span>
       <select id="position">
         <option value="center" data-i18n="settings.pos.center"></option>
@@ -109,7 +121,7 @@
     <p class="hint" data-i18n="settings.digits.hint"></p>
   </section>
 
-  <section>
+  <section id="today" data-nav>
     <h2 data-i18n="settings.today"></h2>
     <label><span data-i18n="settings.city"></span>
       <select id="city"></select>
@@ -143,7 +155,7 @@
     <label class="check"><input type="checkbox" id="weather"> <span data-i18n="settings.weather"></span></label>
   </section>
 
-  <section>
+  <section id="health" data-nav>
     <h2 data-i18n="settings.health"></h2>
     <label><span data-i18n="settings.breakEvery"></span>
       <select id="breakEvery">
@@ -171,7 +183,7 @@
     <textarea id="workspaces" rows="4" dir="auto" data-i18n-placeholder="settings.workspaces.placeholder"></textarea>
   </section>
 
-  <section>
+  <section id="keys" data-nav>
     <h2 data-i18n="settings.keys"></h2>
     <label><span data-i18n="settings.aiKey"></span>
       <div class="row"><input id="aiKey" type="password" dir="ltr" autocomplete="off"><button id="aiKeySave" type="button" data-i18n="settings.save"></button></div>
@@ -191,12 +203,12 @@
     <p class="hint" data-i18n="settings.ics.hint"></p>
   </section>
 
-  <section>
+  <section id="privacy" data-nav>
     <h2 data-i18n="settings.privacy"></h2>
     <label class="check"><input type="checkbox" id="clipboard"> <span data-i18n="settings.clipboard"></span></label>
   </section>
 
-  <section>
+  <section id="updates" data-nav>
     <h2 data-i18n="settings.updates"></h2>
     <label class="check"><input type="checkbox" id="updates"> <span data-i18n="settings.autoUpdate"></span></label>
     <div class="row">

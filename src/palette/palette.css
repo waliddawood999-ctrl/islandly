@@ -67,3 +67,7 @@ kbd { font: inherit; font-size: 11px; color: var(--muted); border: 1px solid rgb
 /* User text (titles, names) is isolated with dir=auto but keeps the alignment of the interface around it. */
 html[dir='rtl'] [dir='auto']:not(input):not(textarea) { text-align: right; }
 html[dir='ltr'] [dir='auto']:not(input):not(textarea) { text-align: left; }
+
+/* T19: visible keyboard focus on the copy button, a clearer selected row */
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row.on { box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.4); }

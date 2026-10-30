@@ -66,6 +66,7 @@ Island.register({
     this.lastCharging = b.charging;
     this.paint();
     if (chargingChanged) {
+      if (b.charging) this.zap();
       this.pSub.textContent = t(b.charging ? 'plugged' : 'unplugged');
       Island.peek('battery', 3500);
     } else if (crossedLow) {
@@ -73,6 +74,16 @@ Island.register({
       Island.peek('battery', 5000);
     } else {
       Island.render();
+    }
+  },
+
+  // One-shot charging animation (T19): the bolt pops and a glow runs once round the ring. CSS drops it in Reduced/Off/Eco.
+  zap() {
+    for (const el of [this.xBolt.parentNode, this.pRing.el]) {
+      el.classList.remove('zap');
+      void el.offsetWidth;
+      el.classList.add('zap');
+      el.addEventListener('animationend', () => el.classList.remove('zap'), { once: true });
     }
   },
 

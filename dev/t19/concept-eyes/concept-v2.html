@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Idle eyes: concept v2 for approval (T19-C)</title>
+<link rel="stylesheet" href="../../../assets/fonts/typography.css">
+<style>
+  :root { --L: 26px; --W: 13px; --tilt: -11deg; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #101117; color: #dfe2ee; font-family: var(--font); padding: 24px; width: 1500px; }
+  h2 { font-size: 22px; margin: 0 0 4px; } p.sub { color: #8d93a8; font-size: 14px; margin-bottom: 16px; line-height: 1.5; }
+  section { margin-bottom: 36px; padding: 22px; background: #181a23; border-radius: 18px; }
+  .grid { display: grid; gap: 14px 18px; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .cap { font-size: 13px; color: #aab0c6; text-align: center; line-height: 1.35; max-width: 210px; } .cap b { color: #fff; }
+  .stage { position: relative; width: 100%; height: 112px; border-radius: 14px; overflow: hidden; }
+  .stage.dark { background: linear-gradient(135deg, #3a2f78, #1d2a52 60%, #123a44); }
+  .stage.light { background: #f4f5f9; }
+  .stage::after { content: ''; position: absolute; inset: 66px 22px auto; height: 10px; border-radius: 5px; box-shadow: 0 18px 0 -2px var(--bar); background: var(--bar); }
+  .stage.dark { --bar: rgba(255,255,255,.12); } .stage.light { --bar: #d9dce8; }
+  .pill { position: absolute; left: 50%; top: 14px; width: 138px; height: 36px; margin-left: -69px; border-radius: 18px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .dark .pill { background: #0c0c0f; box-shadow: inset 0 0 0 .5px rgba(255,255,255,.14), 0 8px 18px -6px rgba(0,0,0,.6); color: #fff; --eye: #f7f8fc; }
+  .light .pill { background: #eceef4; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.18), 0 8px 18px -6px rgba(0,0,0,.28); color: #0c0c10; --eye: #0c0c12; }
+  .time { font-size: 14px; font-weight: 700; letter-spacing: .3px; font-variant-numeric: tabular-nums; direction: ltr; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 8px rgba(52,211,153,.7); }
+  /* the eyes: two solid, parallel capsules tilted 11 deg, no pupils, no outline. They move as one group.
+     Each sits in an upright slot whose top is clipped for the sleepy lid, so the flat edge is horizontal on screen. */
+  .eyes { position: relative; width: 42px; height: 30px; flex: none; transform: translate(var(--x, 0px), var(--y, 0px)); }
+  .slot { position: absolute; top: 0; width: 24px; height: 30px; clip-path: inset(calc(var(--lid, 0) * 100%) 0 calc(var(--lidb, 0) * 100%) 0); }
+  .slot.a { left: -3px; } .slot.b { left: 21px; }
+  .eye { position: absolute; left: 50%; top: 50%; width: var(--W); height: var(--L); margin: calc(var(--L) / -2) 0 0 calc(var(--W) / -2); border-radius: 999px; background: var(--eye); transform: rotate(var(--tilt)) scale(var(--sx, 1), var(--sy, 1)); }
+  .cursor { position: absolute; width: 16px; height: 16px; z-index: 3; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+  .strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 14px; }
+  .strip .stage { height: 82px; } .strip .pill { top: 20px; } .strip .stage::after { inset: 68px 18px auto; opacity: .0; }
+  .frames { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 14px; }
+  .frames .stage { height: 82px; } .frames .pill { top: 20px; } .frames .stage::after { opacity: 0; }
+  .close { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .big { position: relative; height: 330px; border-radius: 18px; overflow: hidden; }
+  .big.dark { background: linear-gradient(135deg, #3a2f78, #1d2a52 60%, #123a44); } .big.light { background: #f4f5f9; }
+  .big .zoom { position: absolute; left: 50%; top: 50%; zoom: 1; transform: translate(-50%, -50%) scale(1.9); width: 138px; height: 36px; }
+  .big .pill { top: 0; left: 0; margin: 0; }
+  .grid8 { grid-template-columns: repeat(4, 1fr); }
+</style>
+</head>
+<body>
+<h1 style="font-size:26px;margin-bottom:6px">Idle eyes: concept v2 (for approval)</h1>
+<p class="sub">Changes from v1: tilt <b>11°</b> (was 27°) · capsules <b>13 × 26 px</b> (was 9 × 26), about <b>78 %</b> of the island's height · blink squashes the filled eye itself to a thin filled line (10 % wide, 1.3 px; was 6 %, which rendered as a hairline) · sleepy = flatter half-closed filled eye (lid 54 %, was 40 %) · happy squint unchanged (approved) · light theme uses near-black eyes on a lighter pill.</p>
+<div id="app"></div>
+<script>
+  const CURSOR = (c) => `<svg class="cursor" viewBox="0 0 16 16"><path d="M2 1.5l10.5 6-4.4 1.3 2.6 4.6-1.9 1.1-2.6-4.6-3.2 3z" fill="${c}" stroke="${c === '#fff' ? '#000' : '#fff'}" stroke-width="1"/></svg>`;
+  const EYES = (o = {}) => `<div class="eyes" style="--x:${o.x || 0}px;--y:${o.y || 0}px">` +
+    ['a', 'b'].map((k) => `<div class="slot ${k}" style="--lid:${o.lid || 0};--lidb:${o.lidb || 0}"><i class="eye" style="--sx:${o.sx ?? 1};--sy:${o.sy ?? 1}"></i></div>`).join('') + `</div>`;
+  function pill(lang, layout, o) {
+    const rtl = lang === 'ar';
+    const body = o.hidden ? `<i class="dot"></i><span class="time">10:42</span>` : layout === 'only' ? EYES(o) : `${EYES(o)}<span class="time">10:42</span>`;
+    return `<div class="pill" dir="${rtl ? 'rtl' : 'ltr'}">${body}</div>`;
+  }
+  function cell(theme, lang, layout, o, cap, cur) {
+    return `<div class="cell"><div class="stage ${theme}">${pill(lang, layout, o)}${cur ? `<span style="position:absolute;left:${(cur.x / 3).toFixed(1)}%;top:${cur.y}px">${CURSOR(theme === 'dark' ? '#fff' : '#000')}</span>` : ''}</div><div class="cap">${cap}</div></div>`;
+  }
+  const BL = 0.1; // thin filled line, 10 % of the width = 1.3 px
+  const states = [
+    ['Awake', {}, { x: 232, y: 56 }, 'cursor within 240 px'],
+    ['Follow left', { x: -5, y: 1 }, { x: 30, y: 44 }, 'both eyes glide left'],
+    ['Follow right', { x: 5, y: 1.5 }, { x: 262, y: 62 }, 'both eyes glide right'],
+    ['Blink (mid)', { sx: BL }, { x: 232, y: 56 }, 'filled eye squashed to a thin line'],
+    ['Sleepy', { lid: 0.54, sy: 0.9, y: 2.5 }, null, 'cursor far: flat, half-closed filled eyes'],
+    ['Happy squint', { sx: 1.1, sy: 0.6, y: -0.5 }, { x: 200, y: 50 }, 'pointer on the island (as approved)'],
+    ['Hidden', { hidden: true }, null, 'fullscreen, Eco, Motion Off'],
+  ];
+  const out = [];
+  // 0: close-up
+  out.push(`<section id="b0"><h2>0 · Close-up of the collapsed island (enlarged 1.9×)</h2><p class="sub">138 × 36 px pill at scale 1.0. Eyes 13 × 26 px, tilt 11°, centre distance 22 px, gap about 8.6 px, 12 px of the 36 px height left free above and below the group.</p><div class="close">` +
+    `<div class="big dark"><div class="zoom">${pill('en', 'both', {})}</div></div><div class="big light"><div class="zoom">${pill('ar', 'both', {})}</div></div></div></section>`);
+  // 1: collapsed island, theme x lang x layout
+  out.push(`<section id="b1"><h2>1 · The collapsed island</h2><p class="sub">Eyes + time is recommended. Arabic mirrors the order of eyes and time only; the eye shape and the 11° tilt are identical in LTR and RTL. Layout: eyes + time (confirmed).</p><div class="grid grid8">` +
+    ['dark', 'light'].map((t) => ['en', 'ar'].map((l) => ['both', 'only'].map((ly) => cell(t, l, ly, {}, `<b>${t === 'dark' ? 'Dark' : 'Light'} · ${l === 'ar' ? 'Arabic RTL' : 'English LTR'}</b><br>${ly === 'both' ? 'eyes + time' : 'eyes only'}`, null)).join('')).join('')).join('') + `</div></section>`);
+  // 2/3: states
+  for (const [id, lang, title] of [['b2', 'en', 'English LTR'], ['b3', 'ar', 'Arabic RTL']])
+    out.push(`<section id="${id}"><h2>${id === 'b2' ? 2 : 3} · States, ${title} (dark and light)</h2><p class="sub">Following is physical: the eyes look where the cursor really is. Only the order of eyes and time mirrors in Arabic.</p>` +
+      ['dark', 'light'].map((t) => `<div class="strip">` + states.map(([n, o, cur, d]) => cell(t, lang, 'both', o, `<b>${n}</b><br>${d}`, cur)).join('') + `</div>`).join('') + `</section>`);
+  // 4: timelines
+  const follow = [0, 80, 160, 250, 500, 750].map((t) => 5 * (1 - Math.exp(-4 * t / 1000)));
+  const blinkAt = (t) => { const c = 0.4 * 280, h = 0.08 * 280; if (t <= c) { const u = t / c; return 1 - (1 - BL) * u * u; } if (t <= c + h) return BL; const u = (t - c - h) / (280 - c - h); return BL + (1 - BL) * (1 - (1 - u) * (1 - u)); };
+  out.push(`<section id="b4"><h2>4 · Motion timelines</h2><p class="sub">Follow: exponential glide at <b>4 per second</b> (time constant 250 ms; 63 % in 250 ms, 98 % in 1 s), both eyes together, max ±5 px / ±1.5 px. Blink: <b>280 ms</b> total, the filled eye's width 100 % → 10 % → 100 % (close 112 ms ease-in, hold 22 ms, open 146 ms ease-out), every 3–4 s. Sleepy: lid eases to 54 % over about 0.6 s when the cursor is more than 240 px away.</p>
+    <div class="frames">` + [0, 80, 160, 250, 500, 750].map((t, i) => cell('dark', 'en', 'both', { x: +follow[i].toFixed(2), y: +(follow[i] * 0.3).toFixed(2) }, `<b>t = ${t} ms</b><br>offset ${follow[i].toFixed(1)} of 5 px`, { x: 262, y: 62 })).join('') + `</div>
+    <div class="frames">` + [0, 56, 112, 134, 190, 280].map((t) => cell('dark', 'en', 'both', { sx: +blinkAt(t).toFixed(3) }, `<b>t = ${t} ms</b><br>width ${(blinkAt(t) * 100).toFixed(0)} %`, null)).join('') + `</div>
+    <div class="frames">` + [0, 0.14, 0.28, 0.4, 0.48, 0.54].map((l, i) => cell('dark', 'en', 'both', { lid: l, sy: 1 - 0.1 * (l / 0.54), y: 2.5 * (l / 0.54) }, `<b>falling asleep ${i + 1}/6</b><br>lid ${(l * 100).toFixed(0)} %`, null)).join('') + `</div></section>`);
+  document.getElementById('app').innerHTML = out.join('');
+</script>
+</body>
+</html>
