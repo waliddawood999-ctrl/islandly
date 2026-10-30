@@ -36,6 +36,9 @@ jobs:
       - name: Ownership snapshot concurrent publication regression
         shell: pwsh
         run: ./test/status-io.ps1
+      - name: Live AppBar ownership reads after opening settings
+        shell: pwsh
+        run: ./test/status-live.ps1
       - name: Slow first launch, native responsiveness and hotkey conflict regression
         shell: pwsh
         run: ./test/t20-startup.ps1
@@ -57,6 +60,7 @@ jobs:
             out/host-identity.json
             out/t20-startup/**
             out/status-diagnostics/**
+            out/status-live/**
           if-no-files-found: warn
   packaged-windows:
     runs-on: windows-latest

@@ -57,6 +57,10 @@ function Read-Status {
         try { Copy-Item "$probe/status.json" "$root/out/status-diagnostics/$Mode-status.json" -Force } catch {}
         throw [IO.IOException]::new($detail,$readFailure.Exception)
     }
+    if ($null -ne $readFailure -and $script:statusReadWarnings -lt 8) {
+        $script:statusReadWarnings++
+        Write-Warning ("Ownership read recovered without extending retries: " + $readFailure.Exception.ToString())
+    }
     foreach ($p in $status.processes) { [void]$owned.Add([int]$p.pid) }
     return $status
 }
