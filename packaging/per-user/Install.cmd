@@ -104,7 +104,9 @@ if errorlevel 1 exit /b 1
 "%SystemRoot%\System32\reg.exe" delete "%ARP%" /f >nul 2>nul
 del /q "%MENU%" 2>nul
 cd /d "%TEMP%"
-(
+rem Drop the batch-file context before deleting this script; otherwise CMD tries
+rem to reopen the removed Uninstall.cmd and reports failure after successful removal.
+(goto) 2>nul & (
  rmdir /s /q "%DEST%"
  if exist "%DEST%" exit /b 1
  if exist "%APPDATA%\islandly" rmdir /s /q "%APPDATA%\islandly"
