@@ -113,6 +113,7 @@ try {
  New-Item 'out/input-diagnostics' -ItemType Directory -Force | Out-Null
  Copy-Item "$profile/*.log" 'out/input-diagnostics' -ErrorAction SilentlyContinue
  if(Test-Path "$profile/native-panels.log") { Write-Output 'PACKAGED NATIVE LAUNCH DIAGNOSTICS:'; Get-Content "$profile/native-panels.log" }
- if(Test-Path "$probe/status.json") { Write-Output 'PACKAGED LAST STATUS:'; Get-Content "$probe/status.json" }
+ if(Test-Path "$probe/status.json") { foreach($name in @('error.log','panel-chromium.log','native-boot.log')){if(Test-Path "$profile/$name"){Write-Output "PACKAGED $name";Get-Content "$profile/$name"|Select-Object -Last 50}}
+ Write-Output 'PACKAGED LAST STATUS:'; Get-Content "$probe/status.json" }
  if(!$hostProcess.HasExited){Probe-Command 'exit';if(!$hostProcess.WaitForExit(10000)){$hostProcess.Kill()}}
 }

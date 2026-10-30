@@ -140,7 +140,7 @@ sealed class IslandHost : Form {
         MouseMove += delegate { if(motion!=null)motion.PointerEvent(); };
         MouseLeave += delegate { LeaveHover(); };
         MouseClick += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) OpenPanel("expand","click"); };
-        leaveGrace.Interval=200; leaveGrace.Tick+=delegate { leaveGrace.Stop(); if(hoverLaunch && motion!=null && motion.Opening && !ready && !motion.ContainsPointer()) { cancelLaunch=true; motion.Open(false); Send("close"); } };
+        leaveGrace.Interval=200; leaveGrace.Tick+=delegate { leaveGrace.Stop(); if(hoverLaunch && motion!=null && motion.Opening && !ready && !motion.ContainsPointer()) { NativeLog.Write("hover-cancel","pointer outside current card+16 after200ms");cancelLaunch=true; motion.Open(false); Send("close"); } };
         hoverDwell.Interval = 120; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring) OpenPanel("expand","hover"); };
         launchRetry.Interval=1500;
         launchRetry.Tick+=delegate { launchRetry.Stop(); string requested=retryCommand; retryCommand=""; if(requested!="") OpenPanel(requested,"retry",true); };
@@ -175,6 +175,7 @@ sealed class IslandHost : Form {
         Native.AddClipboardFormatListener(Handle);
         consent = new ConsentWatcher(delegate(string label) { if(!closing) { privacyLabel = label; Position(); } });
         motion=new NativeMotion(this,ArmHover,LeaveHover,probe!="" && Environment.GetCommandLineArgs().Contains("--motion-metrics"));
+        motion.FrameChanged+=delegate(double time){if(launching&&!loadingPainted){loadingPainted=true;NativeLog.Write("loading-paint","inputToPaintMs="+(clock.ElapsedMilliseconds-requestAt));}};
         foregroundWatcher=new ForegroundWatcher(this,Position);
         Position();Status();
     }
@@ -448,6 +449,7 @@ sealed class IslandHost : Form {
     }
     void SaveState() { try { string file = Path.Combine(profile,"native-session.json"); File.WriteAllText(file+".tmp",json.Serialize(state)); if(File.Exists(file)) File.Replace(file+".tmp",file,null); else File.Move(file+".tmp",file); stateWrittenAt = clock.ElapsedMilliseconds; } catch(IOException) {} }
     void EndSession() {
+        NativeLog.Write("session-end","ready="+ready+" launching="+launching+" cancel="+cancelLaunch+" hover="+hoverLaunch+" shutdownAt="+shutdownAt+" childExited="+(child==null?"none":child.HasExited.ToString()));
         ready = false; if(motion!=null)motion.Open(false);
         if(job != IntPtr.Zero) { Native.TerminateJobObject(job,0); Native.CloseHandle(job); job = IntPtr.Zero; }
         if(child != null) { child.Dispose(); child = null; }

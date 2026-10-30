@@ -43,6 +43,7 @@ sealed class NativeMotion:IDisposable {
   eyesTimer.Interval=33;eyesTimer.Tick+=delegate{EyeTick();};blinkTimer.Tick+=delegate{blinkTimer.Stop();MotionApi.MotionBlink(renderer);eyeUntil=clock.ElapsedMilliseconds+600;lastMove=clock.ElapsedMilliseconds;StartEyes();};
   fadeTimer.Interval=120;fadeTimer.Tick+=delegate{fadeTimer.Stop();fading=false;owner.Hide();halo.Hide();};
  }
+ public event Action<double> FrameChanged;
  public bool Opening {get{return target!=0;}}
  public bool VisibleEyes {get{return snapshot.visible!=0;}}
  public object Report {get{return new{backend="Direct2D/DirectComposition",body=snapshot.body,drop=snapshot.drop,gx=snapshot.gx,gy=snapshot.gy,lid=snapshot.lid,blink=snapshot.blink,eyesVisible=snapshot.visible!=0&&owner.Visible,frameLoop=loop!=0,cursorTimer=eyesTimer.Enabled&&tracking,cursorReads=cursorReads,renders=renders,inputSequence=inputSequence,inputFirstMs=firstResponse,center=options.center,top=options.top,scale=options.scale,floating=options.floating,cardWidth=cardWidth,cardHeight=cardHeight};}}
@@ -104,7 +105,7 @@ sealed class NativeMotion:IDisposable {
  void Draw(bool dirty){if(disposed||options.hidden)return;double start=clock.Elapsed.TotalMilliseconds,cpu=MotionApi.CpuMs();if(dirty)frame.flags|=32;
   try{MotionApi.Check(MotionApi.MotionDraw(renderer,ref frame,options.label,options.date,null));}finally{frame.flags&=~32;}renders++;
   double end=clock.Elapsed.TotalMilliseconds;bool changed=Math.Abs(snapshot.body-paintedBody)>.00001||Math.Abs(snapshot.drop-paintedDrop)>.00001||Math.Abs(snapshot.gx-paintedGx)>.0001||Math.Abs(snapshot.gy-paintedGy)>.0001||Math.Abs(snapshot.lid-paintedLid)>.0001||Math.Abs(snapshot.blink-paintedBlink)>.0001||snapshot.visible!=paintedEyes||options.label!=paintedLabel;
-  if(firstResponse<0&&changed)firstResponse=end-inputAt;paintedBody=snapshot.body;paintedDrop=snapshot.drop;paintedGx=snapshot.gx;paintedGy=snapshot.gy;paintedLid=snapshot.lid;paintedBlink=snapshot.blink;paintedEyes=snapshot.visible;paintedLabel=options.label;
+  if(firstResponse<0&&changed)firstResponse=end-inputAt;paintedBody=snapshot.body;paintedDrop=snapshot.drop;paintedGx=snapshot.gx;paintedGy=snapshot.gy;paintedLid=snapshot.lid;paintedBlink=snapshot.blink;paintedEyes=snapshot.visible;paintedLabel=options.label;if(changed&&FrameChanged!=null)FrameChanged(end);
   if(diagnostics&&samples.Count<2048)samples.Add(new{at=end,interval=lastFrame==0?0:start-lastFrame,cpuMs=MotionApi.CpuMs()-cpu,wallMs=end-start,inputMs=firstResponse,body=snapshot.body});lastFrame=start;
  }
  public object[] FrameSamples {get{return samples.ToArray();}}

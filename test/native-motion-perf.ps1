@@ -108,5 +108,6 @@ try{
  try{Close-Fullscreen;Refresh;Write-Output ('MOTION LAST STATUS: '+((Read-Status)|ConvertTo-Json -Compress -Depth 8))}catch{}
  if(!$hostProcess.HasExited){Set-Content "$probe/command.txt" 'exit';if(!$hostProcess.WaitForExit(10000)){$hostProcess.Kill()}}
  New-Item "$root/out/t21/logs-$Mode" -ItemType Directory -Force|Out-Null
+ if(Test-Path "$profile/native-panels.log"){Get-Content "$profile/native-panels.log"|Select-Object -Last 25}
  Copy-Item "$profile/*.log","$probe/status.json","$probe/motion-frames.json" "$root/out/t21/logs-$Mode" -Force -ErrorAction SilentlyContinue
 }
