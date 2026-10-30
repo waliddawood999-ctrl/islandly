@@ -52,7 +52,7 @@ sealed class NativeMotion:IDisposable {
   fadeTimer.Interval=120;fadeTimer.Tick+=delegate{fadeTimer.Stop();fading=false;owner.Hide();halo.Hide();};
  }
  public event Action<double> FrameChanged;
- public Action Reveal;public Action BurstEnded;public bool Bursting{get{return Volatile.Read(ref loop)!=0;}}
+ public Action<string,Exception> Fault;public Action Reveal;public Action BurstEnded;public bool Bursting{get{return Volatile.Read(ref loop)!=0;}}
  public object alphaAudit;
  /* Diagnostic: simulate an open and a close frame by frame (60 Hz steps) and count non-transparent composition-surface pixels outside the island's bounding box, including the very first frame. */
  void RunAlphaAudit(){lock(frameGate){RunAlphaAuditLocked();}}
@@ -63,7 +63,7 @@ sealed class NativeMotion:IDisposable {
  public bool Opening {get{return target!=0;}}
  public bool VisibleEyes {get{return snapshot.visible!=0;}}
  public object Report {get{return new{backend="Direct2D/DirectComposition",adapter=adapter,body=snapshot.body,drop=snapshot.drop,gx=snapshot.gx,gy=snapshot.gy,lid=snapshot.lid,blink=snapshot.blink,eyesVisible=snapshot.visible!=0&&owner.Visible,frameLoop=loop!=0,cursorTimer=eyesTimer.Enabled&&tracking,cursorReads=cursorReads,renders=renders,inputSequence=inputSequence,inputFirstMs=firstResponse,center=options.center,top=options.top,scale=options.scale,floating=options.floating,light=options.light,fullscreen=options.fullscreen,hidden=options.hidden,cardWidth=cardWidth,cardHeight=cardHeight,alphaAudit=alphaAudit,ticks=Counters.ticks,positions=Counters.positions,hookEvents=Counters.hooks,blinks=Counters.blinks};}}
- public void Configure(MotionOptions next){lock(frameGate){ConfigureLocked(next);}}
+ public void Configure(MotionOptions next){lock(frameGate){ConfigureLocked(next);} /* window work (SetWindowPos for the halo and topmost order) runs outside frameGate: held for ~16 ms on a busy runner it would stall the burst thread */ if(!options.hidden&&!fading&&owner.Visible)PlaceHalo();}
  void ConfigureLocked(MotionOptions next){bool changed=options.eyes!=next.eyes||options.eco!=next.eco||options.mode!=next.mode||options.fullscreen!=next.fullscreen||options.compact!=next.compact||options.light!=next.light||options.rtl!=next.rtl||options.acrylic!=next.acrylic||options.floating!=next.floating||options.center!=next.center||options.top!=next.top||options.scale!=next.scale||options.label!=next.label||options.date!=next.date||options.hidden!=next.hidden||options.hotZone!=next.hotZone||options.sliver!=next.sliver||options.screen!=next.screen||options.loading!=next.loading;
   options=next;float s=options.scale;int w=Math.Min(options.screen.Width,(int)Math.Ceiling(600*s)),h=Math.Min(options.screen.Height,(int)Math.Ceiling(920*s));
   int left=Math.Max(options.screen.Left,Math.Min(options.screen.Right-w,(int)(options.center-w/2f)));
@@ -74,7 +74,6 @@ sealed class NativeMotion:IDisposable {
    if(options.hotZone.IsEmpty)halo.Hide();else{if(halo.Bounds!=options.hotZone)halo.Bounds=options.hotZone;if(!halo.Visible)halo.Show();}
    firstResponse=clock.ElapsedMilliseconds-inputAt;return;}
   if(changed&&!fading){Input();Step(0);Draw(false);if(snapshot.visible!=0&&options.mode=="full"){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();}else StopEyes();}
-  if(!fading&&owner.Visible)PlaceHalo();
   if(snapshot.moving!=0||resizing)StartLoop();else if(options.mode=="off"){Interlocked.Exchange(ref loop,0);EndRegionOff();}
   if(snapshot.visible==0||options.mode!="full"){StopEyes();}else if(!blinkTimer.Enabled)ScheduleBlink();
  }
@@ -89,8 +88,8 @@ sealed class NativeMotion:IDisposable {
   resizing=true;StartLoop();
  }
  void UpdateMeasuredSize(){if(!resizing)return;float t=Math.Min(1,(clock.ElapsedMilliseconds-resizeAt)/120f),ease=1-(1-t)*(1-t)*(1-t);cardWidth=resizeFromW+(resizeToW-resizeFromW)*ease;cardHeight=resizeFromH+(resizeToH-resizeFromH)*ease;frame.cardWidth=cardWidth;frame.cardHeight=cardHeight;if(t>=1)resizing=false;}
- void Present(){var show=presentPanel;presentPanel=null;if(show==null)return;halo.Hide();show();
-  if(options.eco||options.mode!="full"){owner.Hide();return;}fading=true;Interlocked.Exchange(ref loop,0);EndRegionOff();MotionApi.Check(MotionApi.MotionFade(renderer));fadeTimer.Start();
+ void Present(){Action show;lock(frameGate){show=presentPanel;presentPanel=null;}if(show==null)return;halo.Hide();show(); /* the panel callback runs outside frameGate */
+  lock(frameGate){if(options.eco||options.mode!="full"){owner.Hide();return;}fading=true;Interlocked.Exchange(ref loop,0);EndRegionOff();MotionApi.Check(MotionApi.MotionFade(renderer));fadeTimer.Start();}
  }
 
  public void LeaveApproach(){lock(frameGate){if(anticipation==0)return;anticipation=0;MotionApi.MotionApproach(renderer,0);Step(0);if(snapshot.moving!=0)StartLoop();}}
@@ -138,7 +137,7 @@ sealed class NativeMotion:IDisposable {
   if(worker!=null)return;
   bool precise=!options.eco;worker=new Thread(delegate(){if(precise){timeBeginPeriod(1);try{Thread.CurrentThread.Priority=ThreadPriority.AboveNormal;}catch{}}try{MotionApi.MotionBurst();while(!disposed&&Volatile.Read(ref loop)!=0){MotionApi.MotionWait();if(disposed)break;
     bool present=false,end=false;
-    try{lock(frameGate){WorkerFrame(out present,out end);}}catch(Exception ex){NativeLog.Write("burst-frame",ex);Interlocked.Exchange(ref loop,0);end=true;}
+    try{lock(frameGate){WorkerFrame(out present,out end);}}catch(Exception ex){var report=Fault;if(report!=null)try{report("burst-frame",ex);}catch{}Interlocked.Exchange(ref loop,0);end=true;}
     if(present||end)try{bool p=present,e=end;owner.BeginInvoke((Action)delegate{PostFrame(p,e);});}catch(InvalidOperationException){break;}
   }}finally{if(precise)timeEndPeriod(1);lock(workerGate){worker=null;}if(!disposed&&Volatile.Read(ref loop)!=0)try{owner.BeginInvoke((Action)StartLoop);}catch(InvalidOperationException){}}}){IsBackground=true,Name="Islandly motion burst"};worker.Start();}
  }
@@ -155,10 +154,8 @@ sealed class NativeMotion:IDisposable {
  // UI-thread follow-up of a burst frame: show the measured panel, and at rest restore the exact window region, the halo and the eyes.
  void PostFrame(bool present,bool end){
   if(disposed)return;
-  lock(frameGate){
-   if(present){Interlocked.Exchange(ref presentQueued,0);Present();}
-   if(end&&Volatile.Read(ref loop)==0)EndRegionOff();
-  }
+  if(present){Interlocked.Exchange(ref presentQueued,0);Present();}
+  if(end)lock(frameGate){if(Volatile.Read(ref loop)==0)EndRegionOff();}
   if(end&&Volatile.Read(ref loop)==0){PlaceHalo();if(BurstEnded!=null)BurstEnded();lock(frameGate){if(!options.hidden&&snapshot.visible!=0){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();ScheduleBlink();}}}
  }
  void Draw(bool dirty){if(disposed||options.hidden)return;bool sample=diagnostics&&!dirty; /* the frame test only reads liquid frames: eye-only redraws skip the thread-time syscalls and the per-frame record */ double start=clock.Elapsed.TotalMilliseconds,cpu=sample?MotionApi.CpuMs():0;if(dirty)frame.flags|=32;
