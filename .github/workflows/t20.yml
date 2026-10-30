@@ -1,0 +1,37 @@
+name: T20 visual and frame timing
+on:
+  pull_request:
+    branches: [codex/T19-contracts]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  frames:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        dpi: ['1', '1.25', '1.5']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Electron before/after screenshots, collisions, frame and input timing
+        env:
+          T20_DPI: ${{ matrix.dpi }}
+        run: npx electron test/t20-electron.js
+      - name: Actual main/preload AppBar acrylic frame and input timing
+        env:
+          T20_DPI: ${{ matrix.dpi }}
+        run: npx electron test/t20-live-frame.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t20-visual-frames-${{ matrix.dpi }}
+          path: out/t20

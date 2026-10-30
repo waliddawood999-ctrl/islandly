@@ -20,15 +20,17 @@
 const Island = (() => {
   const el = $('#island');
   const stage = $('#content');
+  const face = h('div', { id: 'island-surface', 'aria-hidden': 'true' });
+  el.prepend(face);
   const features = [];
   const M = window.Motion || null;
 
-  const FOOTER = 22; // room for the tab dots below the panel's content
+  const FOOTER = 24; // room for the tab dots below the panel's content
   const TOP = 8; // gap above the island
   const BELOW_GAP = 8; // gap between the island and the strip under it
   const AUTO_HIDE_MS = 5000;
   const HOVER_DWELL_MS = 280; // pointer must rest on the island before it opens (avoids accidental opens)
-  const LEAVE_MS = 160; // how long after the pointer leaves the island closes again
+  const LEAVE_MS = 0; // how long after the pointer leaves the island closes again
   let reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Spring: visual duration ~0.35 s with a slight overshoot. Reduced motion: short, no bounce.
   let motionOff = false;
@@ -42,6 +44,7 @@ const Island = (() => {
   let selected = 0;
   let peekState = null;
   let current = null;
+  let workArea = { width: screen.availWidth || 1280, height: screen.availHeight || 800 };
   let autoHide = (window.islandAPI && window.islandAPI.settings.autoHide) || 'auto';
   let compactKey = null;
   let compactSince = 0;
@@ -60,6 +63,7 @@ const Island = (() => {
   // The current target of the pill and of the strip under it, in CSS pixels.
   const shape = { w: 90, h: 22, y: TOP, r: 11 };
   let belowShape = null; // { w, h } or null
+  let rasterWidth = 90, rasterHeight = 22;
   let shapeAnim = null;
   let animating = false;
   const stats = { animations: 0, lastDuration: 0 };
@@ -70,7 +74,6 @@ const Island = (() => {
   // Before an animation it grows to fit both the old and new size; once the spring settles it is trimmed.
   // It is never resized during the animation itself, so the pill cannot shake.
   const GUTTER = 18;
-  const OVERSHOOT = 1.08;
   let lastEnvelope = '';
   function sendEnvelope(w, hgt, y, extra) {
     const env = { w: Math.ceil(Math.max(w, extra ? extra.w : 0) + 2 * GUTTER), h: Math.ceil(y + hgt + (extra ? BELOW_GAP + extra.h : 0) + GUTTER) };
@@ -81,47 +84,50 @@ const Island = (() => {
   }
 
   function liveSize() {
-    const r = el.getBoundingClientRect();
+    const r = face.getBoundingClientRect();
     return { w: r.width, h: r.height, y: r.top };
   }
 
   function setTarget(w, hgt, y, r, nextBelow) {
     const now = liveSize();
-    const grow = (a, b) => Math.max(a, b) * OVERSHOOT;
-    const extra =
-      nextBelow || belowShape
-        ? { w: Math.max(nextBelow ? nextBelow.w : 0, belowShape ? belowShape.w : 0), h: Math.max(nextBelow ? nextBelow.h : 0, belowShape ? belowShape.h : 0) }
-        : null;
-    sendEnvelope(grow(now.w, w), grow(now.h, hgt), Math.max(now.y, y), extra);
+    sendEnvelope(Math.max(now.w, w), Math.max(now.h, hgt), Math.max(now.y, y), nextBelow || belowShape);
     Object.assign(shape, { w, h: hgt, y, r });
     placeBelow(nextBelow);
-
     if (shapeAnim) shapeAnim.stop();
-    const target = { width: w + 'px', height: hgt + 'px', top: y + 'px', borderRadius: r + 'px' };
-    if (!M || motionOff) {
-      Object.assign(el.style, target);
-      settle();
-      return;
-    }
+    // Retain the largest backdrop texture. Content stays unscaled; only the face transforms.
+    rasterWidth = Math.max(rasterWidth, now.w, w); rasterHeight = Math.max(rasterHeight, now.h, hgt);
+    const rasterW = rasterWidth, rasterH = rasterHeight;
+    Object.assign(el.style, { width: Math.max(now.w,w) + 'px', height: Math.max(now.h,hgt) + 'px', top: y + 'px', borderRadius: r + 'px' });
+    Object.assign(face.style, { width: rasterW + 'px', height: rasterH + 'px', borderRadius: `${r*rasterW/w}px / ${r*rasterH/hgt}px`, transform: `translateX(-50%) scale(${w/rasterW}, ${hgt/rasterH})` });
+    if (motionOff || !el.animate) { settle(); return; }
     animating = true;
-    startFollow();
-    startShapeLoop();
+    face.style.willChange = 'transform';
     const started = performance.now();
-    const anim = M.animate(el, target, SPRING);
-    shapeAnim = anim;
-    stats.animations++;
-    anim.then(() => {
-      if (shapeAnim !== anim) return; // a newer animation took over
-      shapeAnim = null;
+    const animation = face.animate([
+      { transform: `translateX(-50%) translateY(${now.y-y}px) scale(${now.w/rasterW}, ${now.h/rasterH})` },
+      { transform: `translateX(-50%) translateY(0px) scale(${w/rasterW}, ${hgt/rasterH})` },
+    ], { duration: reducedMotion ? 100 : 180, easing: 'cubic-bezier(.2,.9,.3,1)' });
+    const anim = { stop: () => animation.cancel() };
+    shapeAnim = anim; stats.animations++;
+    if (nextBelow) {
+      below.style.top = (y + hgt + BELOW_GAP) + 'px';
+      below.animate([{ transform: `translateY(${now.y + now.h - y - hgt}px)` }, { transform: 'translateY(0px)' }],
+        { duration: reducedMotion ? 100 : 180, easing: 'cubic-bezier(.2,.9,.3,1)' });
+    }
+    startShapeLoop(); reportShape();
+    animation.finished.then(() => {
+      if (shapeAnim !== anim) return;
+      shapeAnim = null; face.style.willChange = '';
       stats.lastDuration = performance.now() - started;
       settle();
-    });
+    }).catch(() => {});
   }
 
   function settle() {
     animating = false;
+    Object.assign(el.style, { width: shape.w + 'px', height: shape.h + 'px', top: shape.y + 'px', borderRadius: shape.r + 'px' });
     reportShape();
-    if (belowShape) below.style.top = el.getBoundingClientRect().bottom + BELOW_GAP + 'px';
+    if (belowShape) below.style.top = face.getBoundingClientRect().bottom + BELOW_GAP + 'px';
     sendEnvelope(shape.w, shape.h, shape.y, belowShape); // trim the window to the final size
   }
 
@@ -133,7 +139,7 @@ const Island = (() => {
     if (nextEl !== belowEl) {
       if (belowEl && M && !motionOff) {
         const old = belowEl;
-        M.animate(below, { opacity: 0, y: -6 }, { duration: 0.1 }).then(() => old.remove());
+        M.animate(below, { opacity: 0 }, { duration: 0.1 }).then(() => old.remove());
       } else if (belowEl) belowEl.remove();
       belowEl = nextEl;
       if (nextEl) {
@@ -141,7 +147,7 @@ const Island = (() => {
         if (M && !motionOff) {
           below.style.opacity = '0';
           belowAnimating++;
-          M.animate(below, { opacity: [0, 1], y: [-8, 0], scale: [0.96, 1] }, { ...SPRING, delay: reducedMotion ? 0 : 0.18 }).then(() => { belowAnimating--; reportShape(); });
+          M.animate(below, { opacity: [0, 1] }, { ...SPRING, delay: reducedMotion ? 0 : 0.18 }).then(() => { belowAnimating--; reportShape(); });
           startShapeLoop();
         }
       }
@@ -157,24 +163,6 @@ const Island = (() => {
     }
   }
 
-  // Keep the strip under the pill while the pill's height animates. The loop runs only while a strip is shown.
-  let following = false;
-  function followBelow() {
-    if (!belowShape) {
-      following = false;
-      return;
-    }
-    below.style.top = el.getBoundingClientRect().bottom + BELOW_GAP + 'px';
-    reportShape();
-    if (animating) requestAnimationFrame(followBelow);
-    else following = false;
-  }
-  function startFollow() {
-    if (following || !belowShape) return;
-    following = true;
-    requestAnimationFrame(followBelow);
-  }
-
   /** Natural height of a view: panels (v.auto) are measured, small pills use their fixed height. */
   function heightOf(v) {
     if (!v.auto) return v.h;
@@ -185,6 +173,21 @@ const Island = (() => {
     return Math.ceil(v.el.offsetHeight);
   }
 
+  function expandedSize(v, id) {
+    const maxWidth = Math.max(160, Math.min(560, workArea.width - 2 * GUTTER));
+    const base = Math.min(360, maxWidth);
+    const preferred = id === 'music' && v.el.querySelector('.m-body')?.style.display !== 'none' ? Math.min(460, maxWidth) : base;
+    const clone = v.el.cloneNode(true);
+    Object.assign(clone.style, { width: (preferred - 32) + 'px', height: 'auto', position: 'relative', padding: '0', inset: 'auto' });
+    meter.classList.add('expanded-grid'); meter.appendChild(clone);
+    const needed = Math.max(preferred, Math.min(v.w, clone.scrollWidth + 32));
+    const w = Math.min(maxWidth, needed);
+    clone.style.width = (w - 32) + 'px';
+    const natural = v.auto ? clone.offsetHeight : v.h;
+    clone.remove();
+    const hgt = Math.min(Math.max(120, Math.min(800, workArea.height) - TOP - GUTTER - (v.below ? v.below.h + BELOW_GAP : 0)), Math.max(440, natural + FOOTER + 44));
+    return { w, h: hgt };
+  }
   const expandable = () => features.filter((f) => f.view('expanded'));
 
   function bestCompact(includeIdle) {
@@ -209,18 +212,19 @@ const Island = (() => {
       selected = Math.min(selected, list.length - 1);
       const f = list[selected];
       const v = f.view('expanded');
-      const hgt = heightOf(v) + (list.length > 1 ? FOOTER : 0);
+      const dims = expandedSize(v, f.id);
+      const hgt = dims.h;
       return {
         key: 'x:' + f.id,
         mode: 'expanded',
         el: v.el,
-        w: v.w,
+        w: dims.w,
         h: hgt,
         y: TOP,
         r: radiusFor(v.w, hgt, v),
         withDots: list.length > 1,
         auto: !!v.auto,
-        below: v.below || null,
+        below: v.below ? { ...v.below, w: Math.min(v.below.w, workArea.width - 2 * GUTTER) } : null,
       };
     }
     if (peekState && Date.now() < peekState.until) {
@@ -279,7 +283,7 @@ const Island = (() => {
 
   function mount(v) {
     resizer.disconnect();
-    if (v.auto) resizer.observe(v.el);
+    if (v.auto) { resizer.observe(v.el); for (const child of v.el.children) resizer.observe(child); }
     sizeStage(v);
     const kids = [v.el];
     if (v.withDots) {
@@ -305,6 +309,8 @@ const Island = (() => {
 
   // The content box is centred with `left`, so transforms stay free for the enter animation.
   function sizeStage(v) {
+    stage.classList.toggle('expanded-grid', v.mode === 'expanded');
+    if(v.mode !== 'expanded') v.el.style.width = '';
     stage.style.width = v.w + 'px';
     stage.style.height = v.h + 'px';
     stage.style.left = `calc(50% - ${v.w / 2}px)`;
@@ -318,17 +324,10 @@ const Island = (() => {
       mount(v);
       return;
     }
-    const hadContent = stage.childElementCount > 0;
-    const out = hadContent ? M.animate(stage, { opacity: 0, scale: 0.98 }, { duration: reducedMotion ? 0.05 : 0.08, ease: 'easeIn' }) : Promise.resolve();
-    out.then(() => {
-      if (token !== swapToken) return;
-      mount(v);
-      M.animate(
-        stage,
-        { opacity: [0, 1], scale: [0.96, 1], filter: ['blur(4px)', 'blur(0px)'] },
-        { duration: reducedMotion ? 0.08 : 0.24, ease: [0.2, 0.9, 0.3, 1], delay: reducedMotion ? 0 : 0.12 }
-      );
-    });
+    // Mount before the shrink starts: retaining a large view in a tiny FLIP target
+    // forces oversized backdrop rasterization and delays the first collapsed frame.
+    mount(v);
+    M.animate(stage, { opacity: [0, 1] }, { duration: reducedMotion ? 0.08 : 0.12, ease: 'easeOut' });
   }
 
   function render() {
@@ -506,6 +505,7 @@ const Island = (() => {
   }
 
   function configure(opts) {
+    if (opts.workArea) { workArea = opts.workArea; render(); }
     if (opts.autoHide) {
       autoHide = opts.autoHide;
       compactKey = null;
@@ -526,8 +526,9 @@ const Island = (() => {
   let shapeLoop = false;
   function reportShape() {
     if (material !== 'acrylic') return;
-    const r = el.getBoundingClientRect();
-    const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+    const r = face.getBoundingClientRect();
+    const radii = getComputedStyle(face).borderTopLeftRadius.split(' ').map(parseFloat);
+    const radius = Math.min((radii[0] || 0) * r.width / face.offsetWidth, (radii[1] || radii[0] || 0) * r.height / face.offsetHeight);
     const msg = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), radius: Math.round(radius) };
     msg.secondary = null;
     if (belowShape && below.style.display !== 'none') {
@@ -596,6 +597,7 @@ const Island = (() => {
   });
 
   Object.assign(el.style, { width: shape.w + 'px', height: shape.h + 'px', top: shape.y + 'px', borderRadius: shape.r + 'px' });
+  Object.assign(face.style, { width: shape.w + 'px', height: shape.h + 'px', borderRadius: shape.r + 'px' });
   below.style.display = 'none';
   sendEnvelope(shape.w, shape.h, shape.y, null);
 
@@ -618,6 +620,17 @@ const Island = (() => {
       SPRING = reducedMotion ? { duration: 0.12, ease: 'easeOut' } : { type: 'spring', visualDuration: 0.34, bounce: 0.24 };
       document.documentElement.dataset.motion = motionOff ? 'off' : reducedMotion ? 'reduced' : 'full';
     },
+    whenPainted: () => new Promise((resolve, reject) => {
+      const until = performance.now() + 5000;
+      function painted() {
+        if (current && current.el.parentNode === stage && !animating && Number(getComputedStyle(stage).opacity) > .98) {
+          requestAnimationFrame(() => requestAnimationFrame(resolve)); return;
+        }
+        if (performance.now() > until) { reject(new Error('Island first paint timed out')); return; }
+        requestAnimationFrame(painted);
+      }
+      document.fonts.ready.then(painted);
+    }),
     isExpanded: () => hovered || pinned,
     hold,
     selectedId: () => {

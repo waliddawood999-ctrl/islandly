@@ -40,11 +40,27 @@ function Read-SharedJson([string]$File) {
 function Read-Status {
     if ($hostProcess.HasExited) { throw "Native host exited: $($hostProcess.ExitCode)" }
     $status = $null
+    $readFailure = $null
     for ($retry=0; $retry -lt 20; $retry++) {
-        try { $status = Read-SharedJson "$probe/status.json"; break }
-        catch { Start-Sleep -Milliseconds 15 }
+        try {
+            $status = Read-SharedJson "$probe/status.json"
+            if ($null -ne $status -and $status.hostPid -eq $hostProcess.Id -and $null -ne $status.processes) { break }
+            $actualOwner = if ($null -eq $status) { 'null snapshot' } else { "hostPid=$($status.hostPid), processes=$($null -ne $status.processes)" }
+            throw [IO.InvalidDataException]::new("Invalid ownership snapshot: expected hostPid=$($hostProcess.Id); $actualOwner")
+        } catch { $readFailure = $_; $status = $null }
+        Start-Sleep -Milliseconds 15
     }
-    if ($null -eq $status) { throw 'Could not read native ownership status after bounded retries' }
+    if ($null -eq $status) {
+        $detail = "Could not read native ownership status after bounded retries: $($readFailure.Exception)"
+        New-Item "$root/out/status-diagnostics" -ItemType Directory -Force | Out-Null
+        [IO.File]::WriteAllText("$root/out/status-diagnostics/$Mode-error.txt",$detail)
+        try { Copy-Item "$probe/status.json" "$root/out/status-diagnostics/$Mode-status.json" -Force } catch {}
+        throw [IO.IOException]::new($detail,$readFailure.Exception)
+    }
+    if ($null -ne $readFailure -and $script:statusReadWarnings -lt 8) {
+        $script:statusReadWarnings++
+        Write-Warning ("Ownership read recovered without extending retries: " + $readFailure.Exception.ToString())
+    }
     foreach ($p in $status.processes) { [void]$owned.Add([int]$p.pid) }
     return $status
 }
@@ -111,6 +127,8 @@ try {
         Command 'settings'; $second=Wait-Phase 'panel'
         $hostProcess.Kill(); $hostProcess.WaitForExit(); Start-Sleep -Seconds 2
         foreach ($id in $owned) { if (Get-Process -Id $id -ErrorAction SilentlyContinue) { throw "Owned PID $id survived native owner crash" } }
+        # The crashed owner's snapshot must not be mistaken for the fresh process during JIT/startup.
+        Remove-Item "$probe/status.json" -Force -ErrorAction SilentlyContinue
         $hostProcess = Start-Process $exe -ArgumentList @('--root',"`"$root`"",'--profile',"`"$profile`"",'--probe-dir',"`"$probe`"",'--mode',$Mode) -PassThru
         $recovered = Wait-Phase 'idle'
         if ($Mode -eq 'reserved-bar' -and !$recovered.appBar) { throw 'AppBar failed to recover after native owner crash' }
@@ -134,7 +152,7 @@ try {
     Command 'close'
     $final = Wait-Phase 'idle'
     $result = @{ method='sum of native host and Windows Job Object process working sets / 1048576'; platform='Windows'; mode=$Mode; warmupSeconds=15; sampleCount=60; sampleIntervalSeconds=1;
-        idle=$idle; panel=$panel; afterClose=$afterClose; runtimeShutdownMs=$shutdownMs; panelOpenLatencyMs=@($reopened.latenciesMs); latencyDefinition='native interaction to existing panel ready-to-show plus initial 350ms layout; cold opens';
+        idle=$idle; panel=$panel; afterClose=$afterClose; runtimeShutdownMs=$shutdownMs; panelOpenLatencyMs=@($reopened.latenciesMs); latencyDefinition='native interaction through process creation, expanded content/font readiness and first paint; cold opens';
         electron=(Get-Content "$root/node_modules/electron/package.json" -Raw | ConvertFrom-Json).version; measuredAt=[DateTime]::UtcNow.ToString('o'); ownedPids=@($owned); acceptanceUnder180=($idle.averageMB -lt 180 -and $afterClose.averageMB -lt 180) }
     $result | ConvertTo-Json -Depth 12 | Set-Content $Output -Encoding UTF8
     Write-Output "NATIVE FOOTPRINT: idle $($idle.averageMB) MB; panel $($panel.averageMB) MB; after-close $($afterClose.averageMB) MB; panel latency $($result.panelOpenLatencyMs -join ', ') ms; shutdown $shutdownMs ms; idle CPU $($idle.averageCPU)%"

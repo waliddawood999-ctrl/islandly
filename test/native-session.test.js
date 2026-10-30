@@ -42,5 +42,11 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     command() {}, quit() { quits++; }, busy: () => true, capture: async () => ({}), restore: async () => {} });
   parent.end(); await sleep(10); orphan.stop();
   assert.equal(quits, 2);
+  const failedOutput = new PassThrough(); let failedText = ''; failedOutput.on('data', b => { failedText += b; });
+  const failed = new NativeSession({ input: new PassThrough(), output: failedOutput, interval: 5, grace: 10,
+    command() {}, quit() { throw Error('must not signal idle before first paint'); }, busy: () => false, capture: async () => ({}),
+    restore: async () => { throw Error('first paint failed'); } });
+  await assert.rejects(failed.loaded(), /first paint failed/); await sleep(20);
+  assert.equal(failed.ready, false); assert.equal(failedText, '', 'failed first paint must never hide the native owner with a ready signal'); failed.stop();
   console.log('Native session: hydration, snapshot transfer, busy/grace shutdown, allowlist and parent loss pass');
 })().catch(err => { console.error(err); process.exit(1); });

@@ -20,8 +20,8 @@
   "host": {
     "path": "Islandly.exe",
     "baselineSha256": "c7a5f5998c0a148e8da8bc38ce649ad172c3e8d7086cd24990245fb71cf1f501",
-    "laptopAcceptedSha256": "e13846b221380b1accf4f79cad17dc721f72a5ad406a3f95682f3089fe64382b",
-    "laptopAcceptedSource": "5420c0bcb0fed8eeca20a55f644440bf9a345a10",
+    "laptopAcceptedSha256": "c7a5f5998c0a148e8da8bc38ce649ad172c3e8d7086cd24990245fb71cf1f501",
+    "laptopAcceptedSource": "T18 laptop test reported by Walid: Windows11 SAC On, zero CodeIntegrity events, 43–48MB idle",
     "legacyArchiveSha256": "89913f4327f1b112343e0a4c9b8730f5c60d8013f46ae7eed0c227940e5d3575"
   }
 }

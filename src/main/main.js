@@ -71,6 +71,8 @@ let media, clipboardHistory, shelf, calendar, bluetooth, updater, fsWatcher, wea
 let palette, tracker, privacy, github, perf;
 let systemRequested = false;
 let surfaceResting = null;
+let panelPaintReady = false;
+let nativeSurfaceReady = false;
 const expanded = () => surfaceResting === null ? envelope.h > 150 : !surfaceResting;
 let policy = null;
 let surface;
@@ -135,7 +137,7 @@ function positionWindow() {
 }
 
 function applyVisibility() {
-  if (!win || win.isDestroyed()) return;
+  if (!win || win.isDestroyed() || !panelPaintReady || nativeManaged && !nativeSurfaceReady) return;
   const hide = userHidden || (settings.get().hideFullscreen && fullscreenActive);
   if (hide && win.isVisible()) win.hide();
   if (!hide && !win.isVisible()) win.showInactive();
@@ -203,6 +205,7 @@ function createWindow() {
     height: 60,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',
     resizable: false,
     movable: false,
     focusable: false,
@@ -215,7 +218,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      backgroundThrottling: true,
+      backgroundThrottling: !nativeManaged,
     },
   });
 
@@ -237,7 +240,7 @@ function createWindow() {
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.loadFile(path.join(info.root, 'src', 'renderer', 'index.html'));
-  win.once('ready-to-show', () => applyVisibility());
+  win.once('ready-to-show', () => { panelPaintReady = true; if (!nativeManaged) applyVisibility(); });
   win.webContents.on('did-finish-load', () => {
     markBootOk();
     push('eco:changed', { eco: effectiveEco });
@@ -390,6 +393,7 @@ function registerIpc() {
   ipcMain.on('island:hover-state', (_e, on) => watchHover(!!on));
   ipcMain.handle('shortcuts:list', () => shortcutList());
   ipcMain.on('shortcuts:open', (_e, name) => openTarget({ type: 'app', value: String(name || '').slice(0, 120) }));
+  ipcMain.handle('island:work-area', e => { if (!isIsland(e)) throw Error('Unauthorized IPC sender'); const d = screen.getDisplayMatching(win.getBounds()); return { width: d.workArea.width / zoom(), height: d.workArea.height / zoom() }; });
   ipcMain.handle('perf:get', e => { if (!isSettings(e)) throw Error('Unauthorized IPC sender'); return perf.get(); });
   ipcMain.on('perf:watch', (e, on) => { if (isSettings(e) && typeof on === 'boolean') perf.watch(settingsWin, on); });
   // The island only accepts keyboard focus while the to-do panel is on screen; it must never steal focus otherwise.
@@ -674,7 +678,7 @@ function startNativeSession() {
   const connection = require('node:net').createConnection('\\\\.\\pipe\\' + process.env.ISLANDLY_NATIVE_PIPE);
   connection.on('error', err => { logError('native pipe', err); app.quit(); });
   const renderer = script => win.webContents.executeJavaScript(script);
-  const command = async action => {
+  const command = async (action, required = false) => {
     try {
       closingPanel = false;
       if (action === 'settings') {
@@ -692,13 +696,16 @@ function startNativeSession() {
         await renderer("Island.setHover(false); if (Island.isExpanded()) Island.togglePin();");
         closingPanel = true;
         nativeExpanded = false;
+        nativeSurfaceReady = false;
         win.hide();
       } else {
         const cmd = action === 'pomodoro' ? 'pomodoro' : 'toggle';
-        push('shortcut', cmd);
+        if (cmd === 'toggle') await renderer("Island.open(Island.selectedId() || 'clock'); Island.whenPainted();");
+        else { push('shortcut', cmd); await renderer("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"); }
+        panelPaintReady = true; nativeSurfaceReady = true;
         applyVisibility();
       }
-    } catch (err) { logError('native command', err); }
+    } catch (err) { logError('native command', err); if (required) throw err; }
   };
   nativeSession = new NativeSession({
     input: connection, output: connection,
@@ -728,10 +735,10 @@ function startNativeSession() {
         })()`);
       }
       logError('native opening command', process.env.ISLANDLY_NATIVE_COMMAND);
-      await command(process.env.ISLANDLY_NATIVE_COMMAND || 'expand');
+      await command(process.env.ISLANDLY_NATIVE_COMMAND || 'expand', true);
       logError('native command opened');
       // Include first panel layout/paint rather than counting process spawn as panel readiness.
-      await new Promise(resolve => setTimeout(resolve, 350));
+
     },
     capture: async () => {
       const snapshot = await renderer(`(() => {

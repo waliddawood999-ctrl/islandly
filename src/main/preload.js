@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-const CALL = new Set([
+const CALL = new Set(['island:work-area',
   'prayer:get', 'hijri:get', 'media:resume', 'quran:reciters', 'quran:url',
   'material:get', 'media:caps', 'clipboard:list', 'clipboard:copy', 'clipboard:pin', 'clipboard:remove', 'clipboard:clear',
   'shelf:list', 'shelf:add', 'shelf:remove', 'shelf:clear', 'shelf:open', 'shelf:reveal',

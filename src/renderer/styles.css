@@ -34,14 +34,19 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 button:disabled { opacity: 0.3; pointer-events: none; }
 svg { display: block; }
 
-/* The pill. Its size is a Motion spring (island.js); `contain` keeps each frame's layout to this one box. */
+/* T20: an unscaled content wrapper over a retained compositor backdrop. */
 #island {
   position: fixed;
   top: 8px;
   left: 50%;
   transform: translateX(-50%);
-  overflow: hidden;
-  contain: layout paint style;
+  overflow: visible;
+  contain: layout style;
+  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.25), background-color 0.4s ease, color 0.4s ease;
+}
+#island-surface {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%); transform-origin: 50% 0;
+  pointer-events: none;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 38%), var(--glass);
   -webkit-backdrop-filter: blur(28px) saturate(1.6);
   backdrop-filter: blur(28px) saturate(1.6);
@@ -50,18 +55,18 @@ svg { display: block; }
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 2px 6px rgba(0, 0, 0, 0.22),
     0 14px 34px -6px rgba(0, 0, 0, 0.42);
-  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.25), background-color 0.4s ease, color 0.4s ease;
 }
+
 #island.hint { transform: translateX(-50%) scale(1.04); }
 /* acrylic: the desktop blur comes from Windows (clipped to the pill by main, T15); the pill only adds a dark veil */
 html.acrylic #island { --glass: rgba(10, 10, 14, 0.46); --glass-solid: rgba(10, 10, 14, 0.62); backdrop-filter: none; -webkit-backdrop-filter: none; }
 html.acrylic #below { background: var(--glass-solid); }
 /* auto-hide: a thin, findable line at the very top edge */
-#island.sliver { background: rgba(255, 255, 255, 0.32); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.35); backdrop-filter: none; }
-#island.sliver:has(.sliver.active) { background: var(--accent); box-shadow: 0 0 12px rgba(167, 139, 250, 0.7); }
+#island.sliver #island-surface { background: rgba(255, 255, 255, 0.32); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.35); backdrop-filter: none; }
+#island.sliver:has(.sliver.active) #island-surface { background: var(--accent); box-shadow: 0 0 12px rgba(167, 139, 250, 0.7); }
 /* "over the page" mode: while resting, the pill takes a tone of the page under it */
-#island.tinted { background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 40%), var(--tint); }
-#island.tinted.sliver { background: var(--tint); }
+#island.tinted #island-surface { background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 40%), var(--tint); }
+#island.tinted.sliver #island-surface { background: var(--tint); }
 #island.on-light { --muted: rgba(20, 20, 24, 0.6); color: #111; }
 #island.on-light .clock-dot { box-shadow: none; }
 
@@ -437,3 +442,37 @@ html[dir] .lyrics-strip [dir='auto'], html[dir] .sh-item [dir='auto'], html[dir]
 /* T17 binds the backend motion setting; preserve existing layout, colors and type. */
 :root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation: none !important; transition: none !important; }
 :root[data-motion="reduced"] .wave i { animation: none !important; }
+
+/* T20: expanded content and pagination occupy separate grid rows. */
+#content.expanded-grid {
+  display: grid; grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px; padding: 16px; box-sizing: border-box;
+}
+#content.expanded-grid > .view {
+  position: relative; inset: auto; width: 100% !important; height: 100%; min-width: 0; min-height: 0;
+  overflow: auto; padding: 0; align-self: stretch; box-sizing: border-box;
+}
+#content.expanded-grid > .dots {
+  position: relative; inset: auto; min-height: 12px; gap: 8px; align-items: center;
+}
+.expanded-grid .clock-panel { display: grid; grid-template-rows: auto 1fr; gap: 16px; }
+.expanded-grid .ck-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+.expanded-grid .ck-clock { gap: 8px; flex-wrap: wrap; }
+.expanded-grid .ck-dates { text-align: start; display: grid; gap: 8px; }
+.expanded-grid .ck-apps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; align-content: start; }
+.expanded-grid .ck-app { padding: 12px; gap: 8px; min-height: 76px; }
+.expanded-grid .ck-app-name { white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
+.expanded-grid .p-head, .expanded-grid .td-head, .expanded-grid .np { gap: 12px; flex-wrap: wrap; }
+.expanded-grid .pr-row { display: grid; grid-template-columns: repeat(auto-fit,minmax(82px,1fr)); gap: 8px; }
+.expanded-grid .music-expanded { isolation: isolate; }
+.expanded-grid .m-bg { z-index: -1; }
+#island { transform-origin: 50% 0; transition: background-color .15s, color .15s; }
+#island.hint { transform: translateX(-50%); opacity: .9; }
+.expanded-grid .chips { flex-wrap: wrap; gap: 8px; }
+.expanded-grid .chip, .expanded-grid .stepper { flex-shrink: 0; }
+.expanded-grid .t-actions { flex-wrap: wrap; gap: 8px; }
+.expanded-grid .t-main { display: grid; grid-template-columns: 92px minmax(0,1fr); gap: 12px; }
+
+html.acrylic #island-surface { backdrop-filter: none; -webkit-backdrop-filter: none; }
+#content.expanded-grid > .view.auto.music-expanded { position: relative; }
+.expanded-grid .music-expanded .m-bg { inset: 0; }

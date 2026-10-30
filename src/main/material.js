@@ -53,6 +53,8 @@ class Material {
         try {
           if (!this.region(this.last)) throw new Error('region unavailable');
           this.window.setBackgroundMaterial('acrylic');
+          // DWM material activation can reset the window region; enforce it again before showing.
+          if (!this.region(this.last, true)) throw new Error('region reset by DWM');
           this.effective = 'acrylic';
         } catch (_) { this.fallback(); }
       }
