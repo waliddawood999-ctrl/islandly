@@ -14,6 +14,7 @@ static class MotionApi {
  [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl)] public static extern void MotionStep(IntPtr renderer,float dt,int flags,float dx,float dy,int pointer,int target,out Snapshot snapshot);
  [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl,CharSet=CharSet.Unicode)] public static extern int MotionDraw(IntPtr renderer,ref Frame frame,string time,string date,string capture);
  [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl)] public static extern int MotionWait();
+ [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl)] public static extern void MotionBurst();
  [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl,CharSet=CharSet.Unicode)] public static extern void MotionAdapter(IntPtr renderer,System.Text.StringBuilder name,int capacity);
  [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl)] public static extern int MotionBlink(IntPtr renderer,int animateModel);
  [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl)] public static extern void MotionPose(IntPtr renderer,ref Snapshot snapshot);
@@ -48,7 +49,7 @@ sealed class NativeMotion:IDisposable {
   fadeTimer.Interval=120;fadeTimer.Tick+=delegate{fadeTimer.Stop();fading=false;owner.Hide();halo.Hide();};
  }
  public event Action<double> FrameChanged;
- public Action Reveal;
+ public Action Reveal;public Action BurstEnded;public bool Bursting{get{return Volatile.Read(ref loop)!=0;}}
  public object alphaAudit;
  /* Diagnostic: simulate an open and a close frame by frame (60 Hz steps) and count non-transparent composition-surface pixels outside the island's bounding box, including the very first frame. */
  void RunAlphaAudit(){MotionApi.MotionAudit(renderer,1);int frames=0;try{Open(true);for(int i=0;i<45;i++){Step(1/60f);UpdateMeasuredSize();Draw(false);frames++;}Open(false);for(int i=0;i<45;i++){Step(1/60f);Draw(false);frames++;}}finally{MotionApi.MotionAudit(renderer,0);}uint count;int x,y;MotionApi.MotionLeak(renderer,out count,out x,out y);alphaAudit=new{frames=frames,leakPixels=count,firstX=x,firstY=y};}
@@ -125,13 +126,14 @@ sealed class NativeMotion:IDisposable {
  }
  [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);[DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms); // 1 ms timer resolution only while a liquid burst runs: the default 15.6 ms quantum turned 16 ms waits into 31 ms
  void StartLoop(){lock(workerGate){Interlocked.Exchange(ref loop,1);if(worker!=null)return;
-  bool precise=!options.eco;worker=new Thread(delegate(){if(precise){timeBeginPeriod(1);try{Thread.CurrentThread.Priority=ThreadPriority.AboveNormal;}catch{}}try{while(!disposed&&Volatile.Read(ref loop)!=0){MotionApi.MotionWait();if(disposed)break;
-    if(Interlocked.CompareExchange(ref pending,1,0)==0)try{owner.BeginInvoke((Action)delegate{Interlocked.Exchange(ref pending,0);if(disposed)return;FrameTick();});}catch(InvalidOperationException){break;}
+  bool precise=!options.eco;worker=new Thread(delegate(){if(precise){timeBeginPeriod(1);try{Thread.CurrentThread.Priority=ThreadPriority.AboveNormal;}catch{}}try{MotionApi.MotionBurst();while(!disposed&&Volatile.Read(ref loop)!=0){MotionApi.MotionWait();if(disposed)break;
+    /* up to two ticks may be queued: a UI thread that is busy for more than one period catches up with the missed tick instead of dropping the whole frame (a 32 ms interval); Step() uses real elapsed time, so the animation stays on the clock */
+    if(Interlocked.Increment(ref pending)<=2){try{owner.BeginInvoke((Action)delegate{Interlocked.Decrement(ref pending);if(disposed)return;FrameTick();});}catch(InvalidOperationException){Interlocked.Decrement(ref pending);break;}}else Interlocked.Decrement(ref pending);
   }}finally{if(precise)timeEndPeriod(1);lock(workerGate){worker=null;}if(!disposed&&Volatile.Read(ref loop)!=0)try{owner.BeginInvoke((Action)StartLoop);}catch(InvalidOperationException){}}}){IsBackground=true,Name="Islandly motion burst"};worker.Start();}
  }
  bool boosted; // UI thread runs one step above normal only while a liquid burst is animating (a busy shared runner delayed frames by whole timer quanta); eco never boosts
  void Boost(bool on){if(on==boosted||on&&options.eco)return;boosted=on;try{Thread.CurrentThread.Priority=on?ThreadPriority.AboveNormal:ThreadPriority.Normal;}catch{}}
- void FrameTick(){if(options.hidden){Interlocked.Exchange(ref loop,0);Boost(false);return;}Boost(true);Step((clock.ElapsedMilliseconds-lastStep)/1000f);UpdateMeasuredSize();Draw(false);if(!resizing&&presentPanel!=null)Present();if(snapshot.moving==0&&!resizing){Interlocked.Exchange(ref loop,0);Boost(false);PlaceHalo();if(snapshot.visible!=0){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();ScheduleBlink();}}}
+ void FrameTick(){if(options.hidden){Interlocked.Exchange(ref loop,0);Boost(false);return;}Boost(true);Step((clock.ElapsedMilliseconds-lastStep)/1000f);UpdateMeasuredSize();Draw(false);if(!resizing&&presentPanel!=null)Present();if(snapshot.moving==0&&!resizing){Interlocked.Exchange(ref loop,0);Boost(false);PlaceHalo();if(BurstEnded!=null)BurstEnded();if(snapshot.visible!=0){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();ScheduleBlink();}}}
  void Draw(bool dirty){if(disposed||options.hidden)return;bool sample=diagnostics&&!dirty; /* the frame test only reads liquid frames: eye-only redraws skip the thread-time syscalls and the per-frame record */ double start=clock.Elapsed.TotalMilliseconds,cpu=sample?MotionApi.CpuMs():0;if(dirty)frame.flags|=32;
   try{MotionApi.Check(MotionApi.MotionDraw(renderer,ref frame,options.label,options.date,null));}finally{frame.flags&=~32;}renders++;
   double end=clock.Elapsed.TotalMilliseconds;bool changed=Math.Abs(frame.anticipation-paintedAnticipation)>.00001||Math.Abs(snapshot.body-paintedBody)>.00001||Math.Abs(snapshot.drop-paintedDrop)>.00001||Math.Abs(snapshot.gx-paintedGx)>.0001||Math.Abs(snapshot.gy-paintedGy)>.0001||Math.Abs(snapshot.lid-paintedLid)>.0001||Math.Abs(snapshot.blink-paintedBlink)>.0001||snapshot.visible!=paintedEyes||options.label!=paintedLabel||options.loading!=paintedLoading; /* the loading caption is a visible change: the synchronous Draw in Configure reports it at once instead of waiting for the first paced loop frame (~16-50 ms) */

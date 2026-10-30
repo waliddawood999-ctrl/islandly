@@ -168,6 +168,11 @@ try{
  foreach($offset in 0,1,2,4,6,8,12,16,24){$diagPoints+=,@("bar diagonal +$offset",($barBox[0]+$offset),($barBox[1]+$offset))}
  foreach($point in $diagPoints){$a=$fullReference.GetPixel([int]$point[1],[int]$point[2]);$b=$fullShot.GetPixel([int]$point[1],[int]$point[2]);Write-Output "TINT PROBE $($point[0]) at $($point[1]),$($point[2]): hidden $($a.R),$($a.G),$($a.B) vs island $($b.R),$($b.G),$($b.B)"}
  $fullReference.Dispose();$fullShot.Dispose()
+ # The motion host must never carry the DWM accent: its startup path (ConsentWatcher -> Position -> ApplyNativeMaterial) once ran before the motion host existed and pinned the acrylic accent for the whole session.
+ $materialLog=Get-Content "$profile/native-panels.log" -Raw
+ $materialLines=@(($materialLog-split"`n")|Where-Object{$_-match 'material host=motion accent=none'})
+ Write-Output "MATERIAL LOG ($Mode): $($materialLines.Count) line(s) 'material host=motion accent=none'"
+ if($materialLines.Count-lt 1){throw "Native log never recorded 'material host=motion accent=none' ($Mode): the DWM accent may still tint the whole host window"}
  # Which surface? The host reads its own DirectComposition surface back for every frame of a simulated open and close (frame 0 included) and counts non-transparent pixels outside the island's bounding box. 0 here while the screen differs means the tint comes from outside the composition surface (window material, region, halo, another window).
  [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]3,[IntPtr]::Zero);Start-Sleep -Milliseconds 400;Refresh;$audit=(Read-Status).motion.alphaAudit
  Write-Output "ALPHA AUDIT (composition surface outside the island, open and close frame by frame): frames=$($audit.frames) leakPixels=$($audit.leakPixels) first=($($audit.firstX),$($audit.firstY))"

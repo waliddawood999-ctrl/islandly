@@ -186,11 +186,13 @@ sealed class IslandHost : Form {
         taskbarCreated=Native.RegisterWindowMessage("TaskbarCreated");
         RecoverBar();
         Native.AddClipboardFormatListener(Handle);
-        consent = new ConsentWatcher(delegate(string label) { if(!closing) { privacyLabel = label; Position(); } });
         motion=new NativeMotion(this,ArmHover,LeaveHover,delegate{OpenPanel("expand","click");},probe!="" && Environment.GetCommandLineArgs().Contains("--motion-metrics"));
+        NativeMaterial.Apply(Handle,false,nativeLight); // clear any accent before the first Position(): the motion host never carries one
         motion.FrameChanged+=delegate(double time){if(launching&&!loadingPainted){loadingPainted=true;NativeLog.Write("loading-paint","inputToPaintMs="+(clock.ElapsedMilliseconds-requestAt));}};
+        motion.BurstEnded=delegate{ if(deferredPosition){deferredPosition=false;Position();} };
         motion.Reveal=delegate{if(!revealed){revealed=true;Position();}};
-        foregroundWatcher=new ForegroundWatcher(this,Position);
+        consent = new ConsentWatcher(delegate(string label) { if(!closing) { privacyLabel = label; Position(); } });
+        foregroundWatcher=new ForegroundWatcher(this,delegate{ if(motion!=null&&motion.Bursting){deferredPosition=true;return;} Position(); }); // foreground/location events never run Position() in the middle of a liquid burst; it runs when the burst ends
         Position();Status();
     }
     void ArmHover(){hoverArmed=true;leaveGrace.Stop();Position();if(motion!=null)motion.PointerEvent();hoverDwell.Start();}
@@ -210,6 +212,7 @@ sealed class IslandHost : Form {
     void ReadTheme(){try{using(var key=Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))nativeLight=Convert.ToInt32(key==null?0:key.GetValue("AppsUseLightTheme",0))!=0;}catch{nativeLight=false;}}
     void ThemeChanged(object sender,Microsoft.Win32.UserPreferenceChangedEventArgs e){if(!closing&&IsHandleCreated)BeginInvoke((Action)delegate{ReadTheme();Position();});}
     void ApplyNativeMaterial() {
+        if(motion==null) return; // the motion host decides the material; never cache an identity before it exists (the ConsentWatcher used to run Position() first and pinned the acrylic accent)
         string requested=Setting("material","acrylic");
         string identity=requested+(nativeLight?":light":":dark");if(identity==appliedMaterial) return;
         appliedMaterial=identity; clippedSize=Size.Empty;
@@ -219,7 +222,7 @@ sealed class IslandHost : Form {
         if(!nativeAcrylic) NativeMaterial.Apply(Handle,false,nativeLight);
     }
     void DisplayChanged(object s, EventArgs e) { if (!closing && IsHandleCreated) BeginInvoke((Action)Position); }
-    string barKeyApplied=""; MotionOptions lastMotion;
+    string barKeyApplied=""; MotionOptions lastMotion; bool deferredPosition;
     bool revealed; string fullscreenSeen=""; readonly uint ownPid=(uint)Process.GetCurrentProcess().Id;
     // Real fullscreen = a foreign foreground window covering its whole monitor (monitor rect from GetMonitorInfo, visible frame from DWM), or Windows reporting a busy/D3D-fullscreen/presentation session. Islandly's own windows (owner, halo) never count.
     // Position() asks twice (policy and eye option) and runs on foreground/hover events: reuse one verdict per foreground window for 500 ms so DWM/shell queries stay off the pointer path.
@@ -637,7 +640,7 @@ sealed class IslandHost : Form {
         }
     }
     protected override void WndProc(ref Message m) {
-        if(probe!="" && motion!=null && m.Msg==0x8021){motion.Probe(m.WParam.ToInt32()==0?"motion-close":m.WParam.ToInt32()==2?"motion-measure":m.WParam.ToInt32()==3?"motion-alpha":"motion-open");Status();return;}
+        if(probe!="" && motion!=null && m.Msg==0x8021){motion.Probe(m.WParam.ToInt32()==0?"motion-close":m.WParam.ToInt32()==2?"motion-measure":m.WParam.ToInt32()==3?"motion-alpha":"motion-open");return;} /* no Status() here: its process enumeration and file write ran on the UI thread right as the burst started and delayed its first frames; Refresh (0x8022) publishes the status on demand */
         if(probe!="" && motion!=null && m.Msg==0x8022){ReadSettings();Position();Status();File.WriteAllText(Path.Combine(probe,"motion-frames.json"),json.Serialize(motion.FrameSamples));return;}
         if(taskbarCreated != 0 && m.Msg == taskbarCreated) { bar=false; DeleteBarMarker(); Position(); }
         if(m.Msg == 0x031D && child == null && Setting("clipboard","True") != "False") {

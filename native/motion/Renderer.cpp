@@ -172,7 +172,7 @@ extern "C" __declspec(dllexport) void __cdecl MotionAdapter(void*p,wchar_t*name,
 // Frame pacing for the burst loop. Primary: the compositor's own vblank (DwmFlush blocks until the next one).
 // Where that does not block (virtual/headless displays, CI runners: it returns at once or fails) the loop is paced by an
 // absolute-schedule high-resolution waitable timer at 16.0 ms (never later than a 60 Hz display period, drift-free),
-// not by Sleep (whose 15.6 ms granularity gave 31 ms frames). Re-probes the vblank every 30 paced frames.
+// not by Sleep (whose 15.6 ms granularity gave 31 ms frames). The vblank is re-probed only by MotionBurst() at the start of a burst, never in the middle of one (a mid-burst probe returned a frame at once and re-anchored the schedule).
 static HANDLE paceTimer=nullptr;static LARGE_INTEGER paceFrequency={};static LONGLONG paceNext=0;static bool paced=false;static int paceProbe=0,instantWaits=0;
 // Fallback pace where the compositor gives no vblank (headless/virtual displays, CI): 15 ms keeps a 60 Hz budget of 16.667 ms with 1.6 ms of scheduling slack; a 16.0 ms target left 0.67 ms and p95 sat on the line. Real displays pace on DwmFlush instead.
 static const double kFallbackPaceMs=15.0;
@@ -185,11 +185,19 @@ static HRESULT paceWait(double periodMs){
  LARGE_INTEGER due;due.QuadPart=-LONGLONG(double(paceNext-now.QuadPart)*10000000.0/double(paceFrequency.QuadPart));
  if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))return S_OK;WaitForSingleObject(paceTimer,INFINITE);return S_OK;
 }
+extern "C" __declspec(dllexport) void __cdecl MotionBurst(){
+ // Burst start (worker thread, before the first frame): only a timer-paced loop needs a re-probe, and there DwmFlush is the cheap case. A display that has gained a working vblank returns to it.
+ paceNext=0;instantWaits=0;
+ if(!paced)return;
+ for(int i=0;i<2;i++){LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);HRESULT hr=DwmFlush();QueryPerformanceCounter(&b);
+  if(!(SUCCEEDED(hr)&&double(b.QuadPart-a.QuadPart)*1000.0/double(f.QuadPart)>=1.0))return;}
+ paced=false;
+}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionWait(){
- if(paced){if(++paceProbe<30)return paceWait(kFallbackPaceMs);paced=false;paceProbe=0;instantWaits=0;}
+ if(paced)return paceWait(kFallbackPaceMs);
  LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);HRESULT hr=DwmFlush();QueryPerformanceCounter(&b);
  double ms=double(b.QuadPart-a.QuadPart)*1000.0/double(f.QuadPart);
  if(SUCCEEDED(hr)&&ms>=1.0){instantWaits=0;paceNext=0;return S_OK;}
- if(++instantWaits>=2){paced=true;paceProbe=0;return paceWait(kFallbackPaceMs);}
+ if(++instantWaits>=2){paced=true;return paceWait(kFallbackPaceMs);}
  return S_OK;
 }
