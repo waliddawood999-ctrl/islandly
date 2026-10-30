@@ -26,8 +26,17 @@ function Install([string]$argument='/quiet'){
  $code=Run-Installer $argument
  if($code -ne 0){throw "Installer exit $code for $argument"}
 }
+function Walk-Binaries([string]$directory,[string]$prefix,[hashtable]$result){
+ foreach($item in Get-ChildItem -LiteralPath $directory){
+  $relative=if($prefix){$prefix+'\'+$item.Name}else{$item.Name}
+  if($item.PSIsContainer){Walk-Binaries $item.FullName $relative $result}
+  elseif($item.Extension -in '.exe','.dll','.node'){$result[$relative]=(Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash}
+ }
+}
 function Hashes([string]$root){
- $result=@{};Get-ChildItem $root -Recurse -File | Where-Object Extension -in '.exe','.dll','.node' | ForEach-Object {$result[$_.FullName.Substring($root.Length)]=(Get-FileHash $_.FullName -Algorithm SHA256).Hash};return $result
+ # Enumerate relative names directly: TEMP may use RUNNER~1 while FullName expands
+ # to runneradmin. Substring(root.Length) would compare different names, not bytes.
+ $result=@{};Walk-Binaries $root '' $result;return $result
 }
 $dest=Join-Path $env:LOCALAPPDATA 'Islandly'
 $menu=Join-Path $env:APPDATA 'Microsoft/Windows/Start Menu/Programs/Islandly.lnk'
@@ -87,7 +96,7 @@ try {
   [IO.File]::AppendAllText($hostExe,'tampered')
   $code=Run-Installer
   Assert ($code -ne 0) 'Tampered payload was accepted'
-  Assert ((Get-FileHash "$dest/Islandly.exe").Hash -eq $installed['\Islandly.exe']) 'Rejected update damaged installation'
+  Assert ((Get-FileHash "$dest/Islandly.exe").Hash -eq $installed['Islandly.exe']) 'Rejected update damaged installation'
  } finally {[IO.File]::WriteAllBytes($hostExe,$backup)}
  # Exercise the exact command Windows Installed Apps receives, with quiet consent for CI.
  $command=(Get-ItemProperty $arp).UninstallString
