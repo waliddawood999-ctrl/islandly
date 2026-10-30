@@ -174,6 +174,8 @@ extern "C" __declspec(dllexport) void __cdecl MotionAdapter(void*p,wchar_t*name,
 // absolute-schedule high-resolution waitable timer at 16.0 ms (never later than a 60 Hz display period, drift-free),
 // not by Sleep (whose 15.6 ms granularity gave 31 ms frames). Re-probes the vblank every 30 paced frames.
 static HANDLE paceTimer=nullptr;static LARGE_INTEGER paceFrequency={};static LONGLONG paceNext=0;static bool paced=false;static int paceProbe=0,instantWaits=0;
+// Fallback pace where the compositor gives no vblank (headless/virtual displays, CI): 15 ms keeps a 60 Hz budget of 16.667 ms with 1.6 ms of scheduling slack; a 16.0 ms target left 0.67 ms and p95 sat on the line. Real displays pace on DwmFlush instead.
+static const double kFallbackPaceMs=15.0;
 static HRESULT paceWait(double periodMs){
  if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);QueryPerformanceFrequency(&paceFrequency);}
  LARGE_INTEGER now;QueryPerformanceCounter(&now);const LONGLONG period=LONGLONG(paceFrequency.QuadPart*periodMs/1000.0);
@@ -184,10 +186,10 @@ static HRESULT paceWait(double periodMs){
  if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))return S_OK;WaitForSingleObject(paceTimer,INFINITE);return S_OK;
 }
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionWait(){
- if(paced){if(++paceProbe<30)return paceWait(16.0);paced=false;paceProbe=0;instantWaits=0;}
+ if(paced){if(++paceProbe<30)return paceWait(kFallbackPaceMs);paced=false;paceProbe=0;instantWaits=0;}
  LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);HRESULT hr=DwmFlush();QueryPerformanceCounter(&b);
  double ms=double(b.QuadPart-a.QuadPart)*1000.0/double(f.QuadPart);
  if(SUCCEEDED(hr)&&ms>=1.0){instantWaits=0;paceNext=0;return S_OK;}
- if(++instantWaits>=2){paced=true;paceProbe=0;return paceWait(16.0);}
+ if(++instantWaits>=2){paced=true;paceProbe=0;return paceWait(kFallbackPaceMs);}
  return S_OK;
 }
