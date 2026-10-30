@@ -141,7 +141,7 @@ struct Renderer {
   auto path=outline(s);
   auto scale=D2D1::Matrix3x2F::Scale(f.scale,f.scale);dc->SetTransform(scale);dc->BeginDraw();
   D2D1_RECT_F dirty=D2D1::RectF(float(s.x)+(rtl?78.f:2.f),float(s.y),float(s.x)+(rtl?136.f:60.f),float(s.y)+36);
-  if(f.flags&128)dirty=D2D1::RectF(float(s.x)-2,float(s.y)-2,float(s.x+s.w)+2,float(s.y+s.h)+2); /* label/date-only redraw of the collapsed pill: the clip is the pill plus 2 px, the layer mask still keeps everything inside the outline, and the window region is untouched */
+  if(f.flags&128)dirty=D2D1::RectF(std::max(0.f,float(s.x)-2),std::max(0.f,float(s.y)-2),float(s.x+s.w)+2,float(s.y+s.h)+2); /* label/date-only redraw of the collapsed pill: the clip is the pill plus 2 px, the layer mask still keeps everything inside the outline, and the window region is untouched */
   const bool clipped=(f.flags&(32|128))!=0;
   if(clipped)dc->PushAxisAlignedClip(dirty,D2D1_ANTIALIAS_MODE_ALIASED);
   dc->Clear(D2D1::ColorF(0,0,0,0));
@@ -165,7 +165,9 @@ struct Renderer {
   dc->PopLayer();if(clipped)dc->PopAxisAlignedClip();hr=dc->EndDraw();if(FAILED(hr))return hr;if(file&&*file){hr=capture(file);if(FAILED(hr))return hr;}if(auditAlpha&&!clipped){hr=auditLeak(s,f);if(FAILED(hr))return hr;}
   if(!clipped){auto sink=new OutlineSink();path->Simplify(D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,&scale,.75f,sink); /* window-region polygon: 0.75 px flattening tolerance keeps it to a few dozen points; SetWindowRgn per frame was the heaviest call */
   if(sink->points.size()>=3){HRGN region=CreatePolygonRgn(sink->points.data(),int(sink->points.size()),WINDING);if(region&&!SetWindowRgn(window,region,FALSE))DeleteObject(region);}sink->Release();}
-  hr=updateEyes(f,s,file&&*file);if(FAILED(hr))return hr;opacity->SetOpacity(f.opacity);if(clipped){RECT rect={LONG(std::floor(dirty.left*f.scale)),LONG(std::floor(dirty.top*f.scale)),LONG(std::ceil(dirty.right*f.scale)),LONG(std::ceil(dirty.bottom*f.scale))};DXGI_PRESENT_PARAMETERS p={};p.DirtyRectsCount=1;p.pDirtyRects=&rect;hr=swap->Present1(0,0,&p);}else hr=swap->Present(0,0);if(FAILED(hr))return hr;if(presentedEvent)SetEvent(presentedEvent);return composition->Commit();
+  hr=updateEyes(f,s,file&&*file);if(FAILED(hr))return hr;opacity->SetOpacity(f.opacity);if(clipped){RECT rect={std::max(0L,LONG(std::floor(dirty.left*f.scale))),std::max(0L,LONG(std::floor(dirty.top*f.scale))),std::min(LONG(width),LONG(std::ceil(dirty.right*f.scale))),std::min(LONG(height),LONG(std::ceil(dirty.bottom*f.scale)))}; /* a dirty rectangle outside the back buffer is DXGI_ERROR_INVALID_CALL (top=0 pill: y-2 < 0) */
+   if(rect.right>rect.left&&rect.bottom>rect.top){DXGI_PRESENT_PARAMETERS p={};p.DirtyRectsCount=1;p.pDirtyRects=&rect;hr=swap->Present1(0,0,&p);}else hr=DXGI_ERROR_INVALID_CALL;
+   if(hr==DXGI_ERROR_INVALID_CALL)hr=swap->Present(0,0);}else hr=swap->Present(0,0);if(FAILED(hr))return hr;if(presentedEvent)SetEvent(presentedEvent);return composition->Commit();
  }
 };
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionCreate(HWND hwnd,void**out){if(!out)return E_POINTER;*out=nullptr;auto r=new Renderer();HRESULT hr=r->initialize(hwnd);if(FAILED(hr)){delete r;return hr;}*out=r;return S_OK;}

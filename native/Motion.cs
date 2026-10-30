@@ -69,7 +69,7 @@ sealed class NativeMotion:IDisposable {
    if(options.hotZone.IsEmpty)halo.Hide();else{if(halo.Bounds!=options.hotZone)halo.Bounds=options.hotZone;if(!halo.Visible)halo.Show();}
    firstResponse=clock.ElapsedMilliseconds-inputAt;return;}
   if(changed&&!fading){Input();Step(0);Draw(false);if(snapshot.visible!=0&&options.mode=="full"){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();}else StopEyes();}
-  else if(textChanged&&!fading&&owner.Visible&&snapshot.body<.01f&&snapshot.moving==0&&!resizing)Draw(false,true); /* a clock/date change while collapsed repaints only the pill (clipped, no window region rebuild, no eye restart): it is not input and not a new pose */
+  else if(textChanged&&!fading&&owner.Visible&&snapshot.body<.01f&&snapshot.moving==0&&!resizing){try{Draw(false,true);}catch(System.Runtime.InteropServices.COMException){Draw(false);}} /* a clock/date change while collapsed repaints only the pill (clipped, no window region rebuild, no eye restart): it is not input and not a new pose */
   else if(textChanged&&!fading){Input();Step(0);Draw(false);}
   if(!fading&&owner.Visible)PlaceHalo();
   if(snapshot.moving!=0||resizing)StartLoop();else if(options.mode=="off")Interlocked.Exchange(ref loop,0);
