@@ -51,3 +51,5 @@
 | تفعيل وضع التوفير تلقائياً مع Battery saver | T14 | `ecoAuto` |
 | بنود أخرى من بحث المنافسين | وليد | لم تصلني قائمة البحث نفسها؛ تُضاف هنا |
 | T21 | Native Direct2D/DirectComposition eyes, liquid motion, floating placement and native motion CI per Claude handoff 9a22597 | Codex | `codex/T21-native-motion` | T20 ac6b06f | review | Claude | Draft PR #25 to T20; native implementation and Windows verification in progress |
+
+| T25 | Real Windows 11 laptop pre-merge smoke script and operator guide | Codex | `codex/T25-laptop-smoke` | T21 38e50a2 | review | Claude | `scripts/laptop-smoke.ps1`, `docs/LAPTOP_SMOKE.md`; laptop execution pending |
