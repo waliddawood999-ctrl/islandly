@@ -4,6 +4,7 @@ const { app } = require('electron');
 
 const { ISLAMIC_DEFAULTS } = require('./services/store');
 const DEFAULTS = {
+  floating: false, idleEyes: false,
   uiLang: 'auto', digits: 'latn', fontPairing: 'plex',
   monitorId: '', // Existing T1/T7 display-selection contract; primary fallback.
   islandMode: 'overlay', // Existing T6/T7 contract: overlay | appbar; native owner reserves the strip.
@@ -50,7 +51,7 @@ function init() {
     data = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
     if (data.islandMode === 'reserved-bar') data.islandMode = 'appbar';
     if (!['acrylic', 'glass'].includes(data.material)) data.material = DEFAULTS.material;
-    for (const key of ['ecoMode', 'ecoAuto']) if (typeof data[key] !== 'boolean') data[key] = DEFAULTS[key];
+    for (const key of ['ecoMode', 'ecoAuto', 'floating', 'idleEyes']) if (typeof data[key] !== 'boolean') data[key] = DEFAULTS[key];
     if (!['full', 'reduced', 'off'].includes(data.motion)) data.motion = DEFAULTS.motion;
   } catch (_) {
     /* first run */

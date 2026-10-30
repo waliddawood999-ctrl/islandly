@@ -698,11 +698,22 @@ function startNativeSession() {
         nativeExpanded = false;
         nativeSurfaceReady = false;
         win.hide();
+        nativeSession?.send('idle');
       } else {
         const cmd = action === 'pomodoro' ? 'pomodoro' : 'toggle';
         if (cmd === 'toggle') await renderer("Island.open(Island.selectedId() || 'clock'); Island.whenPainted();");
         else { push('shortcut', cmd); await renderer("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"); }
-        panelPaintReady = true; nativeSurfaceReady = true;
+        panelPaintReady = true;
+        const anchor = require('./native-motion').parseAnchor(process.env.ISLANDLY_NATIVE_ANCHOR);
+        if (anchor) {
+          const card = await renderer("(() => { const r=document.getElementById('island-surface').getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height}; })()");
+          const display=screen.getDisplayMatching(win.getBounds());
+          const point=screen.screenToDipPoint({x:Math.round(anchor.center),y:Math.round(anchor.top)});
+          const aligned=require('./native-motion').alignPanel({window:win.getBounds(),card,display:display.bounds,anchor:point,zoom:zoom()});
+          win.setPosition(aligned.x,aligned.y);
+          nativeSession.send('panel:ready',Buffer.from(JSON.stringify({width:aligned.width*display.scaleFactor,height:aligned.height*display.scaleFactor})).toString('base64'));
+        }
+        nativeSurfaceReady = true;
         applyVisibility();
       }
     } catch (err) { logError('native command', err); if (required) throw err; }

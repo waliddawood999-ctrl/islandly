@@ -101,6 +101,7 @@ sealed class IslandHost : Form {
     bool nativeEco, nativeAcrylic;
     string appliedMaterial = "";
     Size clippedSize=Size.Empty;
+    ForegroundWatcher foregroundWatcher; NativeMotion motion; bool cancelLaunch; readonly System.Windows.Forms.Timer leaveGrace=new System.Windows.Forms.Timer();
 
     public IslandHost(string[] args) {
         packaged = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"panels/Islandly.exe"));
@@ -135,10 +136,12 @@ sealed class IslandHost : Form {
         ContextMenuStrip = menu;
         tray = new NotifyIcon { Text = "Islandly", Icon = SystemIcons.Application, ContextMenuStrip = menu, Visible = true };
         tray.DoubleClick += delegate { OpenPanel("settings"); };
-        MouseEnter += delegate { hoverArmed = true; Invalidate(); Update(); hoverDwell.Start(); };
-        MouseLeave += delegate { hoverArmed = false; Invalidate(); hoverDwell.Stop(); };
+        MouseEnter += delegate { ArmHover(); };
+        MouseMove += delegate { if(motion!=null)motion.PointerEvent(); };
+        MouseLeave += delegate { LeaveHover(); };
         MouseClick += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) OpenPanel("expand","click"); };
-        hoverDwell.Interval = 280; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring) OpenPanel("expand","hover"); };
+        leaveGrace.Interval=200; leaveGrace.Tick+=delegate { leaveGrace.Stop(); if(motion!=null && motion.Opening && !ready) { cancelLaunch=true; motion.Open(false); Send("close"); } };
+        hoverDwell.Interval = 120; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring) OpenPanel("expand","hover"); };
         launchRetry.Interval=1500;
         launchRetry.Tick+=delegate { launchRetry.Stop(); string requested=retryCommand; retryCommand=""; if(requested!="") OpenPanel(requested,"retry",true); };
         ticker.Interval = 1000; ticker.Tick += Tick; ticker.Start();
@@ -148,7 +151,7 @@ sealed class IslandHost : Form {
     }
     static string Arg(string[] args, string key, string fallback) { int i = Array.IndexOf(args,key); return i >= 0 && i+1 < args.Length ? args[i+1] : fallback; }
     protected override bool ShowWithoutActivation { get { return true; } }
-    protected override CreateParams CreateParams { get { var p = base.CreateParams; p.ExStyle |= 0x08000080; return p; } }
+    protected override CreateParams CreateParams { get { var p = base.CreateParams; p.ExStyle |= 0x08200080; return p; } }
     string Setting(string key, string fallback) { object v; return settings.TryGetValue(key,out v) ? Convert.ToString(v,System.Globalization.CultureInfo.InvariantCulture) : fallback; }
     void ReadSettings() {
         string file = Path.Combine(profile,"settings.json");
@@ -169,8 +172,12 @@ sealed class IslandHost : Form {
         RecoverBar();
         Native.AddClipboardFormatListener(Handle);
         consent = new ConsentWatcher(delegate(string label) { if(!closing) { privacyLabel = label; Position(); } });
+        motion=new NativeMotion(this,ArmHover,LeaveHover,probe!="" && Environment.GetCommandLineArgs().Contains("--motion-metrics"));
+        foregroundWatcher=new ForegroundWatcher(this,Position);
         Position();
     }
+    void ArmHover(){hoverArmed=true;leaveGrace.Stop();if(motion!=null)motion.PointerEvent();hoverDwell.Start();}
+    void LeaveHover(){hoverArmed=false;hoverDwell.Stop();leaveGrace.Start();}
     bool RegisterShortcut(int id,uint mods,uint key,string name) {
         bool ok=Native.RegisterHotKey(Handle,id,mods,key); int error=ok?0:Marshal.GetLastWin32Error();
         NativeLog.Write("hotkey-register","combo="+name+" success="+ok+" error="+error);
@@ -191,8 +198,8 @@ sealed class IslandHost : Form {
         if(!nativeAcrylic) NativeMaterial.Apply(Handle,false);
     }
     void DisplayChanged(object s, EventArgs e) { if (!closing && IsHandleCreated) BeginInvoke((Action)Position); }
-    bool Fullscreen() {
-        if (Setting("hideFullscreen","True").Equals("False",StringComparison.OrdinalIgnoreCase)) return false;
+    bool Fullscreen(bool preference=true) {
+        if (preference && Setting("hideFullscreen","True").Equals("False",StringComparison.OrdinalIgnoreCase)) return false;
         IntPtr h = Native.GetForegroundWindow(); var name = new StringBuilder(128); Native.GetClassName(h,name,128);
         if (h == Handle || name.ToString() == "Progman" || name.ToString() == "WorkerW" || name.ToString() == "Shell_TrayWnd") return false;
         Native.RECT r; if (!Native.GetWindowRect(h,out r)) return false;
@@ -218,18 +225,32 @@ sealed class IslandHost : Form {
         string autoHide=Setting("autoHide","auto");
         bool sliver = autoHide == "always" || autoHide == "auto" && (!TimerHasState() || clock.ElapsedMilliseconds-compactAt>=5000);
         if(privacyLabel != "" && Setting("micCamIndicator","True") != "False" || launching || child!=null && !ready) sliver=false;
+        if(Setting("idleEyes","False")=="True" && autoHide!="always") sliver=false;
+        int strip=Setting("floating","False")=="True"?58:44;
         int w = (int)((sliver ? 84 : 138)*scale), height = Math.Max(4,(int)((sliver ? 5 : 36)*scale));
         if (bar) {
             var previous = abd.rect;
-            abd.edge = 1; abd.rect = new Native.RECT { left = screen.Left, top = screen.Top, right = screen.Right, bottom = screen.Top + (int)(44*scale) };
-            Native.SHAppBarMessage(2,ref abd); abd.rect.bottom = abd.rect.top + (int)(44*scale); if(previous.left != abd.rect.left || previous.right != abd.rect.right || previous.top != abd.rect.top || previous.bottom != abd.rect.bottom) { MarkBar(); Native.SHAppBarMessage(3,ref abd); }
+            abd.edge = 1; abd.rect = new Native.RECT { left = screen.Left, top = screen.Top, right = screen.Right, bottom = screen.Top + (int)(strip*scale) };
+            Native.SHAppBarMessage(2,ref abd); abd.rect.bottom = abd.rect.top + (int)(strip*scale); if(previous.left != abd.rect.left || previous.right != abd.rect.right || previous.top != abd.rect.top || previous.bottom != abd.rect.bottom) { MarkBar(); Native.SHAppBarMessage(3,ref abd); }
         }
         string pos = Setting("position","center");
         int x = pos == "left" ? screen.Left+16 : pos == "right" ? screen.Right-w-16 : screen.Left+(screen.Width-w)/2;
-        SetBounds(x,screen.Top + (sliver ? 0 : (int)(8*scale)),w,height);
-        if(clippedSize!=Size) using (var shape = new GraphicsPath()) { clippedSize=Size; int d = Math.Min(Height,Width); shape.AddArc(0,0,d,d,180,90); shape.AddArc(Width-d,0,d,d,270,90); shape.AddArc(Width-d,Height-d,d,d,0,90); shape.AddArc(0,Height-d,d,d,90,90); shape.CloseFigure(); var old = Region; Region = new Region(shape); if(old != null) old.Dispose(); }
-        Visible = !hide && !ready; Invalidate();
+        bool floating=Setting("floating","False")=="True";
+        if(floating) x=pos=="left"?screen.Left+(int)(20*scale):pos=="right"?screen.Right-w-(int)(20*scale):x;
+        float center=x+w/2f,top=screen.Top+(sliver?0:(floating?14:8)*scale);
+        if(motion!=null){
+            bool light=false;try{using(var key=Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))light=Convert.ToInt32(key==null?0:key.GetValue("AppsUseLightTheme",0))!=0;}catch{}
+            bool compact=TimerHasState()||privacyLabel!=""||SystemInformation.PowerStatus.BatteryChargeStatus!=BatteryChargeStatus.NoSystemBattery&&SystemInformation.PowerStatus.BatteryLifePercent<.2f;
+            string lang=Setting("uiLang",Setting("lang","ar"));if(lang=="auto")lang=Setting("lang","ar");
+            string label=CompactLabel();if(Setting("digits","latn")=="arab")for(int i=0;i<10;i++)label=label.Replace((char)('0'+i),(char)('٠'+i));
+            motion.Configure(new MotionOptions{screen=screen,scale=scale,center=center,top=top,eyes=Setting("idleEyes","False")=="True",eco=nativeEco,mode=Setting("motion","full"),fullscreen=Fullscreen(false),compact=compact,sliver=sliver,light=light,rtl=lang!="en",acrylic=nativeAcrylic,floating=floating,hidden=hide,label=label,date=DateTime.Now.ToString("D",System.Globalization.CultureInfo.GetCultureInfo(lang=="en"?"en-US":"ar-SA"))});
+            if(!hide && !ready && !Visible)Show();
+            return;
+        }
+        SetBounds(x,(int)top,w,height);
+        Visible=!hide&&!ready;
     }
+
     Screen TargetScreen() {
         string id=Setting("monitorId",""); object maps;
         if(id != "" && state.TryGetValue("monitors",out maps) && maps is IEnumerable) {
@@ -243,22 +264,28 @@ sealed class IslandHost : Form {
     }
     float CreateGraphicsDpi() { try { return Native.GetDpiForWindow(Handle)/96f; } catch(EntryPointNotFoundException) { using(var g=CreateGraphics()) return g.DpiX/96f; } }
     protected override void OnPaintBackground(PaintEventArgs e) {
+        if(motion!=null)return;
         if(nativeAcrylic) e.Graphics.Clear(Color.Black); else base.OnPaintBackground(e);
     }
     protected override void OnPaint(PaintEventArgs e) {
+        if(motion!=null){if(launching&&!loadingPainted){loadingPainted=true;NativeLog.Write("loading-paint","inputToPaintMs="+(clock.ElapsedMilliseconds-requestAt));}return;}
         base.OnPaint(e);
         if(launching && !loadingPainted) { loadingPainted=true; NativeLog.Write("loading-paint","inputToPaintMs="+(clock.ElapsedMilliseconds-requestAt)); }
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         if (Height < 12) { using(var brush=new SolidBrush(TimerRunning() ? Color.FromArgb(167,139,250) : Color.FromArgb(76,76,76))) e.Graphics.FillRectangle(brush,ClientRectangle); return; }
         if(!nativeAcrylic) using(var gradient=new LinearGradientBrush(ClientRectangle,Color.FromArgb(12,12,16),Color.Black,90f)) e.Graphics.FillRectangle(gradient,ClientRectangle);
         if(hoverArmed) using(var pen=new Pen(Color.FromArgb(167,139,250),2)) e.Graphics.DrawRectangle(pen,1,1,Math.Max(1,Width-3),Math.Max(1,Height-3));
+        string label=CompactLabel();
+        using(var brush = new SolidBrush(Color.FromArgb(167,139,250))) e.Graphics.FillEllipse(brush,Width*.16f,Height*.42f,Height*.16f,Height*.16f);
+        using(var font = new Font("Segoe UI",Math.Max(8,Height*.32f),FontStyle.Regular,GraphicsUnit.Pixel)) TextRenderer.DrawText(e.Graphics,label,font,new Rectangle((int)(Width*.2f),0,(int)(Width*.7f),Height),ForeColor,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
+    }
+    string CompactLabel(){
         string label = DateTime.Now.ToString("HH:mm");
         if (TimerHasState()) { long end = Convert.ToInt64(state["endAt"]); var left = TimerRunning() ? Math.Max(0,(end-DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())/1000) : (long)Math.Ceiling(Convert.ToDouble(state["remaining"])); label = (left/60).ToString("00")+":"+(left%60).ToString("00"); }
         if(privacyLabel != "" && Setting("micCamIndicator","True") != "False") label = privacyLabel;
         else if(!TimerRunning() && SystemInformation.PowerStatus.BatteryChargeStatus != BatteryChargeStatus.NoSystemBattery && SystemInformation.PowerStatus.BatteryLifePercent < .2f) label = ((int)(SystemInformation.PowerStatus.BatteryLifePercent*100))+"%";
         if(launching || child!=null && !ready) label=Setting("uiLang",Setting("lang","ar"))=="en"?"Loading…":"جارٍ التحميل…";
-        using(var brush = new SolidBrush(Color.FromArgb(167,139,250))) e.Graphics.FillEllipse(brush,Width*.16f,Height*.42f,Height*.16f,Height*.16f);
-        using(var font = new Font("Segoe UI",Math.Max(8,Height*.32f),FontStyle.Regular,GraphicsUnit.Pixel)) TextRenderer.DrawText(e.Graphics,label,font,new Rectangle((int)(Width*.2f),0,(int)(Width*.7f),Height),ForeColor,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
+        return label;
     }
     bool TimerHasState() { object remaining,total; return TimerRunning() || state.TryGetValue("remaining",out remaining) && state.TryGetValue("total",out total) && Convert.ToDouble(remaining)>0 && Convert.ToDouble(remaining)<Convert.ToDouble(total); }
     bool TimerRunning() { object running; return state.TryGetValue("running",out running) && running is bool && (bool)running; }
@@ -280,8 +307,9 @@ sealed class IslandHost : Form {
         if(policyBlockedHover && origin=="hover") return;
         if(closing || launching || clock.ElapsedMilliseconds<nextLaunchAt) return;
         if(child!=null) { if(ready) Send(command); return; }
+        cancelLaunch=false; if(command=="expand"&&motion!=null)motion.Open(true);
         launchRetry.Stop(); retryCommand=""; launching=true; requestAt=clock.ElapsedMilliseconds; loadingPainted=false; Position(); Update();
-        try { await OpenPanelCore(command,origin); policyBlockedHover=false; }
+        try { await OpenPanelCore(command,origin); if(cancelLaunch){EndSession();return;} policyBlockedHover=false; }
         catch(Exception ex) {
             // Capture API errors at the call site, before any disposal/positioning calls.
             try { EndSession(); } catch(Exception cleanup) { NativeLog.Write("launch-cleanup",cleanup); }
@@ -325,6 +353,8 @@ sealed class IslandHost : Form {
             var environment=new SortedDictionary<string,string>(StringComparer.OrdinalIgnoreCase);
             foreach(DictionaryEntry entry in Environment.GetEnvironmentVariables()) environment[(string)entry.Key]=(string)entry.Value;
             environment["ISLANDLY_NATIVE_PIPE"]=pipeName; environment["ISLANDLY_NATIVE_SESSION"]="1";
+            var anchor=TargetScreen().Bounds;float anchorScale;Single.TryParse(Setting("scale","0.8"),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out anchorScale);anchorScale=Math.Max(.5f,Math.Min(2f,anchorScale))*CreateGraphicsDpi();string anchorPosition=Setting("position","center");float margin=(Setting("floating","False")=="True"?20:16)*anchorScale;
+            environment["ISLANDLY_NATIVE_ANCHOR"]=json.Serialize(new{center=anchorPosition=="left"?anchor.Left+margin+69*anchorScale:anchorPosition=="right"?anchor.Right-margin-69*anchorScale:anchor.Left+anchor.Width/2f,top=anchor.Top+(Setting("floating","False")=="True"?14:8)*anchorScale});
             environment["ISLANDLY_NATIVE_PROFILE"]=profile; environment["ISLANDLY_NATIVE_COMMAND"]=command;
             if(probe!="") environment["ISLANDLY_NATIVE_PROBE"]="1";
             string block=String.Join("\0",environment.Select(pair=>pair.Key+"="+pair.Value))+"\0\0";
@@ -394,8 +424,11 @@ sealed class IslandHost : Form {
             return;
         }
         if(line == "ISLANDLY:settings:") { ReadSettings(); Position(); return; }
-        if(line == "ISLANDLY:ready:") { ready = true; hasLaunchedSuccessfully=true; readyAt = clock.ElapsedMilliseconds; latencies.Enqueue(readyAt-requestAt); Position(); Status(); }
-        if(line == "ISLANDLY:idle:") { shutdownAt = clock.ElapsedMilliseconds; }
+        if(line.StartsWith("ISLANDLY:panel:ready:")) {
+            try {var bounds=json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(Convert.FromBase64String(line.Substring(21))));if(motion!=null)motion.Ready(Convert.ToSingle(bounds["width"]),Convert.ToSingle(bounds["height"]));}catch(Exception ex){NativeLog.Write("panel-ready-geometry",ex);}return;
+        }
+        if(line == "ISLANDLY:ready:") { if(lastCommand!="expand"&&lastCommand!="pomodoro"&&motion!=null)motion.Hide(); ready = true; hasLaunchedSuccessfully=true; readyAt = clock.ElapsedMilliseconds; latencies.Enqueue(readyAt-requestAt); Position(); Status(); }
+        if(line == "ISLANDLY:idle:") { if(motion!=null)motion.Open(false); shutdownAt = clock.ElapsedMilliseconds; }
         if(line == "ISLANDLY:restart:") { EndSession(); OpenPanel("settings"); return; }
         if(line == "ISLANDLY:exit:") { Close(); return; }
         if(line.StartsWith("ISLANDLY:state:")) {
@@ -410,7 +443,7 @@ sealed class IslandHost : Form {
     }
     void SaveState() { try { string file = Path.Combine(profile,"native-session.json"); File.WriteAllText(file+".tmp",json.Serialize(state)); if(File.Exists(file)) File.Replace(file+".tmp",file,null); else File.Move(file+".tmp",file); stateWrittenAt = clock.ElapsedMilliseconds; } catch(IOException) {} }
     void EndSession() {
-        ready = false;
+        ready = false; if(motion!=null)motion.Open(false);
         if(job != IntPtr.Zero) { Native.TerminateJobObject(job,0); Native.CloseHandle(job); job = IntPtr.Zero; }
         if(child != null) { child.Dispose(); child = null; }
         if(childInput != null) { try { childInput.Dispose(); } catch(IOException) {} catch(ObjectDisposedException) {} childInput = null; }
@@ -431,7 +464,8 @@ sealed class IslandHost : Form {
             if(File.Exists(commandFile)) { string command = File.ReadAllText(commandFile).Trim(); File.Delete(commandFile);
                 if(command == "measure") measuring = true;
                 else if(command == "exit") Close();
-                else if(command == "close") Send("close");
+                else if(command == "close") {if(motion!=null)motion.Open(false);Send("close");}
+                else if(command.StartsWith("motion-") && motion!=null)motion.Probe(command);
                 else if(new[]{"expand","settings","palette","pomodoro"}.Contains(command)) OpenPanel(command);
             }
             Status();
@@ -452,7 +486,7 @@ sealed class IslandHost : Form {
             double cpu=cpuTimes.TryGetValue(id,out previous) && now>cpuSampleAt ? Math.Max(0,(time-previous)/(now-cpuSampleAt)*100) : 0; cpuTimes[id]=time; totalCPU+=cpu;
             processes.Add(new { pid=id, name=p.ProcessName, mb=mb, cpu=cpu }); } } catch(ArgumentException) {}
         cpuSampleAt=now;
-        var data = new { hostPid=Process.GetCurrentProcess().Id, phase=launching?"starting":child == null ? "idle" : ready ? "panel" : "starting", hotkey=islandHotkey, processStartedMs=launchedAt, requestMs=requestAt, eco=nativeEco, material=nativeAcrylic?"acrylic":"glass", materialSupported=NativeMaterial.Supported(), averageNotApplicable=true, totalMB=total, totalCPU=totalCPU, processes=processes, launchCount=launchCount, latenciesMs=latencies.ToArray(), appBar=bar, appBarTop=abd.rect.top, appBarBottom=abd.rect.bottom, stateAgeMs=clock.ElapsedMilliseconds-stateWrittenAt, command=lastCommand };
+        var data = new { hostPid=Process.GetCurrentProcess().Id, phase=launching?"starting":child == null ? "idle" : ready ? "panel" : "starting", motion=motion==null?null:motion.Report, hotkey=islandHotkey, processStartedMs=launchedAt, requestMs=requestAt, eco=nativeEco, material=nativeAcrylic?"acrylic":"glass", materialSupported=NativeMaterial.Supported(), averageNotApplicable=true, totalMB=total, totalCPU=totalCPU, processes=processes, launchCount=launchCount, latenciesMs=latencies.ToArray(), appBar=bar, appBarTop=abd.rect.top, appBarBottom=abd.rect.bottom, stateAgeMs=clock.ElapsedMilliseconds-stateWrittenAt, command=lastCommand };
         string file=Path.Combine(probe,"status.json"); try { NativeStatusPublication.Publish(file,json.Serialize(data)); } catch(IOException) {}
     }
     void DeleteBarMarker() { try { File.Delete(Path.Combine(profile,"native-appbar-marker.json")); } catch {} }
@@ -518,6 +552,8 @@ sealed class IslandHost : Form {
         }
     }
     protected override void WndProc(ref Message m) {
+        if(probe!="" && motion!=null && m.Msg==0x8021){motion.Probe(m.WParam.ToInt32()==0?"motion-close":"motion-open");Status();return;}
+        if(probe!="" && motion!=null && m.Msg==0x8022){ReadSettings();Position();Status();File.WriteAllText(Path.Combine(probe,"motion-frames.json"),json.Serialize(motion.FrameSamples));return;}
         if(taskbarCreated != 0 && m.Msg == taskbarCreated) { bar=false; DeleteBarMarker(); Position(); }
         if(m.Msg == 0x031D && child == null && Setting("clipboard","True") != "False") {
             try { if(Clipboard.ContainsText()) { string text=Clipboard.GetText(); if(text.Length > 5000) text=text.Substring(0,5000);
@@ -529,7 +565,8 @@ sealed class IslandHost : Form {
         base.WndProc(ref m);
     }
     void Cleanup() {
-        if(closing) return; closing=true;
+        leaveGrace.Stop();leaveGrace.Dispose();if(motion!=null){motion.Dispose();motion=null;}
+        if(closing) return; closing=true;if(foregroundWatcher!=null)foregroundWatcher.Dispose();
         launchRetry.Stop(); launchRetry.Dispose(); ticker.Stop(); hoverDwell.Stop();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= DisplayChanged;
         Microsoft.Win32.SystemEvents.PowerModeChanged -= PowerChanged;

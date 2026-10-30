@@ -1,0 +1,39 @@
+name: T21 native motion
+on:
+  pull_request:
+    branches: [codex/T20-laptop-fixes]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-motion:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [overlay, reserved-bar]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build production Direct2D/DirectComposition host and test production springs
+        shell: pwsh
+        run: ./scripts/build-native.ps1
+      - name: Native screenshot matrix and geometry checks
+        if: matrix.mode == 'overlay'
+        shell: pwsh
+        run: ./test/native-motion-qa.ps1
+      - name: Native eyes CPU/RAM/timer guards and liquid frame/input timing
+        shell: pwsh
+        run: ./test/native-motion-perf.ps1 -Mode ${{ matrix.mode }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t21-native-motion-${{ matrix.mode }}
+          path: out/t21/**
+          if-no-files-found: warn

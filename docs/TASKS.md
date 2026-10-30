@@ -50,3 +50,4 @@
 | click-through الدائري | PR #1 | بعد اختبار يدوي على ويندوز |
 | تفعيل وضع التوفير تلقائياً مع Battery saver | T14 | `ecoAuto` |
 | بنود أخرى من بحث المنافسين | وليد | لم تصلني قائمة البحث نفسها؛ تُضاف هنا |
+| T21 | Native Direct2D/DirectComposition eyes, liquid motion, floating placement and native motion CI per Claude handoff 9a22597 | Codex | `codex/T21-native-motion` | T20 ac6b06f | doing | Claude | Native implementation and Windows verification in progress; draft PR targets T20 |
