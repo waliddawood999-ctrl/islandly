@@ -173,20 +173,26 @@ const Island = (() => {
     return Math.ceil(v.el.offsetHeight);
   }
 
+  // The expanded card is portrait (clearly taller than wide): width grows only as far as the content needs (moderate max), then shrinks toward MIN_W until the content fills a portrait shape, so there is no empty strip.
+  const EXPANDED_MAX_W = 440, EXPANDED_MIN_W = 300, PORTRAIT_RATIO = 1.12;
   function expandedSize(v, id) {
-    const maxWidth = Math.max(160, Math.min(560, workArea.width - 2 * GUTTER));
-    const base = Math.min(360, maxWidth);
-    const preferred = id === 'music' && v.el.querySelector('.m-body')?.style.display !== 'none' ? Math.min(460, maxWidth) : base;
+    const maxWidth = Math.max(160, Math.min(EXPANDED_MAX_W, workArea.width - 2 * GUTTER));
+    const preferred = Math.min(360, maxWidth);
     const clone = v.el.cloneNode(true);
     Object.assign(clone.style, { width: (preferred - 32) + 'px', height: 'auto', position: 'relative', padding: '0', inset: 'auto' });
     meter.classList.add('expanded-grid'); meter.appendChild(clone);
     const needed = Math.max(preferred, Math.min(v.w, clone.scrollWidth + 32));
-    const w = Math.min(maxWidth, needed);
+    let w = Math.min(maxWidth, needed);
     clone.style.width = (w - 32) + 'px';
-    const natural = v.auto ? clone.offsetHeight : v.h;
+    let natural = v.auto ? clone.offsetHeight : v.h;
+    while (v.auto && w > EXPANDED_MIN_W && natural + 64 < w * PORTRAIT_RATIO) {
+      w = Math.max(EXPANDED_MIN_W, w - 20);
+      clone.style.width = (w - 32) + 'px';
+      natural = clone.offsetHeight;
+    }
     clone.remove();
     const available = Math.max(120, Math.min(560, workArea.height - TOP - GUTTER - (v.below ? v.below.h + BELOW_GAP : 0)));
-    const hgt = Math.min(available, Math.max(180, natural + 64));
+    const hgt = Math.min(available, Math.max(180, natural + 64, Math.ceil(w * PORTRAIT_RATIO)));
     return { w, h: hgt };
   }
   const expandable = () => features.filter((f) => f.view('expanded'));
