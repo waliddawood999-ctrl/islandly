@@ -42,7 +42,7 @@ sealed class NativeMotion:IDisposable {
  public NativeMotion(Form form,Action onHover,Action onLeave,Action onClick,bool measure){owner=form;hover=onHover;leave=onLeave;diagnostics=measure;
   MotionApi.Check(MotionApi.MotionCreate(owner.Handle,out renderer));var adapterName=new System.Text.StringBuilder(256);MotionApi.MotionAdapter(renderer,adapterName,adapterName.Capacity);adapter=adapterName.ToString();
   halo=new Halo();halo.MouseEnter+=delegate{if(options.hidden&&!options.hotZone.IsEmpty){if(Reveal!=null)Reveal();return;}PointerEvent();hover();};halo.MouseMove+=delegate{PointerEvent();};halo.MouseLeave+=delegate{leave();};halo.MouseClick+=delegate(object s,MouseEventArgs e){if(e.Button==MouseButtons.Left){PointerEvent();onClick();}};
-  eyesTimer.Interval=33;eyesTimer.Tick+=delegate{EyeTick();};blinkTimer.Tick+=delegate{blinkTimer.Stop();bool live=tracking&&eyesTimer.Enabled;MotionApi.Check(MotionApi.MotionBlink(renderer,live?1:0));if(live){eyeUntil=clock.ElapsedMilliseconds+600;lastMove=clock.ElapsedMilliseconds;StartEyes();}else ScheduleBlink();};
+  eyesTimer.Interval=33;eyesTimer.Tick+=delegate{EyeTick();};blinkTimer.Tick+=delegate{Counters.blinks++;blinkTimer.Stop();bool live=tracking&&eyesTimer.Enabled;MotionApi.Check(MotionApi.MotionBlink(renderer,live?1:0));if(live){eyeUntil=clock.ElapsedMilliseconds+600;lastMove=clock.ElapsedMilliseconds;StartEyes();}else ScheduleBlink();};
   fadeTimer.Interval=120;fadeTimer.Tick+=delegate{fadeTimer.Stop();fading=false;owner.Hide();halo.Hide();};
  }
  public event Action<double> FrameChanged;
@@ -52,7 +52,7 @@ sealed class NativeMotion:IDisposable {
  public void PlaceHaloNow(){PlaceHalo();}
  public bool Opening {get{return target!=0;}}
  public bool VisibleEyes {get{return snapshot.visible!=0;}}
- public object Report {get{return new{backend="Direct2D/DirectComposition",adapter=adapter,body=snapshot.body,drop=snapshot.drop,gx=snapshot.gx,gy=snapshot.gy,lid=snapshot.lid,blink=snapshot.blink,eyesVisible=snapshot.visible!=0&&owner.Visible,frameLoop=loop!=0,cursorTimer=eyesTimer.Enabled&&tracking,cursorReads=cursorReads,renders=renders,inputSequence=inputSequence,inputFirstMs=firstResponse,center=options.center,top=options.top,scale=options.scale,floating=options.floating,light=options.light,fullscreen=options.fullscreen,hidden=options.hidden,cardWidth=cardWidth,cardHeight=cardHeight};}}
+ public object Report {get{return new{backend="Direct2D/DirectComposition",adapter=adapter,body=snapshot.body,drop=snapshot.drop,gx=snapshot.gx,gy=snapshot.gy,lid=snapshot.lid,blink=snapshot.blink,eyesVisible=snapshot.visible!=0&&owner.Visible,frameLoop=loop!=0,cursorTimer=eyesTimer.Enabled&&tracking,cursorReads=cursorReads,renders=renders,inputSequence=inputSequence,inputFirstMs=firstResponse,center=options.center,top=options.top,scale=options.scale,floating=options.floating,light=options.light,fullscreen=options.fullscreen,hidden=options.hidden,cardWidth=cardWidth,cardHeight=cardHeight,ticks=Counters.ticks,positions=Counters.positions,hookEvents=Counters.hooks,blinks=Counters.blinks};}}
  public void Configure(MotionOptions next){bool changed=options.eyes!=next.eyes||options.eco!=next.eco||options.mode!=next.mode||options.fullscreen!=next.fullscreen||options.compact!=next.compact||options.light!=next.light||options.rtl!=next.rtl||options.acrylic!=next.acrylic||options.floating!=next.floating||options.center!=next.center||options.top!=next.top||options.scale!=next.scale||options.label!=next.label||options.date!=next.date||options.hidden!=next.hidden||options.hotZone!=next.hotZone||options.sliver!=next.sliver||options.screen!=next.screen||options.loading!=next.loading;
   options=next;float s=options.scale;int w=Math.Min(options.screen.Width,(int)Math.Ceiling(600*s)),h=Math.Min(options.screen.Height,(int)Math.Ceiling(920*s));
   int left=Math.Max(options.screen.Left,Math.Min(options.screen.Right-w,(int)(options.center-w/2f)));
@@ -138,6 +138,8 @@ sealed class NativeMotion:IDisposable {
  }
 }
 // Foreground/location WinEvents are not cursor hooks. No fullscreen polling timer.
+// Wakeup counters for the idle/moving CPU diagnosis: they appear in the status JSON the perf test prints.
+static class Counters{public static long ticks,positions,hooks,blinks;}
 sealed class ForegroundWatcher:IDisposable {
  delegate void EventProc(IntPtr hook,uint ev,IntPtr window,int obj,int child,uint thread,uint time);
  [DllImport("user32.dll")] static extern IntPtr SetWinEventHook(uint min,uint max,IntPtr module,EventProc proc,uint process,uint thread,uint flags);
@@ -147,7 +149,7 @@ sealed class ForegroundWatcher:IDisposable {
  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window,out uint process);
  // The location hook listens to the foreground window's thread only: a system-wide hook wakes the host for every cursor move and every window move on the desktop.
  void HookLocation(IntPtr window){if(location!=IntPtr.Zero){UnhookWinEvent(location);location=IntPtr.Zero;}if(window==IntPtr.Zero)return;uint process;uint thread=GetWindowThreadProcessId(window,out process);if(thread==0)return;location=SetWinEventHook(0x800b,0x800b,IntPtr.Zero,callback,process,thread,2);}
- public ForegroundWatcher(Form form,Action changed){owner=form;callback=delegate(IntPtr h,uint ev,IntPtr window,int obj,int child,uint thread,uint time){if(disposed||window==IntPtr.Zero||ev==0x800b&&(obj!=0||window!=GetForegroundWindow()))return;
+ public ForegroundWatcher(Form form,Action changed){owner=form;callback=delegate(IntPtr h,uint ev,IntPtr window,int obj,int child,uint thread,uint time){Counters.hooks++;if(disposed||window==IntPtr.Zero||ev==0x800b&&(obj!=0||window!=GetForegroundWindow()))return;
   if(ev==3)HookLocation(window);
   if(Interlocked.CompareExchange(ref queued,1,0)==0)try{owner.BeginInvoke((Action)delegate{Interlocked.Exchange(ref queued,0);if(!disposed)changed();});}catch(InvalidOperationException){}};
   foreground=SetWinEventHook(3,3,IntPtr.Zero,callback,0,0,2);HookLocation(GetForegroundWindow());

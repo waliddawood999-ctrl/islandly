@@ -137,7 +137,7 @@ try{
  # Reference with the island moved to the right edge: the reserved strip (work area) and every other window stay exactly where they are, unlike hiding the island, which releases the strip and lets windows shift under the capture.
  $cx=[int]$s.motion.center;$ty=[int]$s.motion.top;$sc=[double]$s.motion.scale
  $configuration.position='right';Save-Settings;[Windows.Forms.Cursor]::Position=$far;Start-Sleep -Milliseconds 900;Refresh;Start-Sleep -Milliseconds 600
- $barBox=@(($cx-[int](69*$sc)),$ty,[int][Math]::Ceiling(138*$sc),[int][Math]::Ceiling(36*$sc));$cardBox=@(($cx-[int](180*$sc)),$ty,[int][Math]::Ceiling(360*$sc),[int][Math]::Ceiling(440*$sc))
+ $barBox=@(($cx-[int](69*$sc)),$ty,[int][Math]::Ceiling(138*$sc),[int][Math]::Ceiling(36*$sc));$cardBox=@(($cx-[int](220*$sc)),$ty,[int][Math]::Ceiling(440*$sc),[int][Math]::Ceiling(480*$sc)) # 40 px of margin each side: the open spring overshoots the nominal 360 px card, so the box corners must lie clear of the animated shape
  $barReference=Grab $barBox[0] $barBox[1] $barBox[2] $barBox[3];$cardReference=Grab $cardBox[0] $cardBox[1] $cardBox[2] $cardBox[3]
  $configuration.position='center';Save-Settings;Start-Sleep -Milliseconds 900;Refresh;$s=Wait-Island $true;[Windows.Forms.Cursor]::Position=$far;Start-Sleep -Milliseconds 700
  Assert-Transparent 'bar' $barReference (Grab $barBox[0] $barBox[1] $barBox[2] $barBox[3])

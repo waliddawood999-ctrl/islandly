@@ -246,6 +246,7 @@ sealed class IslandHost : Form {
     }
     void Position() {
         if (closing || !IsHandleCreated) return;
+        Counters.positions++;
         clockMinute=DateTime.Now.Hour*60+DateTime.Now.Minute;
         ApplyNativeMaterial();
         string mode=modeOverride == "" ? Setting("islandMode","overlay") : modeOverride;
@@ -499,6 +500,7 @@ sealed class IslandHost : Form {
         shutdownAt = 0; Position(); Status();
     }
     void Tick(object sender, EventArgs e) {
+        Counters.ticks++;
         bool settingsChanged=ReadSettings();
         if(clock.ElapsedMilliseconds-lastBackground >= 5000) { lastBackground=clock.ElapsedMilliseconds; if(child == null) BackgroundTick(); }
         if(!launching && child != null && (child.HasExited || shutdownAt > 0 && clock.ElapsedMilliseconds-shutdownAt > 1500 || !ready && clock.ElapsedMilliseconds-launchedAt > (hasLaunchedSuccessfully?60000:120000))) EndSession();
