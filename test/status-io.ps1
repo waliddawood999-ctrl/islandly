@@ -15,14 +15,14 @@ foreach($name in @('Read-SharedJson','Read-Status')) {
 $publisherSource=Get-Content "$root/native/StatusPublication.cs" -Raw
 Add-Type ($publisherSource + @'
 public static class StatusPublication {
- public static Exception Failure; static volatile bool stopped; static System.Threading.Thread writer;
+ public static int Published,Busy; public static Exception Failure; static volatile bool stopped; static System.Threading.Thread writer;
  public static void Start(string file,int pid) {
   stopped=false;Failure=null;
   writer=new System.Threading.Thread(()=>{try{int n=0;while(!stopped){
    string processes="{\"pid\":"+pid+",\"mb\":40,\"cpu\":0}";
    for(int i=1;i<=n%8;i++)processes+=",{\"pid\":"+(pid+i)+",\"mb\":50,\"cpu\":0.125}";
    string data="{\"hostPid\":"+pid+",\"phase\":\"panel\",\"generation\":"+n+",\"processes\":["+processes+"]}";
-   NativeStatusPublication.Publish(file,data);
+   try { NativeStatusPublication.Publish(file,data); Published++; } catch(IOException) { Busy++; }
    n++;System.Threading.Thread.Sleep(1);
   }}catch(Exception e){Failure=e;}});writer.IsBackground=true;writer.Start();
  }
@@ -43,5 +43,6 @@ try {
  }
  if($script:statusReadWarnings-ne 0){throw 'Atomic publication required read retries'}
  if($owned.Count-lt 8){throw 'Full process ownership not retained'}
- Write-Output 'STATUS IO PASS:2000 strict ownership reads during variable-size atomic snapshot replacement; retry limit unchanged'
+ if([StatusPublication]::Published-lt 20){throw 'Publisher did not make progress'}
+ Write-Output "STATUS IO PASS:2000 strict ownership reads; zero read retries; $([StatusPublication]::Published) complete publications, $([StatusPublication]::Busy) busy publication attempts left the previous snapshot intact"
 } finally {[StatusPublication]::Stop();Remove-Item $probe -Recurse -Force}

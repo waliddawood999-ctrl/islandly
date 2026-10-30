@@ -20,7 +20,7 @@ public static class NativeStatusPublication {
         // no existence check, and readers may retain the previous complete file.
         if(!MoveFileEx(temporary,file,0x1|0x8)) {
             int error=Marshal.GetLastWin32Error();
-            throw new IOException("Atomic ownership publication failed",new Win32Exception(error));
+            throw new IOException("Atomic ownership publication failed (Win32 "+error+")",new Win32Exception(error));
         }
     }
 }
