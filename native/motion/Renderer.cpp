@@ -33,6 +33,9 @@ struct OutlineSink:ID2D1SimplifiedGeometrySink {
  void STDMETHODCALLTYPE EndFigure(D2D1_FIGURE_END)override{} HRESULT STDMETHODCALLTYPE Close()override{return S_OK;}
 };
 // Frame-latency waitable object of the composition swap chain (one renderer per process): the single clock of a burst. presentedEvent is set after every successful Present so the burst thread waits for the frame it just asked the UI thread for.
+// Per-phase wall time of the last draw (ms): PopLayer+EndDraw, window region, eyes, Present, Commit. Read by the frame diagnostics only.
+static double drawTimes[5]={0,0,0,0,0};
+static double nowMs(){static LARGE_INTEGER f={};LARGE_INTEGER c;if(!f.QuadPart)QueryPerformanceFrequency(&f);QueryPerformanceCounter(&c);return double(c.QuadPart)*1000.0/double(f.QuadPart);}
 static HANDLE latencyWait=nullptr;static HANDLE presentedEvent=CreateEventW(nullptr,FALSE,FALSE,nullptr);
 struct Renderer {
  HWND window;motion::Model model;
@@ -162,14 +165,17 @@ struct Renderer {
   }else{brush->SetColor(D2D1::ColorF(.33f,.8f,.5f,a));dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x+(rtl?120:18),y+18),3,3),brush.Get());label(clock,15,D2D1::RectF(x+25,y,x+w-10,y+h),false,a,light);}
   float content=float(motion::clamp((model.body.x-.3)/.5,0,1));label(clock,42,D2D1::RectF(x+24,y+22,x+w-24,y+85),false,content,light);label(date,16,D2D1::RectF(x+24,y+90,x+w-24,y+125),rtl,content*.75f,light);
   if(f.flags&64)label(rtl?L"جارٍ التحميل…":L"Loading…",12,D2D1::RectF(x+24,y+140,x+w-24,y+162),rtl,content*.65f,light);
-  dc->PopLayer();if(clipped)dc->PopAxisAlignedClip();hr=dc->EndDraw();if(FAILED(hr))return hr;if(file&&*file){hr=capture(file);if(FAILED(hr))return hr;}if(auditAlpha&&!clipped){hr=auditLeak(s,f);if(FAILED(hr))return hr;}
+  double t0=nowMs();dc->PopLayer();if(clipped)dc->PopAxisAlignedClip();hr=dc->EndDraw();if(FAILED(hr))return hr;drawTimes[0]=nowMs()-t0;if(file&&*file){hr=capture(file);if(FAILED(hr))return hr;}if(auditAlpha&&!clipped){hr=auditLeak(s,f);if(FAILED(hr))return hr;}
+  double t1=nowMs();
   if(!clipped){auto sink=new OutlineSink();path->Simplify(D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,&scale,.75f,sink); /* window-region polygon: 0.75 px flattening tolerance keeps it to a few dozen points; SetWindowRgn per frame was the heaviest call */
   if(sink->points.size()>=3){HRGN region=CreatePolygonRgn(sink->points.data(),int(sink->points.size()),WINDING);if(region&&!SetWindowRgn(window,region,FALSE))DeleteObject(region);}sink->Release();}
-  hr=updateEyes(f,s,file&&*file);if(FAILED(hr))return hr;opacity->SetOpacity(f.opacity);if(clipped){RECT rect={std::max(0L,LONG(std::floor(dirty.left*f.scale))),std::max(0L,LONG(std::floor(dirty.top*f.scale))),std::min(LONG(width),LONG(std::ceil(dirty.right*f.scale))),std::min(LONG(height),LONG(std::ceil(dirty.bottom*f.scale)))}; /* a dirty rectangle outside the back buffer is DXGI_ERROR_INVALID_CALL (top=0 pill: y-2 < 0) */
+  drawTimes[1]=nowMs()-t1;double t2=nowMs();
+  hr=updateEyes(f,s,file&&*file);if(FAILED(hr))return hr;opacity->SetOpacity(f.opacity);drawTimes[2]=nowMs()-t2;double t3=nowMs();if(clipped){RECT rect={std::max(0L,LONG(std::floor(dirty.left*f.scale))),std::max(0L,LONG(std::floor(dirty.top*f.scale))),std::min(LONG(width),LONG(std::ceil(dirty.right*f.scale))),std::min(LONG(height),LONG(std::ceil(dirty.bottom*f.scale)))}; /* a dirty rectangle outside the back buffer is DXGI_ERROR_INVALID_CALL (top=0 pill: y-2 < 0) */
    if(rect.right>rect.left&&rect.bottom>rect.top){DXGI_PRESENT_PARAMETERS p={};p.DirtyRectsCount=1;p.pDirtyRects=&rect;hr=swap->Present1(0,0,&p);}else hr=DXGI_ERROR_INVALID_CALL;
-   if(hr==DXGI_ERROR_INVALID_CALL)hr=swap->Present(0,0);}else hr=swap->Present(0,0);if(FAILED(hr))return hr;if(presentedEvent)SetEvent(presentedEvent);return composition->Commit();
+   if(hr==DXGI_ERROR_INVALID_CALL)hr=swap->Present(0,0);}else hr=swap->Present(0,0);if(FAILED(hr))return hr;drawTimes[3]=nowMs()-t3;if(presentedEvent)SetEvent(presentedEvent);double t4=nowMs();HRESULT committed=composition->Commit();drawTimes[4]=nowMs()-t4;return committed;
  }
 };
+extern "C" __declspec(dllexport) void __cdecl MotionDrawTimes(double*out){for(int i=0;i<5;i++)out[i]=drawTimes[i];}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionCreate(HWND hwnd,void**out){if(!out)return E_POINTER;*out=nullptr;auto r=new Renderer();HRESULT hr=r->initialize(hwnd);if(FAILED(hr)){delete r;return hr;}*out=r;return S_OK;}
 extern "C" __declspec(dllexport) void __cdecl MotionDestroy(void*p){delete static_cast<Renderer*>(p);}
 extern "C" __declspec(dllexport) void __cdecl MotionStep(void*p,float dt,int flags,float dx,float dy,int pointer,int target,Snapshot*out){auto&r=*static_cast<Renderer*>(p);auto&m=r.model;m.eyes=(flags&1)!=0;m.eco=(flags&2)!=0;m.mode=(flags&8)?2:(flags&4)?1:0;m.fullscreen=(flags&16)!=0;m.compact=(flags&32)!=0;if(pointer>=0)m.pointer(dx,dy,pointer!=0,pointer==2);if(r.gpuOnlyBlink){double elapsed=(GetTickCount64()-r.gpuBlinkAt)/1000.;if(elapsed<r.gpuBlinkDuration)m.blinkStart=m.age-elapsed;else m.blinkStart=-1;r.gpuOnlyBlink=false;}m.nextBlink=1e30;m.target(target!=0);m.step(dt);*out={float(m.body.x),float(m.drop.x),float(m.gx),float(m.gy),float(m.lid),float(m.squint),float(m.blink),m.eyeVisible()?1:0,m.moving()?1:0};}
