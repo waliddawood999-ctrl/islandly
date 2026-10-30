@@ -118,6 +118,14 @@ try{
  if(!($fullscreen.motion.fullscreen-and !$fullscreen.motion.eyesVisible-and !$fullscreen.motion.cursorTimer)){Dump-Fullscreen 'host did not hide'}
  try{Refresh;$fullscreen=Read-Status;if(!$fullscreen.motion.fullscreen-or $fullscreen.motion.eyesVisible-or $fullscreen.motion.cursorTimer){throw 'Real fullscreen foreground did not hide eyes/timers'}}finally{Close-Fullscreen}
  Refresh
+ # 'Show on mouse approach': hidden (no eyes, no timers) until the cursor nears the island, hidden again when it leaves; 'always' restores it.
+ function Wait-Island($visible){$until=[DateTime]::UtcNow.AddSeconds(3);do{Refresh;$s=Read-Status;if([bool]$s.motion.eyesVisible-eq $visible){return $s};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow-lt $until);throw "Island visibility never became $visible"}
+ $configuration.islandVisibility='approach';Save-Settings;$s=Wait-Island $false
+ if($s.motion.cursorTimer-or $s.motion.frameLoop){throw 'Approach mode left timers running while hidden'}
+ [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$s.motion.center,[int]($s.motion.top+10));$s=Wait-Island $true
+ [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$s.motion.center,[int]($s.motion.top+500));$s=Wait-Island $false
+ $configuration.islandVisibility='always';Save-Settings;$s=Wait-Island $true
+ Write-Output 'NATIVE ISLAND VISIBILITY: approach hides, cursor near reveals, leaving hides, always restores'
  # Z-order after the fullscreen hide/reveal: a foreign topmost window shown over the island (foreground change) must end up BELOW the island (Raise() re-asserts topmost). Screenshot and verdict go to the artifacts.
  $s=Wait-Island $true;$hostWindow=[MotionInput]::Host($hostProcess.Id)
  $boxRect="$([int]($s.motion.center-100)),$([int]($s.motion.top+4)),200,120"
@@ -132,14 +140,6 @@ try{
   if(!$above){throw "Island is below a foreign topmost window shown after fullscreen hide/reveal (Raise() did not take effect)"}
  }finally{Set-Content "$probe/box-stop" 'stop';if(!$boxProcess.WaitForExit(5000)){$boxProcess.Kill()}}
  Refresh
- # 'Show on mouse approach': hidden (no eyes, no timers) until the cursor nears the island, hidden again when it leaves; 'always' restores it.
- function Wait-Island($visible){$until=[DateTime]::UtcNow.AddSeconds(3);do{Refresh;$s=Read-Status;if([bool]$s.motion.eyesVisible-eq $visible){return $s};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow-lt $until);throw "Island visibility never became $visible"}
- $configuration.islandVisibility='approach';Save-Settings;$s=Wait-Island $false
- if($s.motion.cursorTimer-or $s.motion.frameLoop){throw 'Approach mode left timers running while hidden'}
- [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$s.motion.center,[int]($s.motion.top+10));$s=Wait-Island $true
- [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$s.motion.center,[int]($s.motion.top+500));$s=Wait-Island $false
- $configuration.islandVisibility='always';Save-Settings;$s=Wait-Island $true
- Write-Output 'NATIVE ISLAND VISIBILITY: approach hides, cursor near reveals, leaving hides, always restores'
  # Transparency: pixels outside the island/card shape (the bounding-box corners) must show the desktop exactly as when the island is hidden. Reference = hidden capture, shot = visible capture.
  function Grab($x,$y,$w,$h){$b=[Drawing.Bitmap]::new($w,$h);$g=[Drawing.Graphics]::FromImage($b);try{$g.CopyFromScreen($x,$y,0,0,$b.Size)}finally{$g.Dispose()};return $b}
  function Assert-Transparent($name,$reference,$shot){

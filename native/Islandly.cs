@@ -169,7 +169,7 @@ sealed class IslandHost : Form {
     bool ReadSettings() {
         string file = Path.Combine(profile,"settings.json");
         try { var stamp = File.GetLastWriteTimeUtc(file); if (stamp == settingsStamp) return false;
-            var next = json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file)); settings = next; settingsStamp = stamp; UpdateEco();return true;
+            var next = json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file)); if(next == null) return false; /* the watcher fires while the writer has truncated the file: an empty read deserializes to null and is retried on the next event */ settings = next; settingsStamp = stamp; UpdateEco();return true;
         } catch {return false;}
     }
     protected override void OnHandleCreated(EventArgs e) {
