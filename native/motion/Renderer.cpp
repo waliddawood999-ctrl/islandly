@@ -182,13 +182,13 @@ static const double kFallbackPaceMs=16.0;
 static bool paceHighRes=false;
 typedef LONG (NTAPI*NtQueryTimerResolutionFn)(PULONG,PULONG,PULONG);
 static ULONG timerResolution100ns(){static NtQueryTimerResolutionFn q=reinterpret_cast<NtQueryTimerResolutionFn>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"NtQueryTimerResolution"));ULONG a=0,b=0,c=0;if(q&&q(&a,&b,&c)>=0)return c;return 156250;}
-// The wait is sleep-then-spin: a timer wakes the thread ~1.5 ms early and the rest is a yield loop on the QPC clock. A plain timed wait fired a whole 15.6 ms tick late (31 ms intervals) whenever the system timer resolution was not 1 ms. Without a high-resolution timer (or at coarse resolution) the thread only yields.
+// The wait is sleep-then-spin: with a true high-resolution timer it wakes ~1.5 ms early and yields the rest on the QPC clock; without one it only yields (a burst lasts a few hundred milliseconds, and this path is used only where the compositor gives no vblank to wait on).
 static HRESULT paceWait(double periodMs){
  if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);paceHighRes=paceTimer!=nullptr;if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);QueryPerformanceFrequency(&paceFrequency);}
  LARGE_INTEGER now;QueryPerformanceCounter(&now);const LONGLONG period=LONGLONG(paceFrequency.QuadPart*periodMs/1000.0);
  if(paceNext==0||now.QuadPart-paceNext>4*period)paceNext=now.QuadPart;paceNext+=period;
  if(paceNext<=now.QuadPart){paceNext=now.QuadPart;return S_OK;} // already late: run the frame now and re-anchor
- const bool sleepOk=paceTimer&&(paceHighRes||timerResolution100ns()<=20000);
+ const bool sleepOk=paceTimer&&paceHighRes; /* CI evidence: no high-resolution timer there (hiRes=0) and, although NtQueryTimerResolution reports 1 ms, a normal timer still fired a full 15.6 ms tick late (waits of 30-32 ms) because the 1 ms request is not honoured for this process; only a yield loop on the QPC clock is exact */
  for(;;){QueryPerformanceCounter(&now);LONGLONG left=paceNext-now.QuadPart;if(left<=0)break;double ms=double(left)*1000.0/double(paceFrequency.QuadPart);
   if(sleepOk&&ms>2.0){LARGE_INTEGER due;due.QuadPart=-LONGLONG((double(left)*10000000.0/double(paceFrequency.QuadPart))-15000.0);if(due.QuadPart>=0)due.QuadPart=-1;if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))SwitchToThread();else WaitForSingleObject(paceTimer,INFINITE);}
   else SwitchToThread();}
