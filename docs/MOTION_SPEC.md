@@ -79,7 +79,7 @@ Any state can reverse into any other: the springs keep their velocity, so revers
 | Anticipation | within **48 px** of the pill the DROP target rises linearly to **0.10**, i.e. a **16 px** swell under the pill | Full only |
 | Dwell | **120 ms** inside the halo (today 280) | the web panel launch starts here, not at the end of the animation |
 | Leave grace | **200 ms** outside the card rect +16 px | hysteresis against flicker |
-| Card size | 440 × 200 (the real "today" panel is 440 × 201, r 22) | the real panel height varies; the animation targets the panel's *measured* size once known, else this default |
+| Card size | `cardW × cardH` = the panel's size; default **360 × 440** (T20), content-sized, up to 460 and capped at 560 (was 440 × 200) | the real panel height varies; the animation targets the panel's *measured* size once known, else this default |
 
 **No polling for the halo.** The halo is part of the host window: enlarge the window by 20 px per side, paint the extra margin as **alpha = 1/255** (invisible, still hit-testable on a layered window) and use the existing `MouseEnter/MouseLeave`. Idle cost stays zero; `WM_MOUSEMOVE` is delivered only while the pointer is inside. (If the host window stays non-layered, use `TrackMouseEvent` on the enlarged rect: same effect.)
 
@@ -88,13 +88,17 @@ Any state can reverse into any other: the springs keep their velocity, so revers
 With `f` = BODY position (0 collapsed … 1 open) and `d` = DROP position (+ anticipation `a`):
 
 ```
-W = 138 + 302·f        H = 36 + 164·f        R = 18 + 4·clamp(f,0,1)
-bulge = max(0, d + a − f) · 164            // px hanging under the body bottom
+W = 138 + (cardW − 138)·f      H = 36 + (cardH − 36)·f      R = 18 + 4·clamp(f,0,1)
+bulge = max(0, d + a − f) · 164            // px hanging under the body bottom: ABSOLUTE 164 px gain, independent of cardH
 left  = clamp(cx − W/2, 12, screenW − 12 − W)       // cx = pill centre; clamp makes left/right positions grow inward
 ```
 Outline (one closed path, 14 segments): rounded rectangle `W×H` radius `R`; when `bulge > 0.5` the bottom edge is replaced by
 `H cx+wl  C cx+0.5wl,H  cx+0.55wl,H+bulge  cx,H+bulge  C cx−0.55wl,H+bulge  cx−0.5wl,H  cx−wl,H  H R`
 with lobe half-width `wl = min(0.30·W, W/2 − R − 4)`. This is the exact path the prototype feeds to `clip-path: path()`.
+
+**Measured size.** The real size is only known once the panel reports ready (§3.6). Animate to the default `cardW × cardH` and, when the measured size arrives, **ease to it over 120 ms** (exponential, τ 40 ms) instead of restarting the springs.
+
+> **Update (T20 review):** the sizes below are the card-size-relative form. `cardW × cardH` is the panel's size: default **360 × 440** (T20), content-sized up to 460 and capped at 560, clamped to the work area. The bulge stays an **absolute 164 px gain** (it is not scaled by the card height). The keyframe table further down was computed for the old 440 × 200 card, so only its `f`, `d` and `bulge` columns still apply; recompute width/height with the formulas above.
 
 Content: the collapsed label (time/eyes) fades out over `f ∈ [0, 0.25]`; the card content fades in and scales 0.97→1 over `f ∈ [0.30, 0.80]`, **clipped by the same path** so nothing is ever drawn outside the shape.
 
@@ -112,7 +116,7 @@ Content: the collapsed label (time/eyes) fades out over `f ∈ [0, 0.25]`; the c
 | 133 | 0.867 | 1.170 | 49.7 | 400 | 178 |
 | 166 | 0.944 | 1.073 | 21.2 | 423 | 191 |
 | 200 | 0.982 | 0.990 | 1.4 | 435 | 197 |
-| 250 | 1.000 | 0.968 | 0 | 440 | 200 |
+| 250 | 1.000 | 0.968 | 0 | 440 (old card) | 200 (old card) |
 | 300 | 1.002 | 0.995 | 0 | 441 | 200 |
 
 Reading: ~70 % of the size change is done by 100 ms, the droplet is gone by 200 ms, everything is within 2 % by **~275 ms** (the user's "~250 ms" target; the visible motion is ~200 ms). If the droplet feels too strong on a real screen, the single tuning knob is the gain `164` in `bulge` (lower = subtler); do not change the springs.

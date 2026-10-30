@@ -61,8 +61,8 @@ Two springs, both with target 1 (open) or 0 (closed). Never reset position or ve
 
 Per frame, with `a` = anticipation (0…0.10):
 ```
-W = 138 + 302·f      H = 36 + 164·f      R = 18 + 4·clamp(f,0,1)
-bulge = max(0, d + a − f) · 164                       // px hanging under the body; the one tuning knob is the gain 164
+W = 138 + (cardW − 138)·f      H = 36 + (cardH − 36)·f      R = 18 + 4·clamp(f,0,1)
+bulge = max(0, d + a − f) · 164                       // ABSOLUTE 164 px gain, not scaled by cardH; the one tuning knob
 left  = clamp(cx − W/2, 12, screenW − 12 − W)         // cx = pill centre; left/right positions therefore grow inward
 wl    = min(0.30·W, W/2 − R − 4)                      // lobe half-width
 path  = rounded rect (W×H, R), bottom edge replaced when bulge > 0.5 by
@@ -70,7 +70,9 @@ path  = rounded rect (W×H, R), bottom edge replaced when bulge > 0.5 by
 ```
 Use this one `ID2D1PathGeometry` for the visible shape **and** mirror it into `SetWindowRgn` (hit-test and acrylic clip; 0.064 ms per update measured by T15). Do not use blur-and-threshold "gooey" filters: they make acrylic opaque.
 
-Keyframes (opening, Full, *sim*): 
+**Card size.** `cardW × cardH` = the panel's size: default **360 × 440** (T20), content-sized up to 460 and capped at 560, clamped to the work area. Animate to the default; when the measured size arrives (`panel:ready`) **ease to it over 120 ms** (τ 40 ms), do not restart the springs.
+
+Keyframes (opening, Full, *sim*; `f`, `d`, `bulge` are valid for any card, **width/height columns are for the old 440 × 200 card**: recompute them with the formulas above): 
 | t ms | f | d | bulge px | width | height |
 |---|---|---|---|---|---|
 | 0 | 0 | 0 | 0 | 138 | 36 |
