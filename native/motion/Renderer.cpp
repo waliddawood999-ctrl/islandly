@@ -208,7 +208,8 @@ extern "C" __declspec(dllexport) HRESULT __cdecl MotionWait(){
  if(paced)return paceWait(kFallbackPaceMs);
  LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);HRESULT hr=DwmFlush();QueryPerformanceCounter(&b);
  double ms=double(b.QuadPart-a.QuadPart)*1000.0/double(f.QuadPart);
- if(SUCCEEDED(hr)&&ms>=1.0){instantWaits=0;paceNext=0;return S_OK;}
- if(++instantWaits>=2){paced=true;return paceWait(kFallbackPaceMs);}
+ // A real vblank returns within one display period. CI evidence: on the headless adapter DwmFlush blocks but returns on 15.6 ms timer ticks (waits of 15.4 or 30.7 ms), so 'blocks for >=1 ms' was never false, the QPC pace never engaged and every second tick was skipped. A flush longer than 20 ms, or one that returns at once, means there is no usable vblank: pace by the QPC schedule from then on.
+ if(SUCCEEDED(hr)&&ms>=1.0&&ms<=20.0){instantWaits=0;paceNext=0;return S_OK;}
+ if(!SUCCEEDED(hr)||ms>20.0||++instantWaits>=2){paced=true;return paceWait(kFallbackPaceMs);}
  return S_OK;
 }
