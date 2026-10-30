@@ -207,6 +207,8 @@ try{
  $p50=Quantile $active.interval .5;$p95=Quantile $active.interval .95;$cpu=($active|Measure-Object cpuMs -Average).Average;$response=($inputs|Measure-Object -Maximum).Maximum
  # DWM's nominal60 Hz period is16.667ms. Retain every raw interval and fail missed budgets.
  $late=@($active|Where-Object {$_.interval-gt 16.667}).Count
+ $wall=@($active|ForEach-Object{$_.wallMs});$wallP95=Quantile $wall .95;$wallAvg=($wall|Measure-Object -Average).Average;$maxInterval=($active.interval|Measure-Object -Maximum).Maximum
+ Write-Output "NATIVE LIQUID ($Mode): frames=$($active.Count) p50=$p50 p95=$p95 late=$late maxInterval=$maxInterval wallAvgMs=$wallAvg wallP95Ms=$wallP95 cpuAvgMs=$cpu response=$response"
  if($p95-gt 16.667-or $response-ge 50-or $cpu-ge 2){throw "Native motion failed60fps/input/CPU: p95=$p95 response=$response cpu=$cpu late=$late"}
  New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null
  @{mode=$Mode;idle=$idle;moving=$moving;hidden=$hidden;liquid=@{frameP50=$p50;frameP95=$p95;lateFrames=$late;frameCpuAverageMs=$cpu;inputMaxMs=$response;inputSamples=$inputs;frames=$frames;measuredResizeFrames=$resizeFrames};hardware='Windows CI single monitor; laptop SAC/second physical monitor/144Hz not run'}|ConvertTo-Json -Depth 14|Set-Content "$root/out/t21/perf-$Mode.json" -Encoding utf8

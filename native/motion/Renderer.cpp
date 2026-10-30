@@ -175,7 +175,7 @@ extern "C" __declspec(dllexport) void __cdecl MotionAdapter(void*p,wchar_t*name,
 // not by Sleep (whose 15.6 ms granularity gave 31 ms frames). The vblank is re-probed only by MotionBurst() at the start of a burst, never in the middle of one (a mid-burst probe returned a frame at once and re-anchored the schedule).
 static HANDLE paceTimer=nullptr;static LARGE_INTEGER paceFrequency={};static LONGLONG paceNext=0;static bool paced=false;static int paceProbe=0,instantWaits=0;
 // Fallback pace where the compositor gives no vblank (headless/virtual displays, CI): 15 ms keeps a 60 Hz budget of 16.667 ms with 1.6 ms of scheduling slack; a 16.0 ms target left 0.67 ms and p95 sat on the line. Real displays pace on DwmFlush instead.
-static const double kFallbackPaceMs=15.0;
+static const double kFallbackPaceMs=16.0;
 static HRESULT paceWait(double periodMs){
  if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);QueryPerformanceFrequency(&paceFrequency);}
  LARGE_INTEGER now;QueryPerformanceCounter(&now);const LONGLONG period=LONGLONG(paceFrequency.QuadPart*periodMs/1000.0);
