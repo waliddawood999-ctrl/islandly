@@ -107,7 +107,7 @@ sealed class NativeMotion:IDisposable {
   MotionApi.MotionStep(renderer,dt,flags,dx,dy,pointer,target,out snapshot);pointer=-1;lastStep=clock.ElapsedMilliseconds;
  }
  void StartLoop(){lock(workerGate){Interlocked.Exchange(ref loop,1);if(worker!=null)return;
-  worker=new Thread(delegate(){try{while(!disposed&&Volatile.Read(ref loop)!=0){long started=clock.ElapsedMilliseconds;int hr=MotionApi.MotionWait();if(hr<0||clock.ElapsedMilliseconds-started<4)Thread.Sleep(8);if(disposed)break;
+  worker=new Thread(delegate(){try{while(!disposed&&Volatile.Read(ref loop)!=0){MotionApi.MotionWait();if(disposed)break;
     if(Interlocked.CompareExchange(ref pending,1,0)==0)try{owner.BeginInvoke((Action)delegate{Interlocked.Exchange(ref pending,0);if(disposed)return;FrameTick();});}catch(InvalidOperationException){break;}
   }}finally{lock(workerGate){worker=null;}if(!disposed&&Volatile.Read(ref loop)!=0)try{owner.BeginInvoke((Action)StartLoop);}catch(InvalidOperationException){}}}){IsBackground=true,Name="Islandly motion burst"};worker.Start();}
  }

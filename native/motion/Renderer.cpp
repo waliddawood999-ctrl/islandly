@@ -14,6 +14,9 @@
 #include <vector>
 #include "Model.h"
 #undef DrawText
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
 using Microsoft::WRL::ComPtr;
 struct Snapshot {float body,drop,gx,gy,lid,squint,blink;int visible,moving;};
 struct Frame {float width,height,scale,center,top,left,right,cardWidth,cardHeight,anticipation,opacity;int flags;};
@@ -36,6 +39,9 @@ struct Renderer {
  ComPtr<IDCompositionSurface> eyeSurface;ComPtr<IDCompositionVisual> slots[2],eyes[2];ComPtr<IDCompositionScaleTransform> eyeScale[2];ComPtr<IDCompositionRotateTransform> eyeRotate[2];ComPtr<IDCompositionTransform> eyeTransform[2];ComPtr<IDCompositionRectangleClip> eyeClip[2];ComPtr<IDCompositionEffectGroup> eyeOpacity[2];
  float eyeDpi=0,baseEyeScale[2]={1,1};bool eyeLight=false,gpuOnlyBlink=false;ULONGLONG gpuBlinkAt=0;double gpuBlinkDuration=0;
  ComPtr<IDWriteFactory> text;ComPtr<ID2D1SolidColorBrush> brush;UINT width=0,height=0;
+ ComPtr<ID2D1Layer> maskLayer; // created once: allocating a layer every frame cost GPU/WARP memory churn
+ struct TextFormat{int key;ComPtr<IDWriteTextFormat> format;};std::vector<TextFormat> formats; // created once per (size, direction)
+
  HRESULT initialize(HWND hwnd){window=hwnd;UINT flags=D3D11_CREATE_DEVICE_BGRA_SUPPORT;
   HRESULT hr=D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,flags,nullptr,0,D3D11_SDK_VERSION,&gpu,nullptr,&gpuContext);
   if(FAILED(hr))hr=D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,flags,nullptr,0,D3D11_SDK_VERSION,&gpu,nullptr,&gpuContext);
@@ -68,11 +74,14 @@ struct Renderer {
   sink->AddLine(point(x+r,y+h));sink->AddBezier(D2D1::BezierSegment(point(x+r-q,y+h),point(x,y+h-r+q),point(x,y+h-r)));sink->AddLine(point(x,y+r));
   sink->AddBezier(D2D1::BezierSegment(point(x,y+r-q),point(x+r-q,y),point(x+r,y)));sink->EndFigure(D2D1_FIGURE_END_CLOSED);sink->Close();return p;
  }
- void label(const wchar_t*value,float size,D2D1_RECT_F rect,bool rtl,float alpha,bool light){if(!value||!*value||alpha<=0)return;ComPtr<IDWriteTextFormat> format;
-  if(FAILED(text->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,size,L"ar-SA",&format)))return;
+ IDWriteTextFormat* textFormat(float size,bool rtl){int key=int(size*10)*2+(rtl?1:0);for(auto&e:formats)if(e.key==key)return e.format.Get();ComPtr<IDWriteTextFormat> format;
+  if(FAILED(text->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,size,L"ar-SA",&format)))return nullptr;
   format->SetReadingDirection(rtl?DWRITE_READING_DIRECTION_RIGHT_TO_LEFT:DWRITE_READING_DIRECTION_LEFT_TO_RIGHT);format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+  formats.push_back({key,format});return formats.back().format.Get();
+ }
+ void label(const wchar_t*value,float size,D2D1_RECT_F rect,bool rtl,float alpha,bool light){if(!value||!*value||alpha<=0)return;IDWriteTextFormat*format=textFormat(size,rtl);if(!format)return;
   brush->SetColor(light?D2D1::ColorF(12/255.f,12/255.f,18/255.f,alpha):D2D1::ColorF(247/255.f,248/255.f,252/255.f,alpha));
-  dc->DrawTextW(value,UINT32(wcslen(value)),format.Get(),rect,brush.Get(),D2D1_DRAW_TEXT_OPTIONS_CLIP);
+  dc->DrawTextW(value,UINT32(wcslen(value)),format,rect,brush.Get(),D2D1_DRAW_TEXT_OPTIONS_CLIP);
  }
  HRESULT prepareEyes(float dpi,bool light){if(eyeSurface&&dpi==eyeDpi&&light==eyeLight)return S_OK;
   eyeSurface.Reset();HRESULT hr=composition->CreateSurface(UINT(std::ceil(32*dpi)),UINT(std::ceil(40*dpi)),DXGI_FORMAT_B8G8R8A8_UNORM,DXGI_ALPHA_MODE_PREMULTIPLIED,&eyeSurface);if(FAILED(hr))return hr;
@@ -117,7 +126,7 @@ struct Renderer {
   if(f.flags&32)dc->PushAxisAlignedClip(dirty,D2D1_ANTIALIAS_MODE_ALIASED);
   dc->Clear(D2D1::ColorF(0,0,0,0));
   brush->SetColor(light?D2D1::ColorF(.94f,.94f,.96f,acrylic?.46f:.94f):D2D1::ColorF(12/255.f,12/255.f,15/255.f,acrylic?.46f:.9f));dc->FillGeometry(path.Get(),brush.Get());
-  ComPtr<ID2D1Layer> layer;dc->CreateLayer(&layer);dc->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),path.Get()),layer.Get());
+  if(!maskLayer)dc->CreateLayer(&maskLayer);dc->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),path.Get()),maskLayer.Get());
   if(floating){brush->SetColor(D2D1::ColorF(1,1,1,.06f));dc->DrawGeometry(path.Get(),brush.Get(),4.f);}
   brush->SetColor(D2D1::ColorF(1,1,1,.12f));dc->DrawGeometry(path.Get(),brush.Get(),1.f);
   float a=float(motion::clamp(1-model.body.x/.25,0,1));float x=float(s.x),y=float(s.y),w=float(s.w),h=float(s.h);
@@ -148,4 +157,25 @@ extern "C" __declspec(dllexport) void __cdecl MotionPose(void*p,const Snapshot*s
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionFade(void*p){auto&r=*static_cast<Renderer*>(p);ComPtr<IDCompositionAnimation> a;HRESULT hr=r.composition->CreateAnimation(&a);if(FAILED(hr))return hr;a->AddCubic(0,1,-1.f/.12f,0,0);a->End(.12,0);hr=r.opacity->SetOpacity(a.Get());if(FAILED(hr))return hr;return r.composition->Commit();}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionBlink(void*p,int animateModel){return static_cast<Renderer*>(p)->blink(animateModel!=0);}
 extern "C" __declspec(dllexport) void __cdecl MotionAdapter(void*p,wchar_t*name,int capacity){auto&r=*static_cast<Renderer*>(p);ComPtr<IDXGIDevice> d;r.gpu.As(&d);ComPtr<IDXGIAdapter> adapter;d->GetAdapter(&adapter);DXGI_ADAPTER_DESC desc={};adapter->GetDesc(&desc);wcsncpy_s(name,capacity,desc.Description,_TRUNCATE);}
-extern "C" __declspec(dllexport) HRESULT __cdecl MotionWait(){return DwmFlush();}
+// Frame pacing for the burst loop. Primary: the compositor's own vblank (DwmFlush blocks until the next one).
+// Where that does not block (virtual/headless displays, CI runners: it returns at once or fails) the loop is paced by an
+// absolute-schedule high-resolution waitable timer at 16.0 ms (never later than a 60 Hz display period, drift-free),
+// not by Sleep (whose 15.6 ms granularity gave 31 ms frames). Re-probes the vblank every 30 paced frames.
+static HANDLE paceTimer=nullptr;static LARGE_INTEGER paceFrequency={};static LONGLONG paceNext=0;static bool paced=false;static int paceProbe=0,instantWaits=0;
+static HRESULT paceWait(double periodMs){
+ if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);QueryPerformanceFrequency(&paceFrequency);}
+ LARGE_INTEGER now;QueryPerformanceCounter(&now);const LONGLONG period=LONGLONG(paceFrequency.QuadPart*periodMs/1000.0);
+ if(paceNext==0||now.QuadPart-paceNext>4*period)paceNext=now.QuadPart;paceNext+=period;
+ if(paceNext<=now.QuadPart){paceNext=now.QuadPart;return S_OK;} // already late: run the frame now and re-anchor
+ if(!paceTimer){WaitForSingleObject(GetCurrentThread(),DWORD(periodMs));return S_OK;}
+ LARGE_INTEGER due;due.QuadPart=-LONGLONG(double(paceNext-now.QuadPart)*10000000.0/double(paceFrequency.QuadPart));
+ if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))return S_OK;WaitForSingleObject(paceTimer,INFINITE);return S_OK;
+}
+extern "C" __declspec(dllexport) HRESULT __cdecl MotionWait(){
+ if(paced){if(++paceProbe<30)return paceWait(16.0);paced=false;paceProbe=0;instantWaits=0;}
+ LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);HRESULT hr=DwmFlush();QueryPerformanceCounter(&b);
+ double ms=double(b.QuadPart-a.QuadPart)*1000.0/double(f.QuadPart);
+ if(SUCCEEDED(hr)&&ms>=1.0){instantWaits=0;paceNext=0;return S_OK;}
+ if(++instantWaits>=2){paced=true;paceProbe=0;return paceWait(16.0);}
+ return S_OK;
+}
