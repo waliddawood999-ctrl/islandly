@@ -51,3 +51,5 @@
 | تفعيل وضع التوفير تلقائياً مع Battery saver | T14 | `ecoAuto` |
 | بنود أخرى من بحث المنافسين | وليد | لم تصلني قائمة البحث نفسها؛ تُضاف هنا |
 | T21 | Native Direct2D/DirectComposition eyes, liquid motion, floating placement and native motion CI per Claude handoff 9a22597 | Codex | `codex/T21-native-motion` | T20 ac6b06f | review | Claude | Draft PR #25 to T20; native implementation and Windows verification in progress |
+
+| T24 | Island requirements QA: fullscreen/approach, exact animation transparency and portrait layout screenshots | Codex | `codex/T24-island-qa` | T21 cc8c10a | doing | Claude | Automated Windows RTL/LTR light/dark QA; no frame-pacing changes |
