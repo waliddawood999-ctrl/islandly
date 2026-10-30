@@ -235,7 +235,9 @@ sealed class IslandHost : Form {
                 else { result = r.left <= mi.monitor.left && r.top <= mi.monitor.top && r.right >= mi.monitor.right && r.bottom >= mi.monitor.bottom; why=result?"covers":"smaller"; }
             }
             // Exclusive-mode games and presentations may not cover the monitor with a normal window rect: ask the shell as well (busy, D3D fullscreen, presentation mode).
-            if (!result && why!="other-screen") { try { if(Native.SHQueryUserNotificationState(out quns)==0 && (quns==2||quns==3||quns==4)) { result=true; why="shell-state-"+quns; } } catch(EntryPointNotFoundException) {} }
+            long coverArea=(long)Math.Max(0,Math.Min(r.right,mi.monitor.right)-Math.Max(r.left,mi.monitor.left))*Math.Max(0,Math.Min(r.bottom,mi.monitor.bottom)-Math.Max(r.top,mi.monitor.top)), monitorArea=(long)Math.Max(1,mi.monitor.right-mi.monitor.left)*Math.Max(1,mi.monitor.bottom-mi.monitor.top);
+            // Only a window that nearly fills its monitor can be a fullscreen game/presentation: skips the shell query (a COM round trip) for every ordinary foreground change.
+            if (!result && why!="other-screen" && coverArea*10>=monitorArea*9) { try { if(Native.SHQueryUserNotificationState(out quns)==0 && (quns==2||quns==3||quns==4)) { result=true; why="shell-state-"+quns; } } catch(EntryPointNotFoundException) {} }
         }
         // Diagnostic for CI: log only when the foreground window or the verdict changes (no per-tick I/O).
         string seen=h.ToInt64()+"|"+result+"|"+why;
