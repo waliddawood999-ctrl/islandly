@@ -9,7 +9,7 @@ const panels=['clock','music','timer','battery','today','clipboard','shelf','cal
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||(process.platform==='linux'?'/usr/bin/chromium':undefined),args:['--no-sandbox']});
  const audit=[],origin=`http://127.0.0.1:${server.address().port}`;let nativeFixtures=0,designFixtures=0;
- try{for(const lang of ['ar','en'])for(const theme of ['dark','light'])for(const material of ['acrylic','glass'])for(const mode of ['overlay','appbar'])for(const dpi of [1,1.25,1.5]){
+ try{const fast=!!process.env.T21_VISUAL_FAST;for(const lang of ['ar','en'])for(const theme of fast?['light']:['dark','light'])for(const material of fast?['acrylic']:['acrylic','glass'])for(const mode of fast?['overlay']:['overlay','appbar'])for(const dpi of fast?[1]:[1,1.25,1.5]){
   const context=await browser.newContext({viewport:{width:1280,height:800},deviceScaleFactor:dpi,colorScheme:theme});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(String(e)));
   await page.clock.setFixedTime(new Date('2026-10-30T10:42:00Z'));
   await page.addInitScript(fixture,{lang,mode,material,complete:true});await page.goto(origin+'/src/renderer/index.html');
@@ -34,6 +34,9 @@ const panels=['clock','music','timer','battery','today','clipboard','shelf','cal
    if(/NaN|undefined|ليس.*رقم/.test(view.innerText))throw Error('Invalid fixture data: '+panel+' '+view.innerText);
    const v=rect(view),f=rect(footer),g=rect(gear),items=[...view.querySelectorAll('button,input,textarea,.ck-time,.ck-sec,.ck-date,.ck-app-name,.nt-text,.cl-text,.cal-title,.p-title,.sh-name,.m-title,.m-artist')].map(e=>({e,r:visible(e)})).filter(x=>x.r);
    if(overlap(v,f))collisions.push('view/footer');
+   // No empty space: the lowest visible content must sit close above the footer (the card height follows its content).
+   const lows=[...view.querySelectorAll('*')].map(e=>{const r=e.getBoundingClientRect();const c=getComputedStyle(e);return r.width>1&&r.height>1&&c.visibility!=='hidden'&&c.display!=='none'&&parseFloat(c.opacity)>0?r:null}).filter(Boolean).map(r=>Math.min(r.bottom,v.bottom));
+   const emptyBelow=lows.length?Math.round(f.y-Math.max(...lows)):0;if(emptyBelow>(Number(process.env.T21_MAX_EMPTY)||40))collisions.push('empty space below content '+emptyBelow+'px');
    if(card.h<=card.w)collisions.push('card not portrait '+Math.round(card.w)+'x'+Math.round(card.h));
    if(card.h<card.w*1.1-1)collisions.push('card not clearly portrait '+Math.round(card.w)+'x'+Math.round(card.h));
    if(card.w>440.5)collisions.push('card wider than 440 '+Math.round(card.w));
