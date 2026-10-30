@@ -13,8 +13,6 @@ const panels=['clock','music','timer','battery','today','clipboard','shelf','cal
   const context=await browser.newContext({viewport:{width:1280,height:800},deviceScaleFactor:dpi,colorScheme:theme});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(String(e)));
   await page.clock.setFixedTime(new Date('2026-10-30T10:42:00Z'));
   await page.addInitScript(fixture,{lang,mode,material,complete:true});await page.goto(origin+'/src/renderer/index.html');
-  // Browser fixture only: native Windows acrylic blurs what is behind the card; emulate that blur so the page text behind the translucent card cannot read as text on text in screenshots.
-  await page.addStyleTag({content:'html.acrylic #island-surface{backdrop-filter:blur(28px) saturate(1.6)!important;-webkit-backdrop-filter:blur(28px) saturate(1.6)!important}'});
   await page.evaluate(({lang,mode,theme})=>{
    window.__seedPanels();const strip=mode==='appbar'?44:0;
    const background=document.createElement('main');background.id='qa-page';background.dir=lang==='ar'?'rtl':'ltr';background.style.cssText=`position:fixed;inset:${strip}px 0 0;padding:64px;background:${theme==='light'?'#e9edf4':'#142033'};color:${theme==='light'?'#36435a':'#adc0da'};font:18px sans-serif;pointer-events:none`;
