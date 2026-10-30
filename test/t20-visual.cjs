@@ -36,7 +36,7 @@ const panels=['clock','music','timer','battery','today','clipboard','shelf','cal
    if(overlap(v,f))collisions.push('view/footer');
    // No empty space: the lowest visible content must sit close above the footer (the card height follows its content).
    const lows=[...view.querySelectorAll('*')].map(e=>{const r=e.getBoundingClientRect();const c=getComputedStyle(e);return r.width>1&&r.height>1&&c.visibility!=='hidden'&&c.display!=='none'&&parseFloat(c.opacity)>0?r:null}).filter(Boolean).map(r=>Math.min(r.bottom,v.bottom));
-   const emptyBelow=lows.length?Math.round(f.y-Math.max(...lows)):0;if(emptyBelow>(Number(process.env.T21_MAX_EMPTY)||40))collisions.push('empty space below content '+emptyBelow+'px');
+   const emptyBelow=lows.length?Math.round(f.y-Math.max(...lows)):0;if(emptyBelow>40)collisions.push('empty space below content '+emptyBelow+'px');
    if(card.h<=card.w)collisions.push('card not portrait '+Math.round(card.w)+'x'+Math.round(card.h));
    if(card.h<card.w*1.1-1)collisions.push('card not clearly portrait '+Math.round(card.w)+'x'+Math.round(card.h));
    if(card.w>440.5)collisions.push('card wider than 440 '+Math.round(card.w));
