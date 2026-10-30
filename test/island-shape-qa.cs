@@ -26,9 +26,10 @@ static class IslandShapeQa {
  static void Audit(Bitmap image,MotionApi.Frame f,MotionApi.Snapshot s,bool light,string name){
   using(var mask=new Bitmap(image.Width,image.Height,PixelFormat.Format32bppArgb))using(var path=Mask(f,s))using(var g=Graphics.FromImage(mask))using(var edge=new Pen(Color.White,2)){
    g.Clear(Color.Transparent);g.PixelOffsetMode=PixelOffsetMode.Half;g.SmoothingMode=SmoothingMode.None;g.FillPath(Brushes.White,path);g.DrawPath(edge,path);g.Flush(FlushIntention.Sync); // one physical pixel covers raster edge antialiasing; exterior must be exact alpha0
-   var a=Bytes(image);var m=Bytes(mask);int visible=0;
-   for(int i=0;i<a.Length;i+=4)if(a[i+3]!=0){visible++;if(m[i+3]==0){if(!negativeControl){Console.Error.WriteLine("SHAPE_FAILURE_RGBA="+a[i+2]+","+a[i+1]+","+a[i]+","+a[i+3]+" body="+s.body+" drop="+s.drop+" center="+f.center+" top="+f.top);Console.Error.WriteLine("T24_SHAPE_FAILURE_BASE64 "+Convert.ToBase64String(File.ReadAllBytes(currentFile)));using(var data=new MemoryStream()){mask.Save(data,ImageFormat.Png);Console.Error.WriteLine("T24_MASK_FAILURE_BASE64 "+Convert.ToBase64String(data.ToArray()));}}throw new Exception("Opaque/tinted pixel outside rounded shape: "+name+" x="+((i/4)%image.Width)+" y="+((i/4)/image.Width));}}
+   var a=Bytes(image);var m=Bytes(mask);int visible=0,minX=image.Width,minY=image.Height,maxX=-1,maxY=-1;
+   for(int i=0;i<a.Length;i+=4)if(a[i+3]!=0){visible++;int px=(i/4)%image.Width,py=(i/4)/image.Width;minX=Math.Min(minX,px);maxX=Math.Max(maxX,px);minY=Math.Min(minY,py);maxY=Math.Max(maxY,py);if(m[i+3]==0){if(!negativeControl){Console.Error.WriteLine("SHAPE_FAILURE_RGBA="+a[i+2]+","+a[i+1]+","+a[i]+","+a[i+3]+" body="+s.body+" drop="+s.drop+" center="+f.center+" top="+f.top);Console.Error.WriteLine("T24_SHAPE_FAILURE_BASE64 "+Convert.ToBase64String(File.ReadAllBytes(currentFile)));using(var data=new MemoryStream()){mask.Save(data,ImageFormat.Png);Console.Error.WriteLine("T24_MASK_FAILURE_BASE64 "+Convert.ToBase64String(data.ToArray()));}}throw new Exception("Opaque/tinted pixel outside rounded shape: "+name+" x="+((i/4)%image.Width)+" y="+((i/4)/image.Width));}}
    Check(visible>100,"Empty surface: "+name);
+   if(s.body>.99f)Check(maxY-minY>maxX-minX,"Actual expanded RGBA bounds are not portrait: "+name+" "+(maxX-minX)+"x"+(maxY-minY));
    int cx=(int)(f.center*f.scale),cy=(int)((f.top+4)*f.scale);Color fill=image.GetPixel(cx,cy);
    Check(fill.A>100&&(light?fill.R>200&&fill.G>200&&fill.B>200:fill.R<40&&fill.G<40&&fill.B<40),"Wrong island theme: "+name+" "+fill);
   }
@@ -44,6 +45,7 @@ static class IslandShapeQa {
       string name=(open?"open":"close")+"-"+frame.ToString("D2"),file=Path.Combine(dir,name+".png");MotionApi.Check(MotionApi.MotionDraw(engine,ref f,"10:42",lang=="ar"?"الجمعة، ٣٠ أكتوبر":"Friday, 30 October",file));currentFile=file;using(var image=new Bitmap(file)){Audit(image,f,s,light,scene+"/"+name);
        if(frame==0){image.SetPixel(0,0,Color.White);bool rejected=false;negativeControl=true;try{Audit(image,f,s,light,"injected-white-rectangle");}catch(Exception){rejected=true;}finally{negativeControl=false;}Check(rejected,"QA failed to reject an injected exterior white pixel");}
       }count++;
+      if(open&&frame==44)Check(s.body>.99f,"Open animation never reached expanded pose");
       rows.Add(new{scene=scene,direction=open?"open":"close",frame=frame,timeMs=frame*1000.0/60,body=s.body,drop=s.drop,file=file});
      }
     }

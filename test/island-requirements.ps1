@@ -51,6 +51,9 @@ try{foreach($theme in @('light','dark')){Set-ItemProperty $reg AppsUseLightTheme
    Start-Sleep -Milliseconds 100
    $hiddenShot=Grab;try{for($y=4;$y-lt 650;$y+=8){for($x=220;$x-lt 804;$x+=8){$a=$baseline.GetPixel($x,$y);$b=$hiddenShot.GetPixel($x,$y);if([Math]::Abs($a.R-$b.R)-gt 6-or [Math]::Abs($a.G-$b.G)-gt 6-or [Math]::Abs($a.B-$b.B)-gt 6){throw "Fullscreen left visible island pixels at $x,$y"}}}}finally{$hiddenShot.Dispose()}
    Screenshot 'fullscreen-hidden'
+   # A distant part of the screen edge must not act as a whole-screen reveal trigger.
+   [Windows.Forms.Cursor]::Position=[Drawing.Point]::new(20,1);Start-Sleep -Milliseconds 100;$s=Refresh
+   if(!$s.motion.hidden){throw 'Fullscreen island revealed at a distant part of the top edge'}
    # Cursor inside old pill bounds is not enough: ONLY the top-edge strip may reveal it.
    [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$s.motion.center,[int]($s.motion.top+18));Start-Sleep -Milliseconds 150;$s=Refresh
    if(!$s.motion.hidden){throw 'Fullscreen island revealed away from top edge'}
