@@ -86,6 +86,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Provision the panel runtime (Electron 45 downloads its binary on first require, npm ci does not)
+        run: node -e "const p=require('electron');if(!require('fs').existsSync(p))throw Error('Electron binary missing: '+p);console.log(p)"
       - shell: pwsh
         run: ./scripts/build-native.ps1
       - name: Idle and panel RAM (every sample below 180 MB, raw-sample guard)

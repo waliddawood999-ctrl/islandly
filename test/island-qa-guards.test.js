@@ -5,6 +5,7 @@ const workflow=read('.github/workflows/island-qa.yml');
 for(const job of ['desktop:','shape-and-layout:','memory:','packaging:'])assert(workflow.includes('\n  '+job),'island-qa.yml lost job '+job);
 assert(/native-footprint\.ps1 -Mode \$\{\{ matrix\.mode \}\}/.test(workflow)&&workflow.includes('performance-check.js'),'memory job must run the footprint and the raw-sample guard');
 assert(workflow.includes('windows-identity.js')&&workflow.includes('package-native.ps1')&&workflow.includes('archive-native.ps1'),'packaging job must package, archive and check the executable inventory');
+assert(/memory:[\s\S]*require\('electron'\)[\s\S]*native-footprint\.ps1/.test(workflow),'memory job must provision the Electron binary before the panel is launched');
 assert(workflow.includes('island-shape-qa.ps1'),'shape/matrix audit must stay wired');
 // RAM limit is 180 MB everywhere it is asserted.
 assert(/WorkingSet64\/1MB-ge 180/.test(read('test/island-requirements.ps1')),'island-requirements RAM guard changed');
