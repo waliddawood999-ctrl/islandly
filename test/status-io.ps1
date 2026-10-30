@@ -1,0 +1,49 @@
+# Exercise the actual probe reader against the same atomic replace publication protocol.
+$ErrorActionPreference='Stop'
+$root=Split-Path $PSScriptRoot -Parent
+$probe=Join-Path $env:TEMP ('Islandly-status-io-'+[guid]::NewGuid())
+New-Item $probe -ItemType Directory|Out-Null
+$hostProcess=[Diagnostics.Process]::GetCurrentProcess()
+$owned=[Collections.Generic.HashSet[int]]::new()
+$Mode='status-io'
+$ast=[Management.Automation.Language.Parser]::ParseFile("$root/test/native-footprint.ps1",[ref]$null,[ref]$null)
+foreach($name in @('Read-SharedJson','Read-Status')) {
+ $node=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
+ if(!$node){throw "Missing actual reader function $name"}
+ . ([scriptblock]::Create($node.Extent.Text))
+}
+Add-Type @'
+using System;
+using System.IO;
+using System.Text;
+using System.Threading;
+public static class StatusPublication {
+ public static Exception Failure; static volatile bool stopped; static Thread writer;
+ public static void Start(string file,int pid) {
+  stopped=false;Failure=null;
+  writer=new Thread(()=>{try{int n=0;while(!stopped){
+   string processes="{\"pid\":"+pid+",\"mb\":40,\"cpu\":0}";
+   for(int i=1;i<=n%8;i++)processes+=",{\"pid\":"+(pid+i)+",\"mb\":50,\"cpu\":0.125}";
+   string data="{\"hostPid\":"+pid+",\"phase\":\"panel\",\"generation\":"+n+",\"processes\":["+processes+"]}";
+   File.WriteAllText(file+".tmp",data,new UTF8Encoding(false));
+   try {if(File.Exists(file))File.Replace(file+".tmp",file,null);else File.Move(file+".tmp",file);}catch(IOException){}
+   n++;Thread.Sleep(1);
+  }}catch(Exception e){Failure=e;}});writer.IsBackground=true;writer.Start();
+ }
+ public static void Stop(){stopped=true;if(writer!=null)writer.Join();if(Failure!=null)throw Failure;}
+}
+'@
+try {
+ [StatusPublication]::Start("$probe/status.json",$hostProcess.Id)
+ $deadline=[DateTime]::UtcNow.AddSeconds(10)
+ while(!(Test-Path "$probe/status.json")){if([DateTime]::UtcNow-gt $deadline){throw 'Publisher never started'};Start-Sleep -Milliseconds 10}
+ $last=-1
+ for($n=0;$n-lt 2000;$n++) {
+  $s=Read-Status
+  if($s.generation-lt $last){throw 'Snapshot generation went backwards'}
+  if(@($s.processes).Count-ne 1+$s.generation%8){throw 'Partial snapshot or omitted owned processes'}
+  $last=$s.generation
+ }
+ if($owned.Count-lt 8){throw 'Full process ownership not retained'}
+ Write-Output 'STATUS IO PASS:2000 strict ownership reads during variable-size atomic snapshot replacement; retry limit unchanged'
+} finally {[StatusPublication]::Stop();Remove-Item $probe -Recurse -Force}

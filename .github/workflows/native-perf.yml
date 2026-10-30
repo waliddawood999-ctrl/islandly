@@ -33,6 +33,9 @@ jobs:
       - name: Reproducible frozen host (two clean build roots)
         shell: pwsh
         run: ./test/native-reproducible.ps1
+      - name: Ownership snapshot concurrent publication regression
+        shell: pwsh
+        run: ./test/status-io.ps1
       - name: Slow first launch, native responsiveness and hotkey conflict regression
         shell: pwsh
         run: ./test/t20-startup.ps1
@@ -53,6 +56,7 @@ jobs:
             native-perf-*.json
             out/host-identity.json
             out/t20-startup/**
+            out/status-diagnostics/**
           if-no-files-found: warn
   packaged-windows:
     runs-on: windows-latest
@@ -97,6 +101,7 @@ jobs:
           name: t18-packaged-footprint-and-identities
           path: |
             native-perf-packaged-*.json
+            out/status-diagnostics/**
             out/Islandly-native-win64/EXECUTABLE-IDENTITY.json
             out/Islandly-native-win64/EXE-SHA256.txt
             out/Islandly-native-win64/EXE-VERSION-RESOURCES.json

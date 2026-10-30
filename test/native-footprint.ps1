@@ -40,15 +40,23 @@ function Read-SharedJson([string]$File) {
 function Read-Status {
     if ($hostProcess.HasExited) { throw "Native host exited: $($hostProcess.ExitCode)" }
     $status = $null
+    $readFailure = $null
     for ($retry=0; $retry -lt 20; $retry++) {
         try {
             $status = Read-SharedJson "$probe/status.json"
             if ($null -ne $status -and $status.hostPid -eq $hostProcess.Id -and $null -ne $status.processes) { break }
-            $status = $null
-        } catch { $status = $null }
+            $actualOwner = if ($null -eq $status) { 'null snapshot' } else { "hostPid=$($status.hostPid), processes=$($null -ne $status.processes)" }
+            throw [IO.InvalidDataException]::new("Invalid ownership snapshot: expected hostPid=$($hostProcess.Id); $actualOwner")
+        } catch { $readFailure = $_; $status = $null }
         Start-Sleep -Milliseconds 15
     }
-    if ($null -eq $status) { throw 'Could not read native ownership status after bounded retries' }
+    if ($null -eq $status) {
+        $detail = "Could not read native ownership status after bounded retries: $($readFailure.Exception)"
+        New-Item "$root/out/status-diagnostics" -ItemType Directory -Force | Out-Null
+        [IO.File]::WriteAllText("$root/out/status-diagnostics/$Mode-error.txt",$detail)
+        try { Copy-Item "$probe/status.json" "$root/out/status-diagnostics/$Mode-status.json" -Force } catch {}
+        throw [IO.IOException]::new($detail,$readFailure.Exception)
+    }
     foreach ($p in $status.processes) { [void]$owned.Add([int]$p.pid) }
     return $status
 }
