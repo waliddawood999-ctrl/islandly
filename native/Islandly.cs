@@ -56,7 +56,7 @@ static class Native {
 
 sealed class IslandHost : Form {
     readonly string root, electron, profile, probe;
-    readonly bool packaged;
+    readonly bool packaged,quietProbe;
     readonly int probeLaunchDelay;
     readonly JavaScriptSerializer json = new JavaScriptSerializer();
     readonly System.Windows.Forms.Timer ticker = new System.Windows.Forms.Timer();
@@ -111,7 +111,7 @@ sealed class IslandHost : Form {
         electron=Path.GetFullPath(electron);
         profile = Arg(args,"--profile", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"islandly"));
         profile=Path.GetFullPath(profile); NativeLog.Profile=profile;
-        probe = Arg(args,"--probe-dir", "");
+        probe = Arg(args,"--probe-dir", "");quietProbe=probe!=""&&args.Contains("--quiet-probe");
         modeOverride = Arg(args,"--mode", "");
         if(probe!="") Int32.TryParse(Arg(args,"--launch-delay-ms","0"),out probeLaunchDelay);
         Directory.CreateDirectory(profile);
@@ -174,7 +174,7 @@ sealed class IslandHost : Form {
         consent = new ConsentWatcher(delegate(string label) { if(!closing) { privacyLabel = label; Position(); } });
         motion=new NativeMotion(this,ArmHover,LeaveHover,probe!="" && Environment.GetCommandLineArgs().Contains("--motion-metrics"));
         foregroundWatcher=new ForegroundWatcher(this,Position);
-        Position();
+        Position();Status();
     }
     void ArmHover(){hoverArmed=true;leaveGrace.Stop();if(motion!=null)motion.PointerEvent();hoverDwell.Start();}
     void LeaveHover(){hoverArmed=false;hoverDwell.Stop();leaveGrace.Start();}
@@ -203,7 +203,7 @@ sealed class IslandHost : Form {
         IntPtr h = Native.GetForegroundWindow(); var name = new StringBuilder(128); Native.GetClassName(h,name,128);
         if (h == Handle || name.ToString() == "Progman" || name.ToString() == "WorkerW" || name.ToString() == "Shell_TrayWnd") return false;
         Native.RECT r; if (!Native.GetWindowRect(h,out r)) return false;
-        if(Screen.FromHandle(h).DeviceName != TargetScreen().DeviceName) return false;
+        if(preference && Screen.FromHandle(h).DeviceName != TargetScreen().DeviceName) return false;
         var b = Screen.FromHandle(h).Bounds;
         return r.left <= b.Left && r.top <= b.Top && r.right >= b.Right && r.bottom >= b.Bottom;
     }
@@ -468,7 +468,7 @@ sealed class IslandHost : Form {
                 else if(command.StartsWith("motion-") && motion!=null)motion.Probe(command);
                 else if(new[]{"expand","settings","palette","pomodoro"}.Contains(command)) OpenPanel(command);
             }
-            Status();
+            if(!quietProbe)Status();
         }
     }
     int[] JobPids() {

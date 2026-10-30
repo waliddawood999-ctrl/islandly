@@ -9,32 +9,52 @@ public static class MotionInput {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls,string text);
  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr window,uint message,IntPtr a,IntPtr b);
 }
+
+public static class MotionProcessTree {
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)] struct ENTRY {public uint size,usage,id;public IntPtr heap;public uint module,threads,parent;public int priority;public uint flags;[MarshalAs(UnmanagedType.ByValTStr,SizeConst=260)]public string name;}
+ [DllImport("kernel32.dll",SetLastError=true)]static extern IntPtr CreateToolhelp32Snapshot(uint flags,uint id);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode)]static extern bool Process32First(IntPtr snapshot,ref ENTRY entry);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode)]static extern bool Process32Next(IntPtr snapshot,ref ENTRY entry);
+ [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr value);
+ public static int[] Children(int owner){IntPtr snapshot=CreateToolhelp32Snapshot(2,0);if(snapshot==new IntPtr(-1))throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+  try {var children=new System.Collections.Generic.List<int>();ENTRY e=new ENTRY();e.size=(uint)Marshal.SizeOf(e);if(!Process32First(snapshot,ref e))throw new Exception("Cannot enumerate processes");do{if(e.parent==owner)children.Add((int)e.id);}while(Process32Next(snapshot,ref e));return children.ToArray();}finally{CloseHandle(snapshot);}}
+}
 '@
 $probe=Join-Path $env:TEMP ('Islandly-motion-perf-'+[guid]::NewGuid());$profile=Join-Path $probe 'profile'
 New-Item $profile -ItemType Directory -Force|Out-Null
 $configuration=@{idleEyes=$true;floating=$true;motion='full';ecoMode=$false;ecoAuto=$false;autoHide='never';uiLang='en';scale=1;islandMode=if($Mode-eq 'reserved-bar'){'appbar'}else{'overlay'};weather=$false;updates=$false;breakEvery=0;timeTracking=$false;prayerAlerts=$false;hideFullscreen=$true}
 function Save-Settings {$configuration|ConvertTo-Json|Set-Content "$profile/settings.json" -Encoding utf8}
 Save-Settings
-$hostProcess=Start-Process "$root/native/bin/Islandly.exe" -ArgumentList @('--root',('"'+$root+'"'),'--profile',('"'+$profile+'"'),'--probe-dir',('"'+$probe+'"'),'--mode',$Mode,'--motion-metrics') -PassThru
+$hostProcess=Start-Process "$root/native/bin/Islandly.exe" -ArgumentList @('--root',('"'+$root+'"'),'--profile',('"'+$profile+'"'),'--probe-dir',('"'+$probe+'"'),'--mode',$Mode,'--motion-metrics','--quiet-probe') -PassThru
 $owned=[Collections.Generic.HashSet[int]]::new()
 $ast=[Management.Automation.Language.Parser]::ParseFile("$root/test/native-footprint.ps1",[ref]$null,[ref]$null)
 foreach($name in @('Read-SharedJson','Read-Status')){$node=$ast.Find({param($n)$n-is [Management.Automation.Language.FunctionDefinitionAst]-and $n.Name-eq $name},$true);. ([scriptblock]::Create($node.Extent.Text))}
 function Refresh {[void][MotionInput]::SendMessage(([MotionInput]::FindWindow($null,'Islandly Native')),0x8022,[IntPtr]::Zero,[IntPtr]::Zero)}
 function Quantile($values,$q){$ordered=@($values|Sort-Object);return $ordered[[Math]::Min($ordered.Count-1,[Math]::Floor($q*$ordered.Count))]}
 function Phase($name,$moving){
+ Refresh;$before=Read-Status
  Start-Sleep -Seconds 15;$samples=@();$watch=[Diagnostics.Stopwatch]::StartNew();$next=1000
+ $hostProcess.Refresh();$lastCpu=$hostProcess.TotalProcessorTime.TotalMilliseconds;$lastTime=$watch.Elapsed.TotalMilliseconds
  for($i=0;$i-lt 60;){
   if($moving){$t=$watch.Elapsed.TotalSeconds;[Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]($center+110*[Math]::Sin($t*2)),[int]($top+100+15*[Math]::Cos($t*2)))}
-  if($watch.ElapsedMilliseconds-ge $next){$s=Read-Status;if(@($s.processes).Count-ne 1-or $s.phase-ne 'idle'){throw 'Native motion spawned Electron/helper while idle'};$samples+=$s;$i++;$next+=1000}
+  if($watch.ElapsedMilliseconds-ge $next){
+   $hostProcess.Refresh();if($hostProcess.HasExited){throw 'Native host exited'}
+   if([MotionProcessTree]::Children($hostProcess.Id).Length-ne 0){throw 'Native idle started a child process'}
+   $now=$watch.Elapsed.TotalMilliseconds;$total=$hostProcess.TotalProcessorTime.TotalMilliseconds;$cpu=($total-$lastCpu)/($now-$lastTime)*100
+   $samples+=@{totalMB=$hostProcess.WorkingSet64/1048576.0;totalCPU=$cpu;pid=$hostProcess.Id};$lastCpu=$total;$lastTime=$now;$i++;$next+=1000
+  }
   Start-Sleep -Milliseconds 30
  }
- $avg=($samples|Measure-Object totalMB -Average).Average;$cpu=($samples|Measure-Object totalCPU -Average).Average;$peak=($samples|Measure-Object totalMB -Maximum).Maximum
+ Refresh;$after=Read-Status
+ if(@($after.processes).Count-ne 1-or $after.phase-ne 'idle'){throw 'Native idle retained an owned process'}
+ $avg=($samples|ForEach-Object{$_.totalMB}|Measure-Object -Average).Average;$cpu=($samples|ForEach-Object{$_.totalCPU}|Measure-Object -Average).Average;$peak=($samples|ForEach-Object{$_.totalMB}|Measure-Object -Maximum).Maximum
  if($peak-ge 180){throw "$name RAM exceeds180 MB"}
  $limit=if($moving){.5}else{.1};if($cpu-ge $limit){throw "$name CPU $cpu exceeds $limit% of one core"}
- if(!$moving){$start=$samples[4].motion.cursorReads;$finish=$samples[-1].motion.cursorReads;if($finish-ne $start){throw "$name polled a far/hidden cursor"}}
- Write-Output "NATIVE MOTION PERF: $Mode $name RAM avg=$avg peak=$peak MB; CPU=$cpu%; cursorReads=$($samples[-1].motion.cursorReads)"
- return @{name=$name;averageMB=$avg;peakMB=$peak;averageCPU=$cpu;samples=$samples}
+ if(!$moving-and $after.motion.cursorReads-ne $before.motion.cursorReads){throw "$name polled a far/hidden cursor"}
+ Write-Output "NATIVE MOTION PERF: $Mode $name RAM avg=$avg peak=$peak MB; CPU=$cpu%; cursorReads=$($after.motion.cursorReads-$before.motion.cursorReads)"
+ return @{name=$name;averageMB=$avg;peakMB=$peak;averageCPU=$cpu;samples=$samples;before=$before.motion;after=$after.motion;method='external process CPU/working set,15s warmup/60samples; diagnostic status disk writes disabled; Toolhelp child detection; original T9 JobObject full guards remain separate'}
 }
+
 try{
  $deadline=[DateTime]::UtcNow.AddSeconds(20);while(!(Test-Path "$probe/status.json")){if($hostProcess.HasExited-or [DateTime]::UtcNow-gt $deadline){throw 'Native motion host did not start'};Start-Sleep -Milliseconds 100}
  $initial=Read-Status;$center=$initial.motion.center;$top=$initial.motion.top
@@ -42,7 +62,7 @@ try{
  $idle=Phase 'eyes-idle' $false
  [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$center,[int]($top+18));Start-Sleep -Milliseconds 150
  $moving=Phase 'eyes-moving' $true
- if($moving.samples[-1].motion.cursorReads-$moving.samples[0].motion.cursorReads-lt 600){throw 'Moving eyes did not actually poll/track the near cursor'}
+ if($moving.after.cursorReads-$moving.before.cursorReads-lt 600){throw 'Moving eyes did not actually poll/track the near cursor'}
  [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$center,[int]($top+400));Start-Sleep -Seconds 2
  $configuration.ecoMode=$true;Save-Settings;Refresh
  $hidden=Phase 'eyes-hidden' $false
