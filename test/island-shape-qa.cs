@@ -10,7 +10,7 @@ using System.Web.Script.Serialization;
 // Independent CPU mask of the specified rounded card + absolute164px droplet.
 // Compare every non-transparent GPU pixel, including rounded corners, not just a bounding box.
 static class IslandShapeQa {
- static string currentFile;static bool negativeControl;
+ static string currentFile;static bool negativeControl;static int lastBoundsW,lastBoundsH;
  static void Check(bool ok,string why){if(!ok)throw new Exception(why);}
  static GraphicsPath Mask(MotionApi.Frame f,MotionApi.Snapshot s){
   float w=Math.Max(36,138+(f.cardWidth-138)*s.body),h=Math.Max(5,36+(f.cardHeight-36)*s.body);
@@ -28,6 +28,7 @@ static class IslandShapeQa {
    g.Clear(Color.Transparent);g.PixelOffsetMode=PixelOffsetMode.Half;g.SmoothingMode=SmoothingMode.None;g.FillPath(Brushes.White,path);g.DrawPath(edge,path);g.Flush(FlushIntention.Sync); // one physical pixel covers raster edge antialiasing; exterior must be exact alpha0
    var a=Bytes(image);var m=Bytes(mask);int visible=0,minX=image.Width,minY=image.Height,maxX=-1,maxY=-1;
    for(int i=0;i<a.Length;i+=4)if(a[i+3]!=0){visible++;int px=(i/4)%image.Width,py=(i/4)/image.Width;minX=Math.Min(minX,px);maxX=Math.Max(maxX,px);minY=Math.Min(minY,py);maxY=Math.Max(maxY,py);if(m[i+3]==0){if(!negativeControl){Console.Error.WriteLine("SHAPE_FAILURE_RGBA="+a[i+2]+","+a[i+1]+","+a[i]+","+a[i+3]+" body="+s.body+" drop="+s.drop+" center="+f.center+" top="+f.top);Console.Error.WriteLine("T24_SHAPE_FAILURE_BASE64 "+Convert.ToBase64String(File.ReadAllBytes(currentFile)));using(var data=new MemoryStream()){mask.Save(data,ImageFormat.Png);Console.Error.WriteLine("T24_MASK_FAILURE_BASE64 "+Convert.ToBase64String(data.ToArray()));}}throw new Exception("Opaque/tinted pixel outside rounded shape: "+name+" x="+((i/4)%image.Width)+" y="+((i/4)/image.Width));}}
+   lastBoundsW=maxX-minX+1;lastBoundsH=maxY-minY+1;
    Check(visible>100,"Empty surface: "+name);
    if(s.body>.99f)Check(maxY-minY>maxX-minX,"Actual expanded RGBA bounds are not portrait: "+name+" "+(maxX-minX)+"x"+(maxY-minY));
    int cx=(int)(f.center*f.scale),cy=(int)((f.top+4)*f.scale);Color fill=image.GetPixel(cx,cy);
@@ -50,6 +51,25 @@ static class IslandShapeQa {
      }
     }
    }
+   // Expanded-state matrix: every language x theme x material at 100/125/150 % with the card fully open. The real GPU pixels must stay inside the independent mask (Audit), be portrait, and never exceed the 360x440 card (plus stroke/edge pixels).
+   var matrix=new List<object>();var sheetTiles=new List<string>();
+   foreach(float scale in new[]{1f,1.25f,1.5f})foreach(string lang in new[]{"ar","en"})foreach(bool light in new[]{false,true})foreach(bool acrylic in new[]{false,true}){
+    string scene="expanded-"+lang+"-"+(light?"light":"dark")+"-"+(acrylic?"acrylic":"glass")+"-"+((int)Math.Round(scale*100)).ToString();
+    string dir=Path.Combine(args[0],"expanded");Directory.CreateDirectory(dir);string file=Path.Combine(dir,scene+".png");
+    var f=new MotionApi.Frame{width=(int)Math.Ceiling(600*scale),height=(int)Math.Ceiling(700*scale),scale=scale,center=300,top=14,left=0,right=600,cardWidth=360,cardHeight=440,opacity=1,flags=(light?1:0)|(lang=="ar"?2:0)|(acrylic?4:0)|8};
+    var s=new MotionApi.Snapshot{body=1,drop=1,visible=0,blink=1};MotionApi.MotionPose(engine,ref s);
+    MotionApi.Check(MotionApi.MotionDraw(engine,ref f,"10:42",lang=="ar"?"الجمعة، ٣٠ أكتوبر":"Friday, 30 October",file));currentFile=file;
+    using(var image=new Bitmap(file)){Audit(image,f,s,light,scene);
+     Check(lastBoundsH>lastBoundsW,"Expanded island is not portrait: "+scene+" "+lastBoundsW+"x"+lastBoundsH);
+     Check(lastBoundsH<=Math.Ceiling(440*scale)+4,"Expanded island taller than 440 px: "+scene+" "+lastBoundsH);
+     Check(lastBoundsW<=Math.Ceiling(360*scale)+4,"Expanded island wider than 360 px: "+scene+" "+lastBoundsW);}
+    matrix.Add(new{scene=scene,scale=scale,boundsWidth=lastBoundsW,boundsHeight=lastBoundsH,file=file});if(scale==1f)sheetTiles.Add(file);
+   }
+   // One contact sheet of the 100 % scenes for visual review (dark grey backdrop so transparency is visible).
+   using(var sheet=new Bitmap(1600,960,PixelFormat.Format32bppArgb))using(var g=Graphics.FromImage(sheet)){g.Clear(Color.FromArgb(90,90,96));
+    for(int i=0;i<sheetTiles.Count&&i<8;i++)using(var tile=new Bitmap(sheetTiles[i]))g.DrawImage(tile,new Rectangle((i%4)*400,(i/4)*480,400,480),new Rectangle(100,0,400,480),GraphicsUnit.Pixel);
+    sheet.Save(Path.Combine(args[0],"expanded-matrix.png"),ImageFormat.Png);}
+   File.WriteAllText(Path.Combine(args[0],"expanded-matrix.json"),new JavaScriptSerializer().Serialize(new{scenes=matrix.Count,maxCard="360x440",rows=matrix}));
   }finally{MotionApi.MotionDestroy(engine);}}
   File.WriteAllText(Path.Combine(args[0],"shape-audit.json"),new JavaScriptSerializer{MaxJsonLength=16000000}.Serialize(new{frames=count,leakingPixels=0,method="Every RGBA pixel against independent rounded/droplet mask, all45open+45close60Hz frames; one physical pixel raster edge; exterior alpha exactly0",rows=rows}));Console.WriteLine("T24 SHAPE PASS: "+count+" exact-exterior alpha frames, RTL/LTR x light/dark x acrylic/glass");return 0;
  }catch(Exception e){Console.Error.WriteLine(e);return 1;}}
