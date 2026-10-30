@@ -83,6 +83,7 @@ sealed class NativeMotion:IDisposable {
   if(tracking){Point p;cursorReads++;if(MotionApi.GetCursorPos(out p)){float s=options.scale;dx=(p.X-options.center)/s;dy=(p.Y-(options.top+18*s))/s;float distance=(float)Math.Sqrt(dx*dx+dy*dy);pointer=Math.Abs(dx)<=69&&Math.Abs(dy)<=18?2:1;
     if(p!=lastPoint){lastPoint=p;lastMove=clock.ElapsedMilliseconds;eyeUntil=lastMove+1500;Input();}if(distance>=240){tracking=false;eyeUntil=clock.ElapsedMilliseconds+1500;}}}
   Step((clock.ElapsedMilliseconds-lastStep)/1000f);
+  if(snapshot.blink>=.999f&&eyeDirtyBlink<.999&&!blinkTimer.Enabled)ScheduleBlink();
   bool dirty=Math.Abs(snapshot.gx-eyeDirtyX)>=.02||Math.Abs(snapshot.gy-eyeDirtyY)>=.02||Math.Abs(snapshot.lid-eyeDirtyLid)>=.002||Math.Abs(snapshot.blink-eyeDirtyBlink)>=.002;
   if(dirty){Draw(true);eyeDirtyX=snapshot.gx;eyeDirtyY=snapshot.gy;eyeDirtyLid=snapshot.lid;eyeDirtyBlink=snapshot.blink;}
   eyesTimer.Interval=clock.ElapsedMilliseconds-lastMove<1500?33:100;
@@ -96,7 +97,7 @@ sealed class NativeMotion:IDisposable {
     if(Interlocked.CompareExchange(ref pending,1,0)==0)try{owner.BeginInvoke((Action)delegate{Interlocked.Exchange(ref pending,0);if(disposed)return;FrameTick();});}catch(InvalidOperationException){break;}
   }}finally{lock(workerGate){worker=null;}if(!disposed&&Volatile.Read(ref loop)!=0)try{owner.BeginInvoke((Action)StartLoop);}catch(InvalidOperationException){}}}){IsBackground=true,Name="Islandly motion burst"};worker.Start();}
  }
- void FrameTick(){if(options.hidden){Interlocked.Exchange(ref loop,0);return;}Step((clock.ElapsedMilliseconds-lastStep)/1000f);Draw(false);if(snapshot.moving==0){Interlocked.Exchange(ref loop,0);PlaceHalo();if(snapshot.visible!=0)ScheduleBlink();}}
+ void FrameTick(){if(options.hidden){Interlocked.Exchange(ref loop,0);return;}Step((clock.ElapsedMilliseconds-lastStep)/1000f);Draw(false);if(snapshot.moving==0){Interlocked.Exchange(ref loop,0);PlaceHalo();if(snapshot.visible!=0){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();ScheduleBlink();}}}
  void Draw(bool dirty){if(disposed||options.hidden)return;double start=clock.Elapsed.TotalMilliseconds,cpu=MotionApi.CpuMs();MotionApi.Check(MotionApi.MotionDraw(renderer,ref frame,options.label,options.date,null));renders++;
   double end=clock.Elapsed.TotalMilliseconds;bool changed=Math.Abs(snapshot.body-paintedBody)>.00001||Math.Abs(snapshot.drop-paintedDrop)>.00001||Math.Abs(snapshot.gx-paintedGx)>.0001||Math.Abs(snapshot.gy-paintedGy)>.0001||Math.Abs(snapshot.lid-paintedLid)>.0001||Math.Abs(snapshot.blink-paintedBlink)>.0001||snapshot.visible!=paintedEyes||options.label!=paintedLabel;
   if(firstResponse<0&&changed)firstResponse=end-inputAt;paintedBody=snapshot.body;paintedDrop=snapshot.drop;paintedGx=snapshot.gx;paintedGy=snapshot.gy;paintedLid=snapshot.lid;paintedBlink=snapshot.blink;paintedEyes=snapshot.visible;paintedLabel=options.label;
