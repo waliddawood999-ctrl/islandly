@@ -8,7 +8,7 @@ permissions:
 jobs:
   native-motion:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -28,6 +28,16 @@ jobs:
         if: matrix.mode == 'overlay'
         shell: pwsh
         run: ./test/native-motion-qa.ps1
+      - name: Install pinned Chromium for the complete renderer matrix
+        if: matrix.mode == 'overlay'
+        run: npx playwright install chromium
+      - name: All panels, themes, materials, languages, modes and DPI with native frame readbacks
+        if: matrix.mode == 'overlay'
+        shell: pwsh
+        run: |
+          $env:CHROMIUM_PATH=(& node -p "require('playwright').chromium.executablePath()")
+          node test/t20-visual.cjs
+          if($LASTEXITCODE-ne 0){throw 'Full renderer matrix failed'}
       - name: Native eyes CPU/RAM/timer guards and liquid frame/input timing
         shell: pwsh
         run: ./test/native-motion-perf.ps1 -Mode ${{ matrix.mode }}

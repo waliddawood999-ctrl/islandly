@@ -33,6 +33,8 @@ struct Renderer {
  ComPtr<ID3D11Device> gpu;ComPtr<ID3D11DeviceContext> gpuContext;ComPtr<IDXGISwapChain1> swap;
  ComPtr<ID2D1Factory1> factory;ComPtr<ID2D1Device> device;ComPtr<ID2D1DeviceContext> dc;
  ComPtr<IDCompositionEffectGroup> opacity;ComPtr<IDCompositionDevice> composition;ComPtr<IDCompositionTarget> target;ComPtr<IDCompositionVisual> visual;
+ ComPtr<IDCompositionSurface> eyeSurface;ComPtr<IDCompositionVisual> slots[2],eyes[2];ComPtr<IDCompositionScaleTransform> eyeScale[2];ComPtr<IDCompositionRotateTransform> eyeRotate[2];ComPtr<IDCompositionTransform> eyeTransform[2];ComPtr<IDCompositionRectangleClip> eyeClip[2];ComPtr<IDCompositionEffectGroup> eyeOpacity[2];
+ float eyeDpi=0,baseEyeScale[2]={1,1};bool eyeLight=false,gpuOnlyBlink=false;ULONGLONG gpuBlinkAt=0;double gpuBlinkDuration=0;
  ComPtr<IDWriteFactory> text;ComPtr<ID2D1SolidColorBrush> brush;UINT width=0,height=0;
  HRESULT initialize(HWND hwnd){window=hwnd;UINT flags=D3D11_CREATE_DEVICE_BGRA_SUPPORT;
   HRESULT hr=D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,flags,nullptr,0,D3D11_SDK_VERSION,&gpu,nullptr,&gpuContext);
@@ -72,6 +74,29 @@ struct Renderer {
   brush->SetColor(light?D2D1::ColorF(12/255.f,12/255.f,18/255.f,alpha):D2D1::ColorF(247/255.f,248/255.f,252/255.f,alpha));
   dc->DrawTextW(value,UINT32(wcslen(value)),format.Get(),rect,brush.Get(),D2D1_DRAW_TEXT_OPTIONS_CLIP);
  }
+ HRESULT prepareEyes(float dpi,bool light){if(eyeSurface&&dpi==eyeDpi&&light==eyeLight)return S_OK;
+  eyeSurface.Reset();HRESULT hr=composition->CreateSurface(UINT(std::ceil(32*dpi)),UINT(std::ceil(40*dpi)),DXGI_FORMAT_B8G8R8A8_UNORM,DXGI_ALPHA_MODE_PREMULTIPLIED,&eyeSurface);if(FAILED(hr))return hr;
+  POINT origin={};ComPtr<IDXGISurface> surface;hr=eyeSurface->BeginDraw(nullptr,IID_PPV_ARGS(&surface),&origin);if(FAILED(hr))return hr;
+  ComPtr<ID2D1Image> previous;dc->GetTarget(&previous);ComPtr<ID2D1Bitmap1> bitmap;auto props=D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET|D2D1_BITMAP_OPTIONS_CANNOT_DRAW,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
+  hr=dc->CreateBitmapFromDxgiSurface(surface.Get(),&props,&bitmap);if(SUCCEEDED(hr)){dc->SetTarget(bitmap.Get());dc->SetTransform(D2D1::Matrix3x2F::Scale(dpi,dpi)*D2D1::Matrix3x2F::Translation(float(origin.x),float(origin.y)));dc->BeginDraw();dc->Clear(D2D1::ColorF(0,0,0,0));brush->SetColor(light?D2D1::ColorF(12/255.f,12/255.f,18/255.f,1):D2D1::ColorF(247/255.f,248/255.f,252/255.f,1));dc->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(9.5f,7,22.5f,33),6.5f,6.5f),brush.Get());hr=dc->EndDraw();dc->SetTarget(previous.Get());}
+  HRESULT end=eyeSurface->EndDraw();if(FAILED(hr))return hr;if(FAILED(end))return end;
+  for(int i=0;i<2;i++){if(!slots[i]){hr=composition->CreateVisual(&slots[i]);if(FAILED(hr))return hr;hr=composition->CreateVisual(&eyes[i]);if(FAILED(hr))return hr;hr=composition->CreateScaleTransform(&eyeScale[i]);if(FAILED(hr))return hr;hr=composition->CreateRotateTransform(&eyeRotate[i]);if(FAILED(hr))return hr;
+    IDCompositionTransform* transforms[]={eyeScale[i].Get(),eyeRotate[i].Get()};hr=composition->CreateTransformGroup(transforms,2,&eyeTransform[i]);if(FAILED(hr))return hr;hr=composition->CreateRectangleClip(&eyeClip[i]);if(FAILED(hr))return hr;hr=composition->CreateEffectGroup(&eyeOpacity[i]);if(FAILED(hr))return hr;
+    eyes[i]->SetTransform(eyeTransform[i].Get());slots[i]->SetClip(eyeClip[i].Get());slots[i]->SetEffect(eyeOpacity[i].Get());slots[i]->AddVisual(eyes[i].Get(),TRUE,nullptr);visual->AddVisual(slots[i].Get(),TRUE,nullptr);
+   }
+   eyes[i]->SetContent(eyeSurface.Get());eyeScale[i]->SetCenterX(16*dpi);eyeScale[i]->SetCenterY(20*dpi);eyeRotate[i]->SetCenterX(16*dpi);eyeRotate[i]->SetCenterY(20*dpi);eyeRotate[i]->SetAngle(-11);
+  }
+  eyeDpi=dpi;eyeLight=light;return S_OK;
+ }
+ HRESULT updateEyes(const Frame&f,const motion::Shape&s,bool baked){HRESULT hr=prepareEyes(f.scale,(f.flags&1)!=0);if(FAILED(hr))return hr;bool rtl=(f.flags&2)!=0;float a=baked?0:float(motion::clamp(1-model.body.x/.25,0,1));if(!model.eyeVisible())a=0;
+  for(int i=0;i<2;i++){float slot=rtl?(i==0?96.f:118.f):(i==0?20.f:42.f);float cx=float(s.x)+slot+float(4*model.gx),cy=float(s.y)+18+float(3*model.gy-.5*model.squint);bool farSide=(model.gx>0&&i==0)||(model.gx<0&&i==1);
+   baseEyeScale[i]=float((farSide?1-.18*std::abs(model.gx):1)*(1+.1*model.squint));eyeScale[i]->SetScaleX(baseEyeScale[i]*float(model.blink));eyeScale[i]->SetScaleY(float((1-.12*std::abs(model.gy))*(1-.4*model.squint)*(1-.1*model.lid/.54)));
+   eyes[i]->SetOffsetX((cx-16)*f.scale);eyes[i]->SetOffsetY((cy-20)*f.scale);eyeClip[i]->SetLeft((cx-15)*f.scale);eyeClip[i]->SetRight((cx+15)*f.scale);eyeClip[i]->SetTop((float(s.y)+3+float(model.lid*30))*f.scale);eyeClip[i]->SetBottom((float(s.y)+33)*f.scale);eyeOpacity[i]->SetOpacity(a);
+  }return S_OK;
+ }
+ HRESULT blink(bool animateModel){if(!eyeSurface)return S_FALSE;double duration=model.nearby?.28:.38;gpuBlinkAt=GetTickCount64();gpuBlinkDuration=duration;gpuOnlyBlink=!animateModel;if(animateModel)model.blinkStart=model.age;
+  for(int i=0;i<2;i++){ComPtr<IDCompositionAnimation> a;HRESULT hr=composition->CreateAnimation(&a);if(FAILED(hr))return hr;float base=baseEyeScale[i],close=float(.4*duration),open=float(.52*duration);a->AddCubic(0,base,0,-.9f*base/(close*close),0);a->AddCubic(.4*duration,.1f*base,0,0,0);a->AddCubic(.48*duration,.1f*base,1.8f*base/open,-.9f*base/(open*open),0);a->End(duration,base);eyeScale[i]->SetScaleX(a.Get());}return composition->Commit();
+ }
  HRESULT capture(const wchar_t*file){if(!file||!*file)return S_OK;ComPtr<ID3D11Texture2D> back;HRESULT hr=swap->GetBuffer(0,IID_PPV_ARGS(&back));if(FAILED(hr))return hr;
   D3D11_TEXTURE2D_DESC desc;back->GetDesc(&desc);desc.BindFlags=0;desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;desc.Usage=D3D11_USAGE_STAGING;desc.MiscFlags=0;
   ComPtr<ID3D11Texture2D> staging;hr=gpu->CreateTexture2D(&desc,nullptr,&staging);if(FAILED(hr))return hr;gpuContext->CopyResource(staging.Get(),back.Get());D3D11_MAPPED_SUBRESOURCE pixels;
@@ -85,6 +110,7 @@ struct Renderer {
   bool light=(f.flags&1)!=0,rtl=(f.flags&2)!=0,acrylic=(f.flags&4)!=0,floating=(f.flags&8)!=0;
   auto s=motion::shape(model,f.center,f.top,f.left,f.right,f.cardWidth,f.cardHeight,f.anticipation);if((f.flags&16)&&model.body.x<.001){s.w=84;s.h=5;s.r=2.5;s.bulge=0;s.x=motion::clamp(f.center-42,f.left+12,f.right-12-84);}
   s.bulge=std::min(s.bulge,std::max(0.,f.height/f.scale-s.y-s.h-1));
+  if((f.flags&32)&&eyeSurface){hr=updateEyes(f,s,false);if(FAILED(hr))return hr;return composition->Commit();}
   auto path=outline(s);
   auto scale=D2D1::Matrix3x2F::Scale(f.scale,f.scale);dc->SetTransform(scale);dc->BeginDraw();
   D2D1_RECT_F dirty=D2D1::RectF(float(s.x)+(rtl?78.f:2.f),float(s.y),float(s.x)+(rtl?136.f:60.f),float(s.y)+36);
@@ -92,10 +118,11 @@ struct Renderer {
   dc->Clear(D2D1::ColorF(0,0,0,0));
   brush->SetColor(light?D2D1::ColorF(.94f,.94f,.96f,acrylic?.46f:.94f):D2D1::ColorF(12/255.f,12/255.f,15/255.f,acrylic?.46f:.9f));dc->FillGeometry(path.Get(),brush.Get());
   ComPtr<ID2D1Layer> layer;dc->CreateLayer(&layer);dc->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),path.Get()),layer.Get());
-  brush->SetColor(D2D1::ColorF(1,1,1,floating?.06f:.12f));dc->DrawGeometry(path.Get(),brush.Get(),floating?4.f:.5f);
+  if(floating){brush->SetColor(D2D1::ColorF(1,1,1,.06f));dc->DrawGeometry(path.Get(),brush.Get(),4.f);}
+  brush->SetColor(D2D1::ColorF(1,1,1,.12f));dc->DrawGeometry(path.Get(),brush.Get(),1.f);
   float a=float(motion::clamp(1-model.body.x/.25,0,1));float x=float(s.x),y=float(s.y),w=float(s.w),h=float(s.h);
   if(h<12){}else if(model.eyeVisible()&&a>0){float centers[2]={rtl?96.f:20.f,rtl?118.f:42.f};
-   for(int i=0;i<2;i++){float cx=x+centers[i]+float(4*model.gx),cy=y+18+float(3*model.gy-.5*model.squint);
+   if(file&&*file)for(int i=0;i<2;i++){float cx=x+centers[i]+float(4*model.gx),cy=y+18+float(3*model.gy-.5*model.squint);
     bool farSide=(model.gx>0&&i==0)||(model.gx<0&&i==1);float ew=float(13*(farSide?1-.18*std::abs(model.gx):1)*(1+.1*model.squint)*model.blink),eh=float(26*(1-.12*std::abs(model.gy))*(1-.4*model.squint)*(1-.1*model.lid/.54));
     dc->PushAxisAlignedClip(D2D1::RectF(cx-15,y+3+float(model.lid*30),cx+15,y+33),D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
     dc->SetTransform(D2D1::Matrix3x2F::Rotation(-11,D2D1::Point2F(cx,cy))*scale);
@@ -109,16 +136,16 @@ struct Renderer {
   dc->PopLayer();if(f.flags&32)dc->PopAxisAlignedClip();hr=dc->EndDraw();if(FAILED(hr))return hr;if(file&&*file){hr=capture(file);if(FAILED(hr))return hr;}
   if(!(f.flags&32)){auto sink=new OutlineSink();path->Simplify(D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,&scale,.2f,sink);
   if(sink->points.size()>=3){HRGN region=CreatePolygonRgn(sink->points.data(),int(sink->points.size()),WINDING);if(region&&!SetWindowRgn(window,region,FALSE))DeleteObject(region);}sink->Release();}
-  opacity->SetOpacity(f.opacity);if(f.flags&32){RECT rect={LONG(std::floor(dirty.left*f.scale)),LONG(std::floor(dirty.top*f.scale)),LONG(std::ceil(dirty.right*f.scale)),LONG(std::ceil(dirty.bottom*f.scale))};DXGI_PRESENT_PARAMETERS p={};p.DirtyRectsCount=1;p.pDirtyRects=&rect;hr=swap->Present1(0,0,&p);}else hr=swap->Present(0,0);if(FAILED(hr))return hr;return composition->Commit();
+  hr=updateEyes(f,s,file&&*file);if(FAILED(hr))return hr;opacity->SetOpacity(f.opacity);if(f.flags&32){RECT rect={LONG(std::floor(dirty.left*f.scale)),LONG(std::floor(dirty.top*f.scale)),LONG(std::ceil(dirty.right*f.scale)),LONG(std::ceil(dirty.bottom*f.scale))};DXGI_PRESENT_PARAMETERS p={};p.DirtyRectsCount=1;p.pDirtyRects=&rect;hr=swap->Present1(0,0,&p);}else hr=swap->Present(0,0);if(FAILED(hr))return hr;return composition->Commit();
  }
 };
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionCreate(HWND hwnd,void**out){if(!out)return E_POINTER;*out=nullptr;auto r=new Renderer();HRESULT hr=r->initialize(hwnd);if(FAILED(hr)){delete r;return hr;}*out=r;return S_OK;}
 extern "C" __declspec(dllexport) void __cdecl MotionDestroy(void*p){delete static_cast<Renderer*>(p);}
-extern "C" __declspec(dllexport) void __cdecl MotionStep(void*p,float dt,int flags,float dx,float dy,int pointer,int target,Snapshot*out){auto&r=*static_cast<Renderer*>(p);auto&m=r.model;m.eyes=(flags&1)!=0;m.eco=(flags&2)!=0;m.mode=(flags&8)?2:(flags&4)?1:0;m.fullscreen=(flags&16)!=0;m.compact=(flags&32)!=0;if(pointer>=0)m.pointer(dx,dy,pointer!=0,pointer==2);m.nextBlink=1e30;m.target(target!=0);m.step(dt);*out={float(m.body.x),float(m.drop.x),float(m.gx),float(m.gy),float(m.lid),float(m.squint),float(m.blink),m.eyeVisible()?1:0,m.moving()?1:0};}
+extern "C" __declspec(dllexport) void __cdecl MotionStep(void*p,float dt,int flags,float dx,float dy,int pointer,int target,Snapshot*out){auto&r=*static_cast<Renderer*>(p);auto&m=r.model;m.eyes=(flags&1)!=0;m.eco=(flags&2)!=0;m.mode=(flags&8)?2:(flags&4)?1:0;m.fullscreen=(flags&16)!=0;m.compact=(flags&32)!=0;if(pointer>=0)m.pointer(dx,dy,pointer!=0,pointer==2);if(r.gpuOnlyBlink){double elapsed=(GetTickCount64()-r.gpuBlinkAt)/1000.;if(elapsed<r.gpuBlinkDuration)m.blinkStart=m.age-elapsed;else m.blinkStart=-1;r.gpuOnlyBlink=false;}m.nextBlink=1e30;m.target(target!=0);m.step(dt);*out={float(m.body.x),float(m.drop.x),float(m.gx),float(m.gy),float(m.lid),float(m.squint),float(m.blink),m.eyeVisible()?1:0,m.moving()?1:0};}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionDraw(void*p,const Frame*f,const wchar_t*time,const wchar_t*date,const wchar_t*file){return static_cast<Renderer*>(p)->draw(*f,time,date,file);}
 extern "C" __declspec(dllexport) void __cdecl MotionApproach(void*p,float value){auto&m=static_cast<Renderer*>(p)->model;m.anticipation=motion::clamp(value,0,.1);if(!m.opening)m.drop.target=m.anticipation;}
 extern "C" __declspec(dllexport) void __cdecl MotionPose(void*p,const Snapshot*s){auto&m=static_cast<Renderer*>(p)->model;m.body.x=s->body;m.drop.x=s->drop;m.body.v=m.drop.v=0;m.body.target=s->body;m.drop.target=s->drop;m.gx=s->gx;m.gy=s->gy;m.lid=s->lid;m.squint=s->squint;m.blink=s->blink;m.opening=s->body>.05;m.eyes=s->visible!=0;m.mode=0;m.eco=false;m.fullscreen=false;m.compact=false;}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionFade(void*p){auto&r=*static_cast<Renderer*>(p);ComPtr<IDCompositionAnimation> a;HRESULT hr=r.composition->CreateAnimation(&a);if(FAILED(hr))return hr;a->AddCubic(0,1,-1.f/.12f,0,0);a->End(.12,0);hr=r.opacity->SetOpacity(a.Get());if(FAILED(hr))return hr;return r.composition->Commit();}
-extern "C" __declspec(dllexport) void __cdecl MotionBlink(void*p){auto&m=static_cast<Renderer*>(p)->model;m.blinkStart=m.age;}
+extern "C" __declspec(dllexport) HRESULT __cdecl MotionBlink(void*p,int animateModel){return static_cast<Renderer*>(p)->blink(animateModel!=0);}
 extern "C" __declspec(dllexport) void __cdecl MotionAdapter(void*p,wchar_t*name,int capacity){auto&r=*static_cast<Renderer*>(p);ComPtr<IDXGIDevice> d;r.gpu.As(&d);ComPtr<IDXGIAdapter> adapter;d->GetAdapter(&adapter);DXGI_ADAPTER_DESC desc={};adapter->GetDesc(&desc);wcsncpy_s(name,capacity,desc.Description,_TRUNCATE);}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionWait(){return DwmFlush();}

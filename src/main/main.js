@@ -674,12 +674,13 @@ function startNativeSession() {
   logError('native session initializing');
   const fs = require('node:fs');
   const stateFile = path.join(app.getPath('userData'), 'native-session.json');
-  let closingPanel = false, nativeActions = 0;
+  let closingPanel = false, nativeActions = 0, awaitingPresent = false;
   const connection = require('node:net').createConnection('\\\\.\\pipe\\' + process.env.ISLANDLY_NATIVE_PIPE);
   connection.on('error', err => { logError('native pipe', err); app.quit(); });
   const renderer = script => win.webContents.executeJavaScript(script);
   const command = async (action, required = false) => {
     try {
+      if (action === 'present') { if (awaitingPresent) { awaitingPresent=false; nativeSurfaceReady=true; applyVisibility(); } return; }
       closingPanel = false;
       if (action === 'settings') {
         openSettings();
@@ -697,7 +698,7 @@ function startNativeSession() {
         closingPanel = true;
         nativeExpanded = false;
         nativeSurfaceReady = false;
-        win.hide();
+        win.hide(); awaitingPresent=false;
         nativeSession?.send('idle');
       } else {
         const cmd = action === 'pomodoro' ? 'pomodoro' : 'toggle';
@@ -711,10 +712,10 @@ function startNativeSession() {
           const point=screen.screenToDipPoint({x:Math.round(anchor.center),y:Math.round(anchor.top)});
           const aligned=require('./native-motion').alignPanel({window:win.getBounds(),card,display:display.bounds,anchor:point,zoom:zoom()});
           win.setPosition(aligned.x,aligned.y);
+          awaitingPresent=true;nativeSurfaceReady=false;
           nativeSession.send('panel:ready',Buffer.from(JSON.stringify({width:aligned.width*display.scaleFactor,height:aligned.height*display.scaleFactor})).toString('base64'));
         }
-        nativeSurfaceReady = true;
-        applyVisibility();
+        if (!awaitingPresent) { nativeSurfaceReady = true; applyVisibility(); }
       }
     } catch (err) { logError('native command', err); if (required) throw err; }
   };

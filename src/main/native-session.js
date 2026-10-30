@@ -17,7 +17,7 @@ class NativeSession {
         if (item) { clearTimeout(item.timer); this.pending.delete(Number(reply[1])); item.resolve(Buffer.from(reply[2], 'base64').toString()); }
         return;
       }
-      if (['expand', 'settings', 'palette', 'pomodoro', 'stash', 'close', 'quit'].includes(line)) {
+      if (['expand', 'settings', 'palette', 'pomodoro', 'stash', 'close', 'present', 'quit'].includes(line)) {
         this.lastBusy = Date.now();
         if (line === 'quit') quit(); else command(line);
       }

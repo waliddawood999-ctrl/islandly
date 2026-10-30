@@ -87,7 +87,7 @@ sealed class IslandHost : Form {
     Native.APPBARDATA abd;
     DateTime settingsStamp;
     int launchCount;
-    bool hasLaunchedSuccessfully;
+    bool hasLaunchedSuccessfully,sessionHydrated,panelGeometryReceived,panelPresentRequested;
     string islandHotkey="Ctrl+Alt+I";
     readonly Dictionary<int,double> cpuTimes = new Dictionary<int,double>();
     long cpuSampleAt;
@@ -174,7 +174,7 @@ sealed class IslandHost : Form {
         RecoverBar();
         Native.AddClipboardFormatListener(Handle);
         consent = new ConsentWatcher(delegate(string label) { if(!closing) { privacyLabel = label; Position(); } });
-        motion=new NativeMotion(this,ArmHover,LeaveHover,probe!="" && Environment.GetCommandLineArgs().Contains("--motion-metrics"));
+        motion=new NativeMotion(this,ArmHover,LeaveHover,delegate{OpenPanel("expand","click");},probe!="" && Environment.GetCommandLineArgs().Contains("--motion-metrics"));
         motion.FrameChanged+=delegate(double time){if(launching&&!loadingPainted){loadingPainted=true;NativeLog.Write("loading-paint","inputToPaintMs="+(clock.ElapsedMilliseconds-requestAt));}};
         foregroundWatcher=new ForegroundWatcher(this,Position);
         Position();Status();
@@ -390,7 +390,7 @@ sealed class IslandHost : Form {
                     }
                 } finally { if(env!=IntPtr.Zero) Marshal.FreeHGlobal(env); uint ignored; Native.SetThreadErrorMode(previousErrorMode,out ignored); }
             });
-            ready=false; shutdownAt=0; lastCommand=command;
+            ready=false;sessionHydrated=panelGeometryReceived=panelPresentRequested=false; shutdownAt=0; lastCommand=command;
             try {
                 if(closing) throw new OperationCanceledException("Host closed during process creation");
                 stage="AssignProcessToJobObject";
@@ -431,9 +431,9 @@ sealed class IslandHost : Form {
         }
         if(line == "ISLANDLY:settings:") { ReadSettings(); Position(); return; }
         if(line.StartsWith("ISLANDLY:panel:ready:")) {
-            try {var bounds=json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(Convert.FromBase64String(line.Substring(21))));if(motion!=null)motion.Ready(Convert.ToSingle(bounds["width"]),Convert.ToSingle(bounds["height"]));}catch(Exception ex){NativeLog.Write("panel-ready-geometry",ex);}return;
+            try {var bounds=json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(Convert.FromBase64String(line.Substring(21))));panelGeometryReceived=true;if(motion!=null)motion.Ready(Convert.ToSingle(bounds["width"]),Convert.ToSingle(bounds["height"]),delegate{if(cancelLaunch||closing)return;panelPresentRequested=true;Send("present");if(sessionHydrated)MarkReady();});}catch(Exception ex){NativeLog.Write("panel-ready-geometry",ex);}return;
         }
-        if(line == "ISLANDLY:ready:") { if(lastCommand!="expand"&&lastCommand!="pomodoro"&&motion!=null)motion.Hide(); ready = true; hasLaunchedSuccessfully=true; readyAt = clock.ElapsedMilliseconds; latencies.Enqueue(readyAt-requestAt); Position(); Status(); }
+        if(line == "ISLANDLY:ready:") {sessionHydrated=true;if(panelGeometryReceived&&!panelPresentRequested)return;if(lastCommand!="expand"&&lastCommand!="pomodoro"&&motion!=null)motion.Hide();MarkReady();}
         if(line == "ISLANDLY:idle:") { if(motion!=null)motion.Open(false); shutdownAt = clock.ElapsedMilliseconds; }
         if(line == "ISLANDLY:restart:") { EndSession(); OpenPanel("settings"); return; }
         if(line == "ISLANDLY:exit:") { Close(); return; }
@@ -447,6 +447,7 @@ sealed class IslandHost : Form {
             } catch {} // invalid child data never becomes a command
         }
     }
+    void MarkReady(){if(ready)return;ready=true;hasLaunchedSuccessfully=true;readyAt=clock.ElapsedMilliseconds;latencies.Enqueue(readyAt-requestAt);Position();Status();}
     void SaveState() { try { string file = Path.Combine(profile,"native-session.json"); File.WriteAllText(file+".tmp",json.Serialize(state)); if(File.Exists(file)) File.Replace(file+".tmp",file,null); else File.Move(file+".tmp",file); stateWrittenAt = clock.ElapsedMilliseconds; } catch(IOException) {} }
     void EndSession() {
         NativeLog.Write("session-end","ready="+ready+" launching="+launching+" cancel="+cancelLaunch+" hover="+hoverLaunch+" shutdownAt="+shutdownAt+" childExited="+(child==null?"none":child.HasExited.ToString()));
@@ -559,7 +560,7 @@ sealed class IslandHost : Form {
         }
     }
     protected override void WndProc(ref Message m) {
-        if(probe!="" && motion!=null && m.Msg==0x8021){motion.Probe(m.WParam.ToInt32()==0?"motion-close":"motion-open");Status();return;}
+        if(probe!="" && motion!=null && m.Msg==0x8021){motion.Probe(m.WParam.ToInt32()==0?"motion-close":m.WParam.ToInt32()==2?"motion-measure":"motion-open");Status();return;}
         if(probe!="" && motion!=null && m.Msg==0x8022){ReadSettings();Position();Status();File.WriteAllText(Path.Combine(probe,"motion-frames.json"),json.Serialize(motion.FrameSamples));return;}
         if(taskbarCreated != 0 && m.Msg == taskbarCreated) { bar=false; DeleteBarMarker(); Position(); }
         if(m.Msg == 0x031D && child == null && Setting("clipboard","True") != "False") {
@@ -568,6 +569,7 @@ sealed class IslandHost : Form {
             } } catch(System.Runtime.InteropServices.ExternalException) {}
         }
         if(m.Msg == 0x0312) { int id=m.WParam.ToInt32(); OpenPanel(id==2?"palette":id==3?"pomodoro":id==4?"stash":"expand","hotkey"); }
+        if(m.Msg==0x02e0&&!closing)BeginInvoke((Action)Position);
         if(m.Msg == 0x8001 && m.WParam.ToInt32() == 1) BeginInvoke((Action)Position);
         base.WndProc(ref m);
     }

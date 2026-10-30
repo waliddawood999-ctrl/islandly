@@ -43,6 +43,15 @@ $owned=[Collections.Generic.HashSet[int]]::new()
 $ast=[Management.Automation.Language.Parser]::ParseFile("$root/test/native-footprint.ps1",[ref]$null,[ref]$null)
 foreach($name in @('Read-SharedJson','Read-Status')){$node=$ast.Find({param($n)$n-is [Management.Automation.Language.FunctionDefinitionAst]-and $n.Name-eq $name},$true);. ([scriptblock]::Create($node.Extent.Text))}
 function Refresh {[void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8022,[IntPtr]::Zero,[IntPtr]::Zero)}
+function Capture-Native {
+ Refresh;$s=Read-Status;$m=$s.motion;$scale=$m.scale
+ $x=[int]($m.center-69*$scale);$y=[int]$m.top;$bitmap=[Drawing.Bitmap]::new([int][Math]::Ceiling(138*$scale),[int][Math]::Ceiling(36*$scale));$graphics=[Drawing.Graphics]::FromImage($bitmap)
+ try{$graphics.CopyFromScreen($x,$y,0,0,$bitmap.Size);New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null;$file="$root/out/t21/native-desktop-$Mode.png";$bitmap.Save($file,[Drawing.Imaging.ImageFormat]::Png)
+  $expected=if($m.light){@(12,12,18)}else{@(247,248,252)}
+  foreach($centerX in @(20,42)){$ink=0;for($py=[int](4*$scale);$py-lt [int](34*$scale);$py++){for($px=[int](($centerX-10)*$scale);$px-lt [int](($centerX+10)*$scale);$px++){$p=$bitmap.GetPixel($px,$py);if([Math]::Abs($p.R-$expected[0])-le 8-and [Math]::Abs($p.G-$expected[1])-le 8-and [Math]::Abs($p.B-$expected[2])-le 8){$ink++}}}if($ink-lt 15){throw "Composited eye missing from real desktop: $centerX ink=$ink"}}
+  Write-Output ('T21_DESKTOP_BASE64 '+[Convert]::ToBase64String([IO.File]::ReadAllBytes($file)))
+ }finally{$graphics.Dispose();$bitmap.Dispose()}
+}
 function Quantile($values,$q){$ordered=@($values|Sort-Object);return $ordered[[Math]::Min($ordered.Count-1,[Math]::Floor($q*$ordered.Count))]}
 function Phase($name,$moving){
  Refresh;$before=Read-Status
@@ -75,6 +84,7 @@ try{
  $deadline=[DateTime]::UtcNow.AddSeconds(20);while(!(Test-Path "$probe/status.json")){if($hostProcess.HasExited-or [DateTime]::UtcNow-gt $deadline){throw 'Native motion host did not start'};Start-Sleep -Milliseconds 100}
  $initial=Read-Status;$center=$initial.motion.center;$top=$initial.motion.top
  [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$center,[int]($top+400));Start-Sleep -Seconds 2
+ Capture-Native
  $idle=Phase 'eyes-idle' $false
  [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$center,[int]($top+18));Start-Sleep -Milliseconds 150
  $moving=Phase 'eyes-moving' $true
@@ -101,6 +111,11 @@ try{
   [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]::Zero,[IntPtr]::Zero);Start-Sleep -Milliseconds 340
  }
  if(@($inputs|Where-Object {$_-lt 0}).Count-ne 0-or $inputs.Count-ne 12){throw 'Native input measurement never observed a changed frame'}
+ [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]1,[IntPtr]::Zero);Start-Sleep -Milliseconds 340
+ [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]2,[IntPtr]::Zero);Start-Sleep -Milliseconds 160;Refresh
+ $measured=Read-Status;$resizeFrames=@(Get-Content "$probe/motion-frames.json" -Raw|ConvertFrom-Json|Where-Object{$_.resizing})
+ if([Math]::Abs($measured.motion.cardHeight-300)-gt .1-or $resizeFrames.Count-lt 4){throw 'Measured card size did not ease over120ms'}
+ [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]::Zero,[IntPtr]::Zero)
  $active=@($frames|Where-Object {$_.body-gt .01-and $_.body-lt .99-and $_.interval-gt 0})
  if($active.Count-lt 100){throw 'Insufficient native motion frames'}
  $p50=Quantile $active.interval .5;$p95=Quantile $active.interval .95;$cpu=($active|Measure-Object cpuMs -Average).Average;$response=($inputs|Measure-Object -Maximum).Maximum
@@ -108,7 +123,7 @@ try{
  $late=@($active|Where-Object {$_.interval-gt 16.667}).Count
  if($p95-gt 16.667-or $response-ge 50-or $cpu-ge 2){throw "Native motion failed60fps/input/CPU: p95=$p95 response=$response cpu=$cpu late=$late"}
  New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null
- @{mode=$Mode;idle=$idle;moving=$moving;hidden=$hidden;liquid=@{frameP50=$p50;frameP95=$p95;lateFrames=$late;frameCpuAverageMs=$cpu;inputMaxMs=$response;inputSamples=$inputs;frames=$frames};hardware='Windows CI single monitor; laptop SAC/second physical monitor/144Hz not run'}|ConvertTo-Json -Depth 14|Set-Content "$root/out/t21/perf-$Mode.json" -Encoding utf8
+ @{mode=$Mode;idle=$idle;moving=$moving;hidden=$hidden;liquid=@{frameP50=$p50;frameP95=$p95;lateFrames=$late;frameCpuAverageMs=$cpu;inputMaxMs=$response;inputSamples=$inputs;frames=$frames;measuredResizeFrames=$resizeFrames};hardware='Windows CI single monitor; laptop SAC/second physical monitor/144Hz not run'}|ConvertTo-Json -Depth 14|Set-Content "$root/out/t21/perf-$Mode.json" -Encoding utf8
  Write-Output "NATIVE LIQUID: $Mode frame p50/p95=$p50/$p95 ms, CPU mean=$cpu ms/frame, input max=$response ms, >16.667ms=$late"
 }finally{
  try{Close-Fullscreen;Refresh;Write-Output ('MOTION LAST STATUS: '+((Read-Status)|ConvertTo-Json -Compress -Depth 8))}catch{}

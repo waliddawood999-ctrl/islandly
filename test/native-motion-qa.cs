@@ -9,10 +9,10 @@ static class NativeMotionQa {
  static void Require(bool value,string message){if(!value)throw new Exception(message);}
  static void Run(string output){Directory.CreateDirectory(output);Application.EnableVisualStyles();using(var window=new Form{FormBorderStyle=FormBorderStyle.None,ShowInTaskbar=false,Width=1400,Height=1400}){
   window.Show();Application.DoEvents();IntPtr engine;MotionApi.Check(MotionApi.MotionCreate(window.Handle,out engine));var report=new List<object>();int count=0;
-  try{foreach(float dpi in new[]{1f,1.5f,2f})foreach(string lang in new[]{"ar","en"})foreach(bool light in new[]{false,true})foreach(bool appbar in new[]{false,true})foreach(bool acrylic in new[]{false,true})foreach(bool floating in new[]{false,true}){
+  try{foreach(float dpi in new[]{1f,1.25f,1.5f,2f})foreach(string lang in new[]{"ar","en"})foreach(bool light in new[]{false,true})foreach(bool appbar in new[]{false,true})foreach(bool acrylic in new[]{false,true})foreach(bool floating in new[]{false,true}){
    string name=lang+"-"+(light?"light":"dark")+"-"+(appbar?"appbar":"overlay")+"-"+(acrylic?"acrylic":"glass")+"-"+(floating?"floating":"flush")+"-"+dpi;
    string dir=Path.Combine(output,name);Directory.CreateDirectory(dir);
-   var frame=new MotionApi.Frame{width=600*dpi,height=700*dpi,scale=dpi,center=300,top=floating?14:8,left=0,right=600,cardWidth=440,cardHeight=200,opacity=1,flags=(light?1:0)|(lang=="ar"?2:0)|(acrylic?4:0)|(floating?8:0)};
+   var frame=new MotionApi.Frame{width=600*dpi,height=700*dpi,scale=dpi,center=300,top=floating?14:8,left=0,right=600,cardWidth=360,cardHeight=440,opacity=1,flags=(light?1:0)|(lang=="ar"?2:0)|(acrylic?4:0)|(floating?8:0)};
    foreach(string pose in new[]{"rest","left","right","below-left","below-right","below","far-left","far-right","sleepy","blink","squint","reduced","eco-hidden","fullscreen-hidden","off-hidden"}){
     float gx=pose.Contains("left")?-1:pose.Contains("right")?1:0,gy=pose.Contains("below")?1:0;if(gx!=0&&gy!=0){gx*=.81697f;gy*=.57868f;}if(pose.StartsWith("far")){gx*=.6f;}
     bool hidden=pose.Contains("hidden");var snap=new MotionApi.Snapshot{gx=gx,gy=gy,lid=pose=="sleepy"||pose.StartsWith("far")?.54f:0,blink=pose=="blink"?.1f:1,squint=pose=="squint"?1:0,visible=hidden?0:1};
@@ -35,19 +35,19 @@ static class NativeMotionQa {
      }
     }}
    }
-   foreach(int time in new[]{0,30,60,100,150,260}){var snap=new MotionApi.Snapshot();MotionApi.MotionPose(engine,ref snap);for(int ms=0;ms<time;ms++)MotionApi.MotionStep(engine,.001f,0,0,0,-1,1,out snap);
+   foreach(int time in new[]{0,30,60,100,150,260}){var snap=new MotionApi.Snapshot{visible=1,blink=1};MotionApi.MotionPose(engine,ref snap);for(int ms=0;ms<time;ms++)MotionApi.MotionStep(engine,.001f,1,0,0,-1,1,out snap);
     string file=Path.Combine(dir,"open-"+time+"ms.png");MotionApi.Check(MotionApi.MotionDraw(engine,ref frame,"10:42",lang=="ar"?"الخميس، ٢٩ أكتوبر":"Thursday, 29 October",file));count++;
-    Require(138+302*snap.body>=137,"Liquid body clipped");report.Add(new{scene=name,timeMs=time,body=snap.body,drop=snap.drop,width=138+302*snap.body,height=36+164*snap.body,bulge=Math.Max(0,snap.drop-snap.body)*164,appBarStrip=appbar?(floating?58:44)*dpi:0});
+    Require(138+(frame.cardWidth-138)*snap.body>=137,"Liquid body clipped");report.Add(new{scene=name,timeMs=time,body=snap.body,drop=snap.drop,width=138+(frame.cardWidth-138)*snap.body,height=36+(frame.cardHeight-36)*snap.body,bulge=Math.Max(0,snap.drop-snap.body)*164,appBarStrip=appbar?(floating?58:44)*dpi:0});
    }
    foreach(string transition in new[]{"close","reverse"})foreach(int time in new[]{0,30,60,100,150,260}){
-    var snap=new MotionApi.Snapshot{body=transition=="close"?1:0,drop=transition=="close"?1:0};MotionApi.MotionPose(engine,ref snap);
-    if(transition=="reverse")for(int ms=0;ms<100;ms++)MotionApi.MotionStep(engine,.001f,0,0,0,-1,1,out snap);
-    for(int ms=0;ms<time;ms++)MotionApi.MotionStep(engine,.001f,0,0,0,-1,0,out snap);
+    var snap=new MotionApi.Snapshot{body=transition=="close"?1:0,drop=transition=="close"?1:0,visible=1,blink=1};MotionApi.MotionPose(engine,ref snap);
+    if(transition=="reverse")for(int ms=0;ms<100;ms++)MotionApi.MotionStep(engine,.001f,1,0,0,-1,1,out snap);
+    for(int ms=0;ms<time;ms++)MotionApi.MotionStep(engine,.001f,1,0,0,-1,0,out snap);
     MotionApi.Check(MotionApi.MotionDraw(engine,ref frame,"10:42",lang=="ar"?"الخميس، ٢٩ أكتوبر":"Thursday, 29 October",Path.Combine(dir,transition+"-"+time+"ms.png")));count++;
    }
    foreach(string position in new[]{"left","center","right"}){
     frame.center=position=="left"?(floating?20:16)+69:position=="right"?600-(floating?20:16)-69:300;
-    var snap=new MotionApi.Snapshot();MotionApi.MotionPose(engine,ref snap);for(int ms=0;ms<100;ms++)MotionApi.MotionStep(engine,.001f,0,0,0,-1,1,out snap);
+    var snap=new MotionApi.Snapshot();MotionApi.MotionPose(engine,ref snap);for(int ms=0;ms<100;ms++)MotionApi.MotionStep(engine,.001f,1,0,0,-1,1,out snap);
     MotionApi.Check(MotionApi.MotionDraw(engine,ref frame,"10:42",lang=="ar"?"الخميس، ٢٩ أكتوبر":"Thursday, 29 October",Path.Combine(dir,"position-"+position+".png")));count++;
    }
 

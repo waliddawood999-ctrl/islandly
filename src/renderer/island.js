@@ -185,7 +185,8 @@ const Island = (() => {
     clone.style.width = (w - 32) + 'px';
     const natural = v.auto ? clone.offsetHeight : v.h;
     clone.remove();
-    const hgt = Math.min(Math.max(120, Math.min(800, workArea.height) - TOP - GUTTER - (v.below ? v.below.h + BELOW_GAP : 0)), Math.max(440, natural + FOOTER + 44));
+    const available = Math.max(120, Math.min(560, workArea.height - TOP - GUTTER - (v.below ? v.below.h + BELOW_GAP : 0)));
+    const hgt = Math.min(available, Math.max(180, natural + 64));
     return { w, h: hgt };
   }
   const expandable = () => features.filter((f) => f.view('expanded'));
@@ -266,7 +267,8 @@ const Island = (() => {
           'data-interactive': '1',
           onclick: () => select(i),
         })
-      )
+      ),
+      h('button', { class: 'dots-gear', title: t('settings'), 'aria-label': t('settings'), 'data-interactive': '1', onclick: () => API.send('settings:open') }, html(ICONS.gear))
     );
   }
 
@@ -343,7 +345,7 @@ const Island = (() => {
         setTarget(v.w, v.h, v.y, v.r, v.below);
         sizeStage(v);
       }
-      const dotsChanged = v.withDots && dots.childElementCount !== expandable().length;
+      const dotsChanged = v.withDots && dots.querySelectorAll('.dot').length !== expandable().length;
       current = v;
       if (dotsChanged) renderDots();
       return;

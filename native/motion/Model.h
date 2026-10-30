@@ -35,7 +35,7 @@ struct Model {
  bool moving()const{return body.moving()||drop.moving();}
 };
 struct Shape {double x,y,w,h,r,bulge,wl;};
-inline Shape shape(const Model&m,double center,double top,double screenLeft,double screenRight,double width=440,double height=200,double anticipation=0){
+inline Shape shape(const Model&m,double center,double top,double screenLeft,double screenRight,double width=360,double height=440,double anticipation=0){
  double f=m.body.x;Shape s;s.w=138+(width-138)*f;s.h=36+(height-36)*f;s.r=18+4*clamp(f,0,1);
  s.w=std::max(36.,s.w);s.h=std::max(5.,s.h);s.r=std::min(s.r,std::min(s.w,s.h)/2);
  s.x=clamp(center-s.w/2,screenLeft+12,screenRight-12-s.w);s.y=top;
