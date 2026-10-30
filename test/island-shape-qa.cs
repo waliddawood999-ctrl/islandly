@@ -43,7 +43,7 @@ static class IslandShapeQa {
       string name=(open?"open":"close")+"-"+frame.ToString("D2"),file=Path.Combine(dir,name+".png");MotionApi.Check(MotionApi.MotionDraw(engine,ref f,"10:42",lang=="ar"?"الجمعة، ٣٠ أكتوبر":"Friday, 30 October",file));using(var image=new Bitmap(file)){Audit(image,f,s,light,scene+"/"+name);
        if(frame==0){image.SetPixel(0,0,Color.White);bool rejected=false;try{Audit(image,f,s,light,"injected-white-rectangle");}catch(Exception){rejected=true;}Check(rejected,"QA failed to reject an injected exterior white pixel");}
       }count++;
-      rows.Add(new{scene=scene,direction=open?"open":"close",frame=frame,timeMs=frame*1000./60,body=s.body,drop=s.drop,file=file});
+      rows.Add(new{scene=scene,direction=open?"open":"close",frame=frame,timeMs=frame*1000.0/60,body=s.body,drop=s.drop,file=file});
      }
     }
    }

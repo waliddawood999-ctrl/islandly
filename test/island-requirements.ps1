@@ -98,3 +98,14 @@ try{foreach($theme in @('light','dark')){Set-ItemProperty $reg AppsUseLightTheme
  }
 }}finally{if($null-eq $original){Remove-ItemProperty $reg AppsUseLightTheme -ErrorAction SilentlyContinue}else{Set-ItemProperty $reg AppsUseLightTheme $original};$rows|ConvertTo-Json -Depth 14|Set-Content "$out/requirements.json" -Encoding utf8}
 Write-Output "T24 DESKTOP PASS $Mode : RTL/LTR Windows light/dark fullscreen top-edge, visibility setting, every captured open/close frame; no Electron"
+
+# Small real-desktop contact sheet is both an artifact and a log-readable visual review aid.
+$board=[Drawing.Bitmap]::new(1024,880);$drawing=[Drawing.Graphics]::FromImage($board);$font=[Drawing.Font]::new('Segoe UI',11)
+try{$drawing.Clear([Drawing.Color]::White);$row=0
+ foreach($theme in @('light','dark')){foreach($lang in @('ar','en')){$col=0
+  foreach($state in @('fullscreen-hidden','fullscreen-edge-reveal','normal-always','normal-approach-hidden')){
+   $image=[Drawing.Bitmap]::new("$out/$lang-$theme-$state.png");try{$drawing.DrawString("$lang / $theme / $state",$font,[Drawing.Brushes]::Black,$col*256,($row*220));$drawing.DrawImage($image,[Drawing.Rectangle]::new(($col*256),($row*220+25),256,192))}finally{$image.Dispose()};$col++
+  };$row++
+ }}
+ $preview="$out/preview.png";$board.Save($preview,[Drawing.Imaging.ImageFormat]::Png);Write-Output ('T24_DESKTOP_PREVIEW_BASE64 '+[Convert]::ToBase64String([IO.File]::ReadAllBytes($preview)))
+}finally{$font.Dispose();$drawing.Dispose();$board.Dispose()}
