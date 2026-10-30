@@ -1,6 +1,7 @@
 #include "Model.h"
 #include "FrameClock.h"
 #include "PropertyCache.h"
+#include "EyePose.h"
 #include "WindowEvents.h"
 #include <cassert>
 #include <iostream>
@@ -14,6 +15,21 @@ int main(){
   assert(!motion::windowObjectEvent(event,0,0,false));
  }
  assert(!motion::windowObjectEvent(0x800c,0,0,true));
+ // The cached slot-local matrix must preserve the old world-space mapping:
+ // all four LTR/RTL anchors, DPI, blink, squash and vertical gaze/lid poses.
+ for(double dpi:{.5,1.,1.25,1.5,2.})for(double slot:{20.,42.,96.,118.})
+ for(double sx:{.82,1.,1.1})for(double sy:{.45,1.})for(double blink:{.1,1.})for(double gy:{-1.,0.,1.})
+ for(double px:{9.5,16.,22.5})for(double py:{7.,20.,33.}){
+  double cx=200+slot+4*.8,cy=14+18+3*gy-.5,angle=-11*3.141592653589793/180;
+  auto matrix=motion::eyePose(float(sx),float(sy),float((18+3*gy-.5)*dpi),float(dpi));
+  double x=16*dpi+(px-16)*dpi*blink,y=py*dpi;
+  double actualX=x*matrix[0]+y*matrix[2]+matrix[4]+cx*dpi;
+  double actualY=x*matrix[1]+y*matrix[3]+matrix[5]+14*dpi;
+  double dx=(px-16)*dpi*blink*sx,dy=(py-20)*dpi*sy;
+  double expectedX=cx*dpi+dx*std::cos(angle)-dy*std::sin(angle);
+  double expectedY=cy*dpi+dx*std::sin(angle)+dy*std::cos(angle);
+  assert(std::abs(actualX-expectedX)<.0001&&std::abs(actualY-expectedY)<.0001);
+ }
  motion::PropertyCache<9> properties;
  for(unsigned i=0;i<9;i++){assert(properties.changed(i,float(i)));assert(!properties.changed(i,float(i)));assert(properties.changed(i,float(i)+.00001f));}
  properties.invalidate(0);assert(properties.changed(0,properties[0]));assert(!properties.changed(1,properties[1]));

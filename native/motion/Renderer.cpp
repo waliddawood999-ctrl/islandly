@@ -15,6 +15,7 @@
 #include "Model.h"
 #include "FrameClock.h"
 #include "PropertyCache.h"
+#include "EyePose.h"
 #include "WindowEvents.h"
 #undef DrawText
 #ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
@@ -45,9 +46,9 @@ struct Renderer {
  ComPtr<ID3D11Device> gpu;ComPtr<IDXGIDevice2> queuedDevice;ComPtr<ID3D11DeviceContext> gpuContext;ComPtr<IDXGISwapChain1> swap;ComPtr<ID3D11Texture2D> scene;
  ComPtr<ID2D1Factory1> factory;ComPtr<ID2D1Device> device;ComPtr<ID2D1DeviceContext> dc;
  ComPtr<IDCompositionEffectGroup> opacity;ComPtr<IDCompositionDevice> composition;ComPtr<IDCompositionTarget> target;ComPtr<IDCompositionVisual> visual;
- ComPtr<IDCompositionSurface> eyeSurface;ComPtr<IDCompositionVisual> slots[2],eyes[2];ComPtr<IDCompositionScaleTransform> eyeScale[2];ComPtr<IDCompositionRotateTransform> eyeRotate[2];ComPtr<IDCompositionTransform> eyeTransform[2];ComPtr<IDCompositionRectangleClip> eyeClip[2];ComPtr<IDCompositionEffectGroup> eyeOpacity[2];
- motion::PropertyCache<9> eyeProperties[2];
- float eyeDpi=0,baseEyeScale[2]={1,1};bool eyeLight=false,gpuOnlyBlink=false;ULONGLONG gpuBlinkAt=0;double gpuBlinkDuration=0;
+ ComPtr<IDCompositionSurface> eyeSurface;ComPtr<IDCompositionVisual> slots[2],eyes[2];ComPtr<IDCompositionScaleTransform> eyeScale[2];ComPtr<IDCompositionMatrixTransform> eyePose[2];ComPtr<IDCompositionTransform> eyeTransform[2];ComPtr<IDCompositionRectangleClip> eyeClip[2];ComPtr<IDCompositionEffectGroup> eyeOpacity[2];
+ motion::PropertyCache<11> eyeProperties[2];
+ float eyeDpi=0;bool eyeLight=false,gpuOnlyBlink=false;ULONGLONG gpuBlinkAt=0;double gpuBlinkDuration=0;
  ComPtr<IDWriteFactory> text;ComPtr<ID2D1SolidColorBrush> brush;UINT width=0,height=0;
  ComPtr<ID2D1Layer> maskLayer; // created once: allocating a layer every frame cost GPU/WARP memory churn
  struct TextFormat{int key;ComPtr<IDWriteTextFormat> format;};std::vector<TextFormat> formats; // created once per (size, direction)
@@ -106,32 +107,33 @@ struct Renderer {
   ComPtr<ID2D1Image> previous;dc->GetTarget(&previous);ComPtr<ID2D1Bitmap1> bitmap;auto props=D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET|D2D1_BITMAP_OPTIONS_CANNOT_DRAW,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
   hr=dc->CreateBitmapFromDxgiSurface(surface.Get(),&props,&bitmap);if(SUCCEEDED(hr)){dc->SetTarget(bitmap.Get());dc->SetTransform(D2D1::Matrix3x2F::Scale(dpi,dpi)*D2D1::Matrix3x2F::Translation(float(origin.x),float(origin.y)));dc->BeginDraw();dc->Clear(D2D1::ColorF(0,0,0,0));brush->SetColor(light?D2D1::ColorF(12/255.f,12/255.f,18/255.f,1):D2D1::ColorF(247/255.f,248/255.f,252/255.f,1));dc->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(9.5f,7,22.5f,33),6.5f,6.5f),brush.Get());hr=dc->EndDraw();dc->SetTarget(previous.Get());}
   HRESULT end=eyeSurface->EndDraw();if(FAILED(hr))return hr;if(FAILED(end))return end;
-  for(int i=0;i<2;i++){if(!slots[i]){hr=composition->CreateVisual(&slots[i]);if(FAILED(hr))return hr;hr=composition->CreateVisual(&eyes[i]);if(FAILED(hr))return hr;hr=composition->CreateScaleTransform(&eyeScale[i]);if(FAILED(hr))return hr;hr=composition->CreateRotateTransform(&eyeRotate[i]);if(FAILED(hr))return hr;
-    IDCompositionTransform* transforms[]={eyeScale[i].Get(),eyeRotate[i].Get()};hr=composition->CreateTransformGroup(transforms,2,&eyeTransform[i]);if(FAILED(hr))return hr;hr=composition->CreateRectangleClip(&eyeClip[i]);if(FAILED(hr))return hr;hr=composition->CreateEffectGroup(&eyeOpacity[i]);if(FAILED(hr))return hr;
+  for(int i=0;i<2;i++){if(!slots[i]){hr=composition->CreateVisual(&slots[i]);if(FAILED(hr))return hr;hr=composition->CreateVisual(&eyes[i]);if(FAILED(hr))return hr;hr=composition->CreateScaleTransform(&eyeScale[i]);if(FAILED(hr))return hr;hr=composition->CreateMatrixTransform(&eyePose[i]);if(FAILED(hr))return hr;
+    IDCompositionTransform* transforms[]={eyeScale[i].Get(),eyePose[i].Get()};hr=composition->CreateTransformGroup(transforms,2,&eyeTransform[i]);if(FAILED(hr))return hr;hr=composition->CreateRectangleClip(&eyeClip[i]);if(FAILED(hr))return hr;hr=composition->CreateEffectGroup(&eyeOpacity[i]);if(FAILED(hr))return hr;
     eyes[i]->SetTransform(eyeTransform[i].Get());slots[i]->SetClip(eyeClip[i].Get());slots[i]->SetEffect(eyeOpacity[i].Get());slots[i]->AddVisual(eyes[i].Get(),TRUE,nullptr);visual->AddVisual(slots[i].Get(),TRUE,nullptr);
    }
-   eyes[i]->SetContent(eyeSurface.Get());eyeScale[i]->SetCenterX(16*dpi);eyeScale[i]->SetCenterY(20*dpi);eyeRotate[i]->SetCenterX(16*dpi);eyeRotate[i]->SetCenterY(20*dpi);eyeRotate[i]->SetAngle(-11);
+   eyes[i]->SetContent(eyeSurface.Get());eyeScale[i]->SetCenterX(16*dpi);eyeScale[i]->SetCenterY(20*dpi);eyeScale[i]->SetScaleY(1);eyeClip[i]->SetLeft(-15*dpi);eyeClip[i]->SetRight(15*dpi);eyeClip[i]->SetBottom(33*dpi);
   }
   for(auto& cache:eyeProperties)cache.invalidate();eyeDpi=dpi;eyeLight=light;return S_OK;
  }
  HRESULT updateEyes(const Frame&f,const motion::Shape&s,bool baked){HRESULT hr=prepareEyes(f.scale,(f.flags&1)!=0);if(FAILED(hr))return hr;bool rtl=(f.flags&2)!=0;float a=baked?0:float(motion::clamp(1-model.body.x/.25,0,1));if(!model.eyeVisible())a=0;
-  for(int i=0;i<2;i++){float slot=rtl?(i==0?96.f:118.f):(i==0?20.f:42.f);float cx=float(s.x)+slot+float(4*model.gx),cy=float(s.y)+18+float(3*model.gy-.5*model.squint);bool farSide=(model.gx>0&&i==0)||(model.gx<0&&i==1);
-   baseEyeScale[i]=float((farSide?1-.18*std::abs(model.gx):1)*(1+.1*model.squint));auto& cache=eyeProperties[i];
-   // Identical COM setters still allocate composition commands. Keep exact float
-   // poses (no extra quantization), and only submit properties that changed.
-   if(cache.changed(0,baseEyeScale[i]*float(model.blink)))eyeScale[i]->SetScaleX(cache[0]);
-   if(cache.changed(1,float((1-.12*std::abs(model.gy))*(1-.4*model.squint)*(1-.1*model.lid/.54))))eyeScale[i]->SetScaleY(cache[1]);
-   if(cache.changed(2,(cx-16)*f.scale))eyes[i]->SetOffsetX(cache[2]);
-   if(cache.changed(3,(cy-20)*f.scale))eyes[i]->SetOffsetY(cache[3]);
-   if(cache.changed(4,(cx-15)*f.scale))eyeClip[i]->SetLeft(cache[4]);
-   if(cache.changed(5,(cx+15)*f.scale))eyeClip[i]->SetRight(cache[5]);
-   if(cache.changed(6,(float(s.y)+3+float(model.lid*30))*f.scale))eyeClip[i]->SetTop(cache[6]);
-   if(cache.changed(7,(float(s.y)+33)*f.scale))eyeClip[i]->SetBottom(cache[7]);
-   if(cache.changed(8,a))eyeOpacity[i]->SetOpacity(cache[8]);
+  if(a==0){for(int i=0;i<2;i++)if(eyeProperties[i].changed(4,0))eyeOpacity[i]->SetOpacity(0);return S_OK;}
+  for(int i=0;i<2;i++){float slot=rtl?(i==0?96.f:118.f):(i==0?20.f:42.f);float cx=float(s.x)+slot+float(4*model.gx);bool farSide=(model.gx>0&&i==0)||(model.gx<0&&i==1);auto& cache=eyeProperties[i];
+   float sx=float((farSide?1-.18*std::abs(model.gx):1)*(1+.1*model.squint)),sy=float((1-.12*std::abs(model.gy))*(1-.4*model.squint)*(1-.1*model.lid/.54));
+   auto matrix=motion::eyePose(sx,sy,float(18+3*model.gy-.5*model.squint)*f.scale,f.scale);
+   // Move the clip and glyph together; its horizontal edges stay constant in
+   // slot space. One matrix carries exact gaze/squash/rotation, no quantization.
+   if(cache.changed(0,float(model.blink)))eyeScale[i]->SetScaleX(cache[0]);
+   if(cache.changed(1,cx*f.scale))slots[i]->SetOffsetX(cache[1]);
+   if(cache.changed(2,float(s.y)*f.scale))slots[i]->SetOffsetY(cache[2]);
+   if(cache.changed(3,float(3+model.lid*30)*f.scale))eyeClip[i]->SetTop(cache[3]);
+   if(cache.changed(4,a))eyeOpacity[i]->SetOpacity(cache[4]);
+   bool changed=false;for(unsigned n=0;n<6;n++)changed|=cache.changed(5+n,matrix[n]);
+   if(changed)eyePose[i]->SetMatrix(D2D1::Matrix3x2F(matrix[0],matrix[1],matrix[2],matrix[3],matrix[4],matrix[5]));
   }return S_OK;
  }
+
  HRESULT blink(bool animateModel){if(!eyeSurface)return S_FALSE;double duration=model.nearby?.28:.38;gpuBlinkAt=GetTickCount64();gpuBlinkDuration=duration;gpuOnlyBlink=!animateModel;if(animateModel)model.blinkStart=model.age;
-  for(int i=0;i<2;i++){ComPtr<IDCompositionAnimation> a;HRESULT hr=composition->CreateAnimation(&a);if(FAILED(hr))return hr;float base=baseEyeScale[i],close=float(.4*duration),open=float(.52*duration);a->AddCubic(0,base,0,-.9f*base/(close*close),0);a->AddCubic(.4*duration,.1f*base,0,0,0);a->AddCubic(.48*duration,.1f*base,1.8f*base/open,-.9f*base/(open*open),0);a->End(duration,base);eyeScale[i]->SetScaleX(a.Get());eyeProperties[i].invalidate(0);}return composition->Commit();
+  for(int i=0;i<2;i++){ComPtr<IDCompositionAnimation> a;HRESULT hr=composition->CreateAnimation(&a);if(FAILED(hr))return hr;float base=1,close=float(.4*duration),open=float(.52*duration);a->AddCubic(0,base,0,-.9f*base/(close*close),0);a->AddCubic(.4*duration,.1f*base,0,0,0);a->AddCubic(.48*duration,.1f*base,1.8f*base/open,-.9f*base/(open*open),0);a->End(duration,base);eyeScale[i]->SetScaleX(a.Get());eyeProperties[i].invalidate(0);}return composition->Commit();
  }
  // Alpha audit (diagnostics): after each frame, every pixel of the composition surface outside the island's bounding box must be fully transparent. The count and first position are kept for the host status.
  bool auditAlpha=false;unsigned leakCount=0;int leakX=-1,leakY=-1;
