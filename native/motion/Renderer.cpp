@@ -63,9 +63,9 @@ struct Renderer {
   hr=dc->CreateSolidColorBrush(D2D1::ColorF(1,1,1,1),&brush);if(FAILED(hr))return hr;dc->CreateLayer(&maskLayer);for(float size:{12.f,15.f,16.f,42.f}){textFormat(size,false);textFormat(size,true);} /* warm the first paint: layer and DirectWrite formats exist before the first frame */ return S_OK;
  }
  HRESULT resize(UINT w,UINT h){if(width==w&&height==h)return S_OK;dc->SetTarget(nullptr);HRESULT hr;
-  if(swap)hr=swap->ResizeBuffers(2,w,h,DXGI_FORMAT_B8G8R8A8_UNORM,latencyFlag?UINT(DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT):0u);
+  if(swap)hr=swap->ResizeBuffers(3,w,h,DXGI_FORMAT_B8G8R8A8_UNORM,latencyFlag?UINT(DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT):0u);
   else {ComPtr<IDXGIDevice> dxgi;gpu.As(&dxgi);ComPtr<IDXGIAdapter> adapter;dxgi->GetAdapter(&adapter);ComPtr<IDXGIFactory2> f;adapter->GetParent(IID_PPV_ARGS(&f));
-   DXGI_SWAP_CHAIN_DESC1 desc={};desc.Width=w;desc.Height=h;desc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;desc.SampleDesc.Count=1;desc.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;desc.BufferCount=2;desc.SwapEffect=DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;desc.AlphaMode=DXGI_ALPHA_MODE_PREMULTIPLIED;
+   DXGI_SWAP_CHAIN_DESC1 desc={};desc.Width=w;desc.Height=h;desc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;desc.SampleDesc.Count=1;desc.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;desc.BufferCount=3; /* three buffers: with two, the next back buffer was still held by the compositor and PopLayer/EndDraw blocked for a whole timer tick (CI: end=15-17 ms, present 0.1 ms, consecutive frames) */desc.SwapEffect=DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;desc.AlphaMode=DXGI_ALPHA_MODE_PREMULTIPLIED;
    desc.Flags=DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;latencyFlag=true;
    hr=f->CreateSwapChainForComposition(gpu.Get(),&desc,nullptr,&swap);
    if(FAILED(hr)){desc.Flags=0;latencyFlag=false;hr=f->CreateSwapChainForComposition(gpu.Get(),&desc,nullptr,&swap);} /* no waitable object on this system: the timer/DwmFlush pacing stays */
