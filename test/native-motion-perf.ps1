@@ -131,7 +131,7 @@ try{
    $a=$reference.GetPixel($point[0],$point[1]);$b=$shot.GetPixel($point[0],$point[1])
    if([Math]::Abs($a.R-$b.R)-gt 6-or [Math]::Abs($a.G-$b.G)-gt 6-or [Math]::Abs($a.B-$b.B)-gt 6){throw "$name has an opaque/tinted pixel outside the island shape at $($point -join ',') (desktop $($a.R),$($a.G),$($a.B) vs $($b.R),$($b.G),$($b.B))"}
   }
-  $reference.Dispose();$shot.Dispose()
+  $shot.Dispose()
  }
  $far=[Drawing.Point]::new([int]($s.motion.center+420),[int][Math]::Min(700,$s.motion.top+600))
  $configuration.islandVisibility='approach';Save-Settings;[Windows.Forms.Cursor]::Position=$far;$s=Wait-Island $false;Start-Sleep -Milliseconds 300
@@ -140,9 +140,16 @@ try{
  $barReference=Grab $barBox[0] $barBox[1] $barBox[2] $barBox[3];$cardReference=Grab $cardBox[0] $cardBox[1] $cardBox[2] $cardBox[3]
  $configuration.islandVisibility='always';Save-Settings;$s=Wait-Island $true;[Windows.Forms.Cursor]::Position=$far;Start-Sleep -Milliseconds 500
  Assert-Transparent 'bar' $barReference (Grab $barBox[0] $barBox[1] $barBox[2] $barBox[3])
- [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]1,[IntPtr]::Zero);Start-Sleep -Milliseconds 700
- Assert-Transparent 'card' $cardReference (Grab $cardBox[0] $cardBox[1] $cardBox[2] $cardBox[3])
- [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]::Zero,[IntPtr]::Zero);Start-Sleep -Milliseconds 500;Refresh
+ function Assert-CornersMatch($name,$reference,$shot){$w=$shot.Width;$h=$shot.Height;foreach($point in @(@(1,1),@(($w-2),1),@(1,($h-2)),@(($w-2),($h-2)))){$x=$reference.GetPixel($point[0],$point[1]);$y=$shot.GetPixel($point[0],$point[1]);if([Math]::Abs($x.R-$y.R)-gt 6-or [Math]::Abs($x.G-$y.G)-gt 6-or [Math]::Abs($x.B-$y.B)-gt 6){throw "$name frame shows an opaque/tinted pixel outside the island shape at $($point -join ',')"}}}
+ # During the open and the close animation every captured frame must keep the corners (outside the shape) transparent.
+ foreach($direction in @(@{message=1;name='open'},@{message=0;name='close'})){
+  [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]$direction.message,[IntPtr]::Zero)
+  $frames=0;$watch=[Diagnostics.Stopwatch]::StartNew()
+  while($watch.ElapsedMilliseconds-lt 450){$shot=Grab $cardBox[0] $cardBox[1] $cardBox[2] $cardBox[3];Assert-CornersMatch "card $($direction.name)" $cardReference $shot;$frames++;if($direction.message-eq 1-and $watch.ElapsedMilliseconds-gt 300){$last=$shot}else{$shot.Dispose()}}
+  if($frames-lt 5){throw "Transparency sampling captured only $frames frames during $($direction.name)"}
+  if($direction.message-eq 1){Assert-Transparent 'card' $cardReference $last}
+ }
+ Start-Sleep -Milliseconds 300;Refresh
  Write-Output 'NATIVE TRANSPARENCY: corner pixels outside the bar and the open card match the desktop'
  # Real Win32 message dispatch: input timestamp is captured at UI dispatch, never at a later timer.
  $frames=@();$inputs=@()

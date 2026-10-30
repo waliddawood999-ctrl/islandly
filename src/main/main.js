@@ -224,7 +224,6 @@ function createWindow() {
 
   material = new Material({ window: win, native: win32, zoom,
     dpi: () => screen.getDisplayMatching(win.getBounds()).scaleFactor,
-    initialRect: { x: 0, y: 0, width: envelope.w, height: envelope.h, radius: envelope.h / 2 },
     publish: (state) => {
       for (const target of [win, settingsWin]) {
         if (target && !target.isDestroyed()) {

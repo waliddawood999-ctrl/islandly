@@ -128,7 +128,7 @@ struct Renderer {
   brush->SetColor(light?D2D1::ColorF(.94f,.94f,.96f,acrylic?.46f:.94f):D2D1::ColorF(12/255.f,12/255.f,15/255.f,acrylic?.46f:.9f));dc->FillGeometry(path.Get(),brush.Get());
   if(!maskLayer)dc->CreateLayer(&maskLayer);dc->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),path.Get()),maskLayer.Get());
   if(floating){brush->SetColor(D2D1::ColorF(1,1,1,.06f));dc->DrawGeometry(path.Get(),brush.Get(),4.f);}
-  brush->SetColor(D2D1::ColorF(1,1,1,.12f));dc->DrawGeometry(path.Get(),brush.Get(),1.f);
+  /* Edge: a light island on a light desktop needs a visible contour (grey 241 on 237 was invisible); the stroke is centred on the outline and the layer mask keeps the inner 1 px. */ if(light){brush->SetColor(D2D1::ColorF(0,0,0,.30f));dc->DrawGeometry(path.Get(),brush.Get(),2.f);}else{brush->SetColor(D2D1::ColorF(1,1,1,.12f));dc->DrawGeometry(path.Get(),brush.Get(),1.f);}
   float a=float(motion::clamp(1-model.body.x/.25,0,1));float x=float(s.x),y=float(s.y),w=float(s.w),h=float(s.h);
   if(h<12){}else if(model.eyeVisible()&&a>0){float centers[2]={rtl?96.f:20.f,rtl?118.f:42.f};
    if(file&&*file)for(int i=0;i<2;i++){float cx=x+centers[i]+float(4*model.gx),cy=y+18+float(3*model.gy-.5*model.squint);

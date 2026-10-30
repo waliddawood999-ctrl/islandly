@@ -47,6 +47,8 @@ sealed class NativeMotion:IDisposable {
  }
  public event Action<double> FrameChanged;
  public Action Reveal;
+ [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr window,IntPtr region,bool redraw);[DllImport("gdi32.dll")] static extern IntPtr CreateRectRgn(int a,int b,int c,int d);
+ void ClearRegion(){if(owner.IsHandleCreated&&owner.Visible){IntPtr empty=CreateRectRgn(0,0,0,0);SetWindowRgn(owner.Handle,empty,false);}}
  public void PlaceHaloNow(){PlaceHalo();}
  public bool Opening {get{return target!=0;}}
  public bool VisibleEyes {get{return snapshot.visible!=0;}}
@@ -54,7 +56,7 @@ sealed class NativeMotion:IDisposable {
  public void Configure(MotionOptions next){bool changed=options.eyes!=next.eyes||options.eco!=next.eco||options.mode!=next.mode||options.fullscreen!=next.fullscreen||options.compact!=next.compact||options.light!=next.light||options.rtl!=next.rtl||options.acrylic!=next.acrylic||options.floating!=next.floating||options.center!=next.center||options.top!=next.top||options.scale!=next.scale||options.label!=next.label||options.date!=next.date||options.hidden!=next.hidden||options.hotZone!=next.hotZone||options.sliver!=next.sliver||options.screen!=next.screen||options.loading!=next.loading;
   options=next;float s=options.scale;int w=Math.Min(options.screen.Width,(int)Math.Ceiling(600*s)),h=Math.Min(options.screen.Height,(int)Math.Ceiling(920*s));
   int left=Math.Max(options.screen.Left,Math.Min(options.screen.Right-w,(int)(options.center-w/2f)));
-  var bounds=new Rectangle(left,options.screen.Top,w,h);if(owner.Bounds!=bounds)owner.Bounds=bounds;
+  var bounds=new Rectangle(left,options.screen.Top,w,h);if(owner.Bounds!=bounds){ClearRegion();owner.Bounds=bounds;} /* the next Draw re-applies the pill region before its Present; until then nothing of the new full rectangle can show */
   frame=new MotionApi.Frame{width=w,height=h,scale=s,center=(options.center-left)/s,top=(options.top-options.screen.Top)/s,left=(options.screen.Left-left)/s,right=(options.screen.Right-left)/s,cardWidth=cardWidth,cardHeight=cardHeight,opacity=fading?frame.opacity:1,anticipation=0,flags=(options.light?1:0)|(options.rtl?2:0)|(options.acrylic?4:0)|(options.floating?8:0)|(options.sliver?16:0)|(options.loading?64:0)};
   if(options.hidden){Input();Step(0);Interlocked.Exchange(ref loop,0);StopEyes();owner.Hide();
    // Hidden by fullscreen or 'show on approach': no timers run; one input-only strip (alpha 1/255, never activates) wakes the island when the mouse enters it.
