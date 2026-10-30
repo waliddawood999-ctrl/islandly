@@ -493,4 +493,12 @@ html.acrylic #island-surface { backdrop-filter: none; -webkit-backdrop-filter: n
   html.acrylic #island { --glass: rgba(247,248,252,.64); --glass-solid: rgba(247,248,252,.82); }
   .dot { background: rgba(12,12,18,.30); } .dot.on { background: rgba(12,12,18,.90); }
   .nt-input { color: var(--text); border-color: rgba(12,12,18,.18); background: var(--card); }
+  /* Chips were pale-on-pale in light mode (e.g. clipboard 'Translate' / 'Clear'): dark text on a stronger tint. */
+  .chip { color: #2a2d3d; }
+  .chip.on { background: rgba(124,58,237,.18); color: #4c2f9e; }
+  .chip.act { background: rgba(37,99,235,.15); color: #1b4a96; }
+  .chip.act:hover { background: rgba(37,99,235,.24); }
 }
+/* Portrait card: clipboard rows get a little more air so the taller shape is not left with a blank strip. */
+.expanded-grid .cl-list { gap: 10px; }
+.expanded-grid .cl-row { height: 46px; }
