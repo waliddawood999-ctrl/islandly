@@ -16,7 +16,7 @@ function Command($value){Set-Content "$probe/command.tmp" $value -NoNewline;Move
 function Phase($phase){$end=[DateTime]::UtcNow.AddSeconds(40);do{if(Test-Path "$probe/status.json"){$s=Read-Status;if($s.phase-eq $phase){return $s}};Start-Sleep -Milliseconds 50}while([DateTime]::UtcNow-lt $end);throw "Timed out: $phase"}
 try {
  [void](Phase 'idle');Command 'settings';[void](Phase 'panel')
- $end=[DateTime]::UtcNow.AddSeconds(75);$reads=0
+ $end=[DateTime]::UtcNow.AddSeconds(75);$reads=0;$script:statusReadWarnings=0
  do {
   $s=Read-Status
   if($s.phase-ne 'panel'-or !$s.appBar-or @($s.processes).Count-lt 2){throw 'Live ownership snapshot lost the panel/AppBar or owned processes'}
@@ -24,6 +24,7 @@ try {
   if([Math]::Abs($sum-$s.totalMB)-gt 0.00001){throw 'Live total omits an owned process'}
   $reads++;Start-Sleep -Milliseconds 1
  }while([DateTime]::UtcNow-lt $end)
+ if($script:statusReadWarnings-ne 0){throw 'Live atomic status read required retries'}
  Command 'close';$closed=Phase 'idle'
  if(@($closed.processes).Count-ne 1){throw 'Electron survived panel close'}
  Write-Output "LIVE STATUS PASS: $reads strict reads during75s of actual AppBar settings ownership, then native-only idle"

@@ -453,7 +453,7 @@ sealed class IslandHost : Form {
             processes.Add(new { pid=id, name=p.ProcessName, mb=mb, cpu=cpu }); } } catch(ArgumentException) {}
         cpuSampleAt=now;
         var data = new { hostPid=Process.GetCurrentProcess().Id, phase=launching?"starting":child == null ? "idle" : ready ? "panel" : "starting", hotkey=islandHotkey, processStartedMs=launchedAt, requestMs=requestAt, eco=nativeEco, material=nativeAcrylic?"acrylic":"glass", materialSupported=NativeMaterial.Supported(), averageNotApplicable=true, totalMB=total, totalCPU=totalCPU, processes=processes, launchCount=launchCount, latenciesMs=latencies.ToArray(), appBar=bar, appBarTop=abd.rect.top, appBarBottom=abd.rect.bottom, stateAgeMs=clock.ElapsedMilliseconds-stateWrittenAt, command=lastCommand };
-        string file=Path.Combine(probe,"status.json"); try { File.WriteAllText(file+".tmp",json.Serialize(data)); if(File.Exists(file)) File.Replace(file+".tmp",file,null); else File.Move(file+".tmp",file); } catch(IOException) {}
+        string file=Path.Combine(probe,"status.json"); try { NativeStatusPublication.Publish(file,json.Serialize(data)); } catch(IOException) {}
     }
     void DeleteBarMarker() { try { File.Delete(Path.Combine(profile,"native-appbar-marker.json")); } catch {} }
     void MarkBar() {
