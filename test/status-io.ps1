@@ -15,14 +15,16 @@ foreach($name in @('Read-SharedJson','Read-Status')) {
 $publisherSource=Get-Content "$root/native/StatusPublication.cs" -Raw
 Add-Type ($publisherSource + @'
 public static class StatusPublication {
+ static readonly System.Threading.ManualResetEvent progress=new System.Threading.ManualResetEvent(false);
+ public static bool WaitForProgress(){return progress.WaitOne(10000);}
  public static int Published,Busy; public static Exception Failure; static volatile bool stopped,released; static System.Threading.Thread writer;
  public static void Start(string file,int pid) {
-  stopped=false;released=false;Failure=null;
+  stopped=false;released=false;Failure=null;Published=Busy=0;progress.Reset();
   writer=new System.Threading.Thread(()=>{try{int n=7;while(!stopped){
    string processes="{\"pid\":"+pid+",\"mb\":40,\"cpu\":0}";
    for(int i=1;i<=n%8;i++)processes+=",{\"pid\":"+(pid+i)+",\"mb\":50,\"cpu\":0.125}";
    string data="{\"hostPid\":"+pid+",\"phase\":\"panel\",\"generation\":"+n+",\"processes\":["+processes+"]}";
-   try { NativeStatusPublication.Publish(file,data); Published++; if(n==7)while(!released&&!stopped)System.Threading.Thread.Sleep(1); n++; } catch(IOException) { Busy++; }
+   try { NativeStatusPublication.Publish(file,data); Published++; if(Published>=20)progress.Set(); if(n==7)while(!released&&!stopped)System.Threading.Thread.Sleep(1); n++; } catch(IOException) { Busy++; }
    System.Threading.Thread.Sleep(1);
   }}catch(Exception e){Failure=e;}});writer.IsBackground=true;writer.Start();
  }
@@ -37,6 +39,9 @@ try {
  $first=Read-Status
  if(@($first.processes).Count-ne 8){throw 'Initial full ownership fixture was truncated'}
  [StatusPublication]::Continue()
+ # Explicit writer readiness, not a speed race between2000 reads and20 fsyncs.
+ # The existing20-publication progress requirement and zero-retry reader remain.
+ if(![StatusPublication]::WaitForProgress()){throw 'Publisher did not reach20 complete publications'}
  $last=-1
  $script:statusReadWarnings=0
  for($n=0;$n-lt 2000;$n++) {

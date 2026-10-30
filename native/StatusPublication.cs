@@ -11,8 +11,9 @@ public static class NativeStatusPublication {
     [return: MarshalAs(UnmanagedType.Bool)]
     static extern bool MoveFileEx(string source,string destination,uint flags);
     public static void Publish(string file,string snapshot) {
-        string temporary=file+".tmp";
+        string temporary=file+"."+Guid.NewGuid().ToString("N")+".tmp";
         byte[] bytes=new UTF8Encoding(false).GetBytes(snapshot);
+        try {
         using(var stream=new FileStream(temporary,FileMode.Create,FileAccess.Write,FileShare.ReadWrite|FileShare.Delete)) {
             stream.Write(bytes,0,bytes.Length);stream.Flush(true);
         }
@@ -22,5 +23,6 @@ public static class NativeStatusPublication {
             int error=Marshal.GetLastWin32Error();
             throw new IOException("Atomic ownership publication failed (Win32 "+error+")",new Win32Exception(error));
         }
+        } finally { if(File.Exists(temporary))File.Delete(temporary); }
     }
 }

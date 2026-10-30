@@ -4,6 +4,21 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 static class FullscreenFixture {
+ sealed class Backdrop:Form {
+  public bool Passive;
+  public Backdrop(){DoubleBuffered=true;}
+  protected override void OnPaint(PaintEventArgs e){
+   if(!Passive){base.OnPaint(e);return;}
+   // Fixed textured background: leaked blur AND leaked tint remain detectable.
+   using(var a=new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(37,61,83)))
+   using(var b=new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(209,85,61)))
+    for(int y=0;y<ClientSize.Height;y+=8)for(int x=0;x<ClientSize.Width;x+=8)e.Graphics.FillRectangle(((x/8+y/8)&1)==0?a:b,x,y,8,8);
+  }
+
+  protected override bool ShowWithoutActivation {get{return Passive;}}
+  protected override CreateParams CreateParams {get{var p=base.CreateParams;if(Passive)p.ExStyle|=0x08000000;return p;}}
+ }
+
  [DllImport("user32.dll")]static extern bool SetForegroundWindow(IntPtr window);
  [DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")]static extern void keybd_event(byte key,byte scan,uint flags,UIntPtr extra);
@@ -13,10 +28,11 @@ static class FullscreenFixture {
    window.Activate();SetForegroundWindow(window.Handle);Application.DoEvents();
    if(GetForegroundWindow()==window.Handle)return true;System.Threading.Thread.Sleep(50);}
   return GetForegroundWindow()==window.Handle;}
- [STAThread]static int Main(string[]args){try{using(var window=new Form{FormBorderStyle=FormBorderStyle.None,StartPosition=FormStartPosition.Manual,ShowInTaskbar=false,TopMost=true,Bounds=Screen.PrimaryScreen.Bounds,Text="T21 fullscreen regression"})using(var timer=new Timer{Interval=100}){
-  // Optional args: [1] "x,y,w,h" turns the fixture into a small foreign topmost box (z-order check), [2] file prefix (default "fullscreen").
-  string prefix=args.Length>2?args[2]:"fullscreen";
-  window.Shown+=delegate{if(args.Length>1&&args[1]!=""){var b=args[1].Split(',');window.Bounds=new System.Drawing.Rectangle(int.Parse(b[0]),int.Parse(b[1]),int.Parse(b[2]),int.Parse(b[3]));window.BackColor=System.Drawing.Color.FromArgb(255,0,255);}else window.Bounds=Screen.PrimaryScreen.Bounds;
+ [STAThread]static int Main(string[]args){try{using(var window=new Backdrop{FormBorderStyle=FormBorderStyle.None,StartPosition=FormStartPosition.Manual,ShowInTaskbar=false,TopMost=true,Bounds=Screen.PrimaryScreen.Bounds,Text="T21 fullscreen regression",Passive=Array.IndexOf(args,"--backdrop")>=0})using(var timer=new Timer{Interval=100}){
+  bool backdrop=Array.IndexOf(args,"--backdrop")>=0;string prefix=args.Length>2?args[2]:"fullscreen";
+  window.BackColor=System.Drawing.Color.FromArgb(37,61,83);
+  window.Shown+=delegate{if(!backdrop&&args.Length>1&&args[1]!=""){var b=args[1].Split(',');window.Bounds=new System.Drawing.Rectangle(int.Parse(b[0]),int.Parse(b[1]),int.Parse(b[2]),int.Parse(b[3]));window.BackColor=System.Drawing.Color.FromArgb(255,0,255);}else window.Bounds=Screen.PrimaryScreen.Bounds;
+   if(backdrop){File.WriteAllText(Path.Combine(args[0],"backdrop-ready"),window.Handle.ToInt64().ToString());timer.Start();return;}
    if(TakeForeground(window,3000)){File.WriteAllText(Path.Combine(args[0],prefix+"-ready"),window.Handle.ToInt64().ToString());}
    else File.WriteAllText(Path.Combine(args[0],prefix+"-not-foreground"),window.Handle.ToInt64()+" foreground="+GetForegroundWindow().ToInt64());
    timer.Start();};

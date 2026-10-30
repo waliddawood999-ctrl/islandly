@@ -51,3 +51,5 @@
 | تفعيل وضع التوفير تلقائياً مع Battery saver | T14 | `ecoAuto` |
 | بنود أخرى من بحث المنافسين | وليد | لم تصلني قائمة البحث نفسها؛ تُضاف هنا |
 | T21 | Native Direct2D/DirectComposition eyes, liquid motion, floating placement and native motion CI per Claude handoff 9a22597 | Codex | `codex/T21-native-motion` | T20 ac6b06f | review | Claude | Draft PR #25 to T20; native implementation and Windows verification in progress |
+
+| T23 | Native fullscreen, hidden-eye CPU and atomic status publication regressions | Codex | `codex/T23-fullscreen-review` | T21 0007e48 (includes b0dd96c) | review | Claude | Draft PR #27; deterministic regressions; strict existing budgets retained; Windows CI in progress; no merges |

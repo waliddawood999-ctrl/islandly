@@ -155,6 +155,12 @@ try {
         idle=$idle; panel=$panel; afterClose=$afterClose; runtimeShutdownMs=$shutdownMs; panelOpenLatencyMs=@($reopened.latenciesMs); latencyDefinition='native interaction through process creation, expanded content/font readiness and first paint; cold opens';
         electron=(Get-Content "$root/node_modules/electron/package.json" -Raw | ConvertFrom-Json).version; measuredAt=[DateTime]::UtcNow.ToString('o'); ownedPids=@($owned); acceptanceUnder180=($idle.averageMB -lt 180 -and $afterClose.averageMB -lt 180) }
     $result | ConvertTo-Json -Depth 12 | Set-Content $Output -Encoding UTF8
+    $hostLog=Join-Path $profile 'native-panels.log'
+    if(Test-Path $hostLog){
+        $stream=[IO.FileStream]::new($hostLog,[IO.FileMode]::Open,[IO.FileAccess]::Read,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete));$reader=[IO.StreamReader]::new($stream)
+        try{$hostErrors=$reader.ReadToEnd()}finally{$reader.Dispose()}
+        if($hostErrors -match '(?m)^\d{4}-\d{2}-\d{2}T[^\s]+ (ui-thread|fatal)\b'){throw 'Native host reported an unhandled exception during ownership/footprint measurement'}
+    }
     Write-Output "NATIVE FOOTPRINT: idle $($idle.averageMB) MB; panel $($panel.averageMB) MB; after-close $($afterClose.averageMB) MB; panel latency $($result.panelOpenLatencyMs -join ', ') ms; shutdown $shutdownMs ms; idle CPU $($idle.averageCPU)%"
     if (!$result.acceptanceUnder180) { throw 'Idle RAM acceptance failed: must be below 180 MB before and after opening panels' }
     if ($idle.averageCPU -ge 1 -or $afterClose.averageCPU -ge 1) { throw 'Native idle CPU must remain below 1 percent before and after opening panels' }

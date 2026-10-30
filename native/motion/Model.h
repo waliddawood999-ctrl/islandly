@@ -32,7 +32,7 @@ struct Model {
   if(blinkStart>=0){double u=(age-blinkStart)/(nearby?.28:.38);if(u>=1){blinkStart=-1;blink=0;nextBlink=age+(nearby?3.2:11.2);}else{double c=u<.4?std::pow(u/.4,2):u<.48?1:std::pow(1-(u-.48)/.52,2);blink=1-.9*c;}}
   else blink=1;
  }
- bool moving()const{return body.moving()||drop.moving();}
+ bool moving()const{return body.moving()||(!mode&&!eco&&drop.moving());}
 };
 struct Shape {double x,y,w,h,r,bulge,wl;};
 inline Shape shape(const Model&m,double center,double top,double screenLeft,double screenRight,double width=360,double height=440,double anticipation=0){
