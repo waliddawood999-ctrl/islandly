@@ -118,6 +118,6 @@ jobs:
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
-          name: islandly-t20-laptop-fixes-windows
+          name: islandly-t21-native-motion-windows
           path: out/Islandly-sac-reputation-win64.zip
           if-no-files-found: error

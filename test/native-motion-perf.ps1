@@ -19,12 +19,20 @@ public static class MotionProcessTree {
  public static int[] Children(int owner){IntPtr snapshot=CreateToolhelp32Snapshot(2,0);if(snapshot==new IntPtr(-1))throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
   try {var children=new System.Collections.Generic.List<int>();ENTRY e=new ENTRY();e.size=(uint)Marshal.SizeOf(e);if(!Process32First(snapshot,ref e))throw new Exception("Cannot enumerate processes");do{if(e.parent==owner)children.Add((int)e.id);}while(Process32Next(snapshot,ref e));return children.ToArray();}finally{CloseHandle(snapshot);}}
 }
+
 '@
 $probe=Join-Path $env:TEMP ('Islandly-motion-perf-'+[guid]::NewGuid());$profile=Join-Path $probe 'profile'
 New-Item $profile -ItemType Directory -Force|Out-Null
 $configuration=@{idleEyes=$true;floating=$true;motion='full';ecoMode=$false;ecoAuto=$false;autoHide='never';uiLang='en';scale=1;islandMode=if($Mode-eq 'reserved-bar'){'appbar'}else{'overlay'};weather=$false;updates=$false;breakEvery=0;timeTracking=$false;prayerAlerts=$false;hideFullscreen=$true}
 function Save-Settings {$configuration|ConvertTo-Json|Set-Content "$profile/settings.json" -Encoding utf8}
 Save-Settings
+$tool=& "$root/scripts/native-toolchain.ps1"
+$refs=@('mscorlib','System','System.Core','System.Drawing','System.Windows.Forms')|ForEach-Object{'/reference:'+(Join-Path $tool.references ($_+'.dll'))}
+$fullscreenExe=Join-Path $root 'native/bin/FullscreenFixture.exe'
+& $tool.compiler /nologo /noconfig /nostdlib+ /target:exe "/out:$fullscreenExe" $refs "$root/test/native-fullscreen.cs"
+if($LASTEXITCODE-ne 0){throw 'Fullscreen regression fixture compilation failed'}
+$fullscreenProcess=$null
+function Close-Fullscreen{if($null-ne $fullscreenProcess-and !$fullscreenProcess.HasExited){Set-Content "$probe/fullscreen-stop" 'stop';if(!$fullscreenProcess.WaitForExit(5000)){$fullscreenProcess.Kill()}}}
 $hostProcess=Start-Process "$root/native/bin/Islandly.exe" -ArgumentList @('--root',('"'+$root+'"'),'--profile',('"'+$profile+'"'),'--probe-dir',('"'+$probe+'"'),'--mode',$Mode,'--motion-metrics','--quiet-probe') -PassThru
 $owned=[Collections.Generic.HashSet[int]]::new()
 $ast=[Management.Automation.Language.Parser]::ParseFile("$root/test/native-footprint.ps1",[ref]$null,[ref]$null)
@@ -48,6 +56,9 @@ function Phase($name,$moving){
  Refresh;$after=Read-Status
  if(@($after.processes).Count-ne 1-or $after.phase-ne 'idle'){throw 'Native idle retained an owned process'}
  $avg=($samples|ForEach-Object{$_.totalMB}|Measure-Object -Average).Average;$cpu=($samples|ForEach-Object{$_.totalCPU}|Measure-Object -Average).Average;$peak=($samples|ForEach-Object{$_.totalMB}|Measure-Object -Maximum).Maximum
+ New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null
+ @{name=$name;averageMB=$avg;peakMB=$peak;averageCPU=$cpu;samples=$samples;before=$before.motion;after=$after.motion}|ConvertTo-Json -Depth 12|Set-Content "$root/out/t21/phase-$Mode-$name.json" -Encoding utf8
+ Write-Output "MOTION PHASE RAW: $Mode $name RAM=$avg/$peak CPU=$cpu renders=$($after.motion.renders-$before.motion.renders) cursorReads=$($after.motion.cursorReads-$before.motion.cursorReads) start=$($before.motion|ConvertTo-Json -Compress) end=$($after.motion|ConvertTo-Json -Compress)"
  if($peak-ge 180){throw "$name RAM exceeds180 MB"}
  $limit=if($moving){.5}else{.1};if($cpu-ge $limit){throw "$name CPU $cpu exceeds $limit% of one core"}
  if(!$moving-and $after.motion.cursorReads-ne $before.motion.cursorReads){throw "$name polled a far/hidden cursor"}
@@ -68,6 +79,15 @@ try{
  $hidden=Phase 'eyes-hidden' $false
  if((Read-Status).motion.eyesVisible-or (Read-Status).motion.cursorTimer){throw 'Eco did not remove eyes and their timers'}
  $configuration.ecoMode=$false;Save-Settings;Refresh
+ foreach($policy in @('reduced','off')){
+  $configuration.motion=$policy;Save-Settings;Refresh;$s=Read-Status
+  if($s.motion.cursorTimer-or ($policy-eq 'off'-and $s.motion.eyesVisible)-or ($policy-eq 'reduced'-and ($s.motion.gx-ne 0-or $s.motion.gy-ne 0-or $s.motion.lid-ne 0))){throw "$policy did not stop eye motion"}
+ }
+ $configuration.motion='full';Save-Settings;Refresh
+ $fullscreenProcess=Start-Process $fullscreenExe -ArgumentList ('"'+$probe+'"') -PassThru
+ $deadline=[DateTime]::UtcNow.AddSeconds(5);while(!(Test-Path "$probe/fullscreen-ready")){if($fullscreenProcess.HasExited-or [DateTime]::UtcNow-gt $deadline){throw 'Fullscreen fixture did not start'};Start-Sleep -Milliseconds 20}
+ try{Refresh;$fullscreen=Read-Status;if($fullscreen.motion.eyesVisible-or $fullscreen.motion.cursorTimer){throw 'Real fullscreen foreground did not hide eyes/timers'}}finally{Close-Fullscreen}
+ Refresh
  # Real Win32 message dispatch: input timestamp is captured at UI dispatch, never at a later timer.
  $frames=@();$inputs=@()
  for($n=0;$n-lt 12;$n++){
@@ -85,6 +105,7 @@ try{
  @{mode=$Mode;idle=$idle;moving=$moving;hidden=$hidden;liquid=@{frameP50=$p50;frameP95=$p95;lateFrames=$late;frameCpuAverageMs=$cpu;inputMaxMs=$response;inputSamples=$inputs;frames=$frames};hardware='Windows CI single monitor; laptop SAC/second physical monitor/144Hz not run'}|ConvertTo-Json -Depth 14|Set-Content "$root/out/t21/perf-$Mode.json" -Encoding utf8
  Write-Output "NATIVE LIQUID: $Mode frame p50/p95=$p50/$p95 ms, CPU mean=$cpu ms/frame, input max=$response ms, >16.667ms=$late"
 }finally{
+ try{Close-Fullscreen;Refresh;Write-Output ('MOTION LAST STATUS: '+((Read-Status)|ConvertTo-Json -Compress -Depth 8))}catch{}
  if(!$hostProcess.HasExited){Set-Content "$probe/command.txt" 'exit';if(!$hostProcess.WaitForExit(10000)){$hostProcess.Kill()}}
  New-Item "$root/out/t21/logs-$Mode" -ItemType Directory -Force|Out-Null
  Copy-Item "$profile/*.log","$probe/status.json","$probe/motion-frames.json" "$root/out/t21/logs-$Mode" -Force -ErrorAction SilentlyContinue

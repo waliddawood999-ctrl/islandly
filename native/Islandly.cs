@@ -98,7 +98,7 @@ sealed class IslandHost : Form {
     readonly List<string> pendingClipboard = new List<string>();
     ConsentWatcher consent;
     string privacyLabel = "";
-    bool nativeEco, nativeAcrylic;
+    bool nativeEco, nativeAcrylic,nativeLight;int clockMinute=-1;
     string appliedMaterial = "";
     Size clippedSize=Size.Empty;
     ForegroundWatcher foregroundWatcher; NativeMotion motion; bool cancelLaunch,hoverLaunch; readonly System.Windows.Forms.Timer leaveGrace=new System.Windows.Forms.Timer();
@@ -148,16 +148,18 @@ sealed class IslandHost : Form {
         FormClosed += delegate { Cleanup(); };
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += DisplayChanged;
         Microsoft.Win32.SystemEvents.PowerModeChanged += PowerChanged;
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += ThemeChanged;
+        ReadTheme();
     }
     static string Arg(string[] args, string key, string fallback) { int i = Array.IndexOf(args,key); return i >= 0 && i+1 < args.Length ? args[i+1] : fallback; }
     protected override bool ShowWithoutActivation { get { return true; } }
     protected override CreateParams CreateParams { get { var p = base.CreateParams; p.ExStyle |= 0x08200080; return p; } }
     string Setting(string key, string fallback) { object v; return settings.TryGetValue(key,out v) ? Convert.ToString(v,System.Globalization.CultureInfo.InvariantCulture) : fallback; }
-    void ReadSettings() {
+    bool ReadSettings() {
         string file = Path.Combine(profile,"settings.json");
-        try { var stamp = File.GetLastWriteTimeUtc(file); if (stamp == settingsStamp) return;
-            var next = json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file)); settings = next; settingsStamp = stamp; UpdateEco();
-        } catch { }
+        try { var stamp = File.GetLastWriteTimeUtc(file); if (stamp == settingsStamp) return false;
+            var next = json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file)); settings = next; settingsStamp = stamp; UpdateEco();return true;
+        } catch {return false;}
     }
     protected override void OnHandleCreated(EventArgs e) {
         base.OnHandleCreated(e);
@@ -190,12 +192,14 @@ sealed class IslandHost : Form {
     void PowerChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs e) {
         if(!closing && IsHandleCreated) BeginInvoke((Action)delegate { UpdateEco(); Position(); });
     }
+    void ReadTheme(){try{using(var key=Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))nativeLight=Convert.ToInt32(key==null?0:key.GetValue("AppsUseLightTheme",0))!=0;}catch{nativeLight=false;}}
+    void ThemeChanged(object sender,Microsoft.Win32.UserPreferenceChangedEventArgs e){if(!closing&&IsHandleCreated)BeginInvoke((Action)delegate{ReadTheme();Position();});}
     void ApplyNativeMaterial() {
         string requested=Setting("material","acrylic");
-        if(requested==appliedMaterial) return;
-        appliedMaterial=requested; clippedSize=Size.Empty;
-        nativeAcrylic=requested=="acrylic" && NativeMaterial.Apply(Handle,true);
-        if(!nativeAcrylic) NativeMaterial.Apply(Handle,false);
+        string identity=requested+(nativeLight?":light":":dark");if(identity==appliedMaterial) return;
+        appliedMaterial=identity; clippedSize=Size.Empty;
+        nativeAcrylic=requested=="acrylic" && NativeMaterial.Apply(Handle,true,nativeLight);
+        if(!nativeAcrylic) NativeMaterial.Apply(Handle,false,nativeLight);
     }
     void DisplayChanged(object s, EventArgs e) { if (!closing && IsHandleCreated) BeginInvoke((Action)Position); }
     bool Fullscreen(bool preference=true) {
@@ -209,6 +213,7 @@ sealed class IslandHost : Form {
     }
     void Position() {
         if (closing || !IsHandleCreated) return;
+        clockMinute=DateTime.Now.Hour*60+DateTime.Now.Minute;
         ApplyNativeMaterial();
         string mode=modeOverride == "" ? Setting("islandMode","overlay") : modeOverride;
         bool reserved = !barBlocked && (mode == "appbar" || mode == "reserved-bar");
@@ -239,7 +244,7 @@ sealed class IslandHost : Form {
         if(floating) x=pos=="left"?screen.Left+(int)(20*scale):pos=="right"?screen.Right-w-(int)(20*scale):x;
         float center=x+w/2f,top=screen.Top+(sliver?0:(floating?14:8)*scale);
         if(motion!=null){
-            bool light=false;try{using(var key=Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))light=Convert.ToInt32(key==null?0:key.GetValue("AppsUseLightTheme",0))!=0;}catch{}
+            bool light=nativeLight;
             bool compact=TimerHasState()||privacyLabel!=""||SystemInformation.PowerStatus.BatteryChargeStatus!=BatteryChargeStatus.NoSystemBattery&&SystemInformation.PowerStatus.BatteryLifePercent<.2f;
             string lang=Setting("uiLang",Setting("lang","ar"));if(lang=="auto")lang=Setting("lang","ar");
             string label=motion.Opening?DateTime.Now.ToString("HH:mm"):CompactLabel();if(Setting("digits","latn")=="arab")for(int i=0;i<10;i++)label=label.Replace((char)('0'+i),(char)('٠'+i));
@@ -451,14 +456,14 @@ sealed class IslandHost : Form {
         shutdownAt = 0; Position(); Status();
     }
     void Tick(object sender, EventArgs e) {
-        ReadSettings();
+        bool settingsChanged=ReadSettings();
         if(clock.ElapsedMilliseconds-lastBackground >= 5000) { lastBackground=clock.ElapsedMilliseconds; if(child == null) BackgroundTick(); }
         if(!launching && child != null && (child.HasExited || shutdownAt > 0 && clock.ElapsedMilliseconds-shutdownAt > 1500 || !ready && clock.ElapsedMilliseconds-launchedAt > (hasLaunchedSuccessfully?60000:120000))) EndSession();
         if(TimerRunning() && Convert.ToInt64(state["endAt"]) <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() && child == null) {
             state["running"] = false; state["remaining"] = 0; state["completed"] = true; SaveState();
-            System.Media.SystemSounds.Asterisk.Play(); tray.ShowBalloonTip(5000,"Islandly","Timer complete",ToolTipIcon.Info);
+            Position();System.Media.SystemSounds.Asterisk.Play(); tray.ShowBalloonTip(5000,"Islandly","Timer complete",ToolTipIcon.Info);
         }
-        Position();
+        if(settingsChanged||TimerHasState()||child!=null||launching||clockMinute!=DateTime.Now.Hour*60+DateTime.Now.Minute)Position();
         if(probe != "") {
             string commandFile = Path.Combine(probe,"command.txt");
             if(File.Exists(commandFile)) { string command = File.ReadAllText(commandFile).Trim(); File.Delete(commandFile);
@@ -570,6 +575,7 @@ sealed class IslandHost : Form {
         launchRetry.Stop(); launchRetry.Dispose(); ticker.Stop(); hoverDwell.Stop();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= DisplayChanged;
         Microsoft.Win32.SystemEvents.PowerModeChanged -= PowerChanged;
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged -= ThemeChanged;
         if(bar) { RemoveBar(); bar=false; }
         for(int i=1;i<=4;i++) Native.UnregisterHotKey(Handle,i);
         Native.RemoveClipboardFormatListener(Handle); if(consent != null) consent.Dispose();

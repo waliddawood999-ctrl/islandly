@@ -10,11 +10,11 @@ static class NativeMaterial {
     [DllImport("user32.dll")] static extern bool SetWindowCompositionAttribute(IntPtr hwnd,ref DATA data);
     [DllImport("dwmapi.dll")] static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd,ref MARGINS margins);
     public static bool Supported() { try { var v=new VERSION(); v.size=(uint)Marshal.SizeOf(v); return RtlGetVersion(ref v)==0 && v.build>=22000; } catch { return false; } }
-    public static bool Apply(IntPtr hwnd,bool acrylic) {
+    public static bool Apply(IntPtr hwnd,bool acrylic,bool light=false) {
         IntPtr memory=IntPtr.Zero;
         try {
             if(acrylic && !Supported()) return false;
-            var accent=new ACCENT { state=acrylic?4:0,flags=2,color=0xcc101010 };
+            var accent=new ACCENT { state=acrylic?4:0,flags=2,color=light?0xcceeeeeeu:0xcc101010u };
             memory=Marshal.AllocHGlobal(Marshal.SizeOf(accent)); Marshal.StructureToPtr(accent,memory,false);
             var data=new DATA { attribute=19,data=memory,size=Marshal.SizeOf(accent) };
             bool ok=SetWindowCompositionAttribute(hwnd,ref data);

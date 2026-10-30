@@ -53,6 +53,14 @@ static class NativeMotionQa {
 
   }
   File.WriteAllText(Path.Combine(output,"geometry.json"),new JavaScriptSerializer{MaxJsonLength=16000000}.Serialize(new{screenshots=count,matrix="ar/en x light/dark x overlay/AppBar x acrylic/glass x floating/flush x 100/150/200 DPI",primary="Direct2D production surface readback",secondary="offset clamp covered by production Model.test.cpp; real second monitor NOT RUN",cases=report}));
+  using(var board=new Bitmap(800,240))using(var drawing=Graphics.FromImage(board))using(var font=new Font("Segoe UI",10)){
+   drawing.Clear(Color.FromArgb(235,235,240));int index=0;
+   foreach(string lang in new[]{"ar","en"})foreach(bool light in new[]{false,true})foreach(string pose in new[]{"rest","below-left"}){
+    string scene=lang+"-"+(light?"light":"dark")+"-overlay-glass-floating-1";string file=Path.Combine(output,scene,pose+".png");int bx=(index%4)*200,by=(index/4)*120;
+    using(var tile=new Bitmap(file)){drawing.DrawString(lang+" / "+(light?"light":"dark")+" / "+pose,font,Brushes.Black,bx+5,by+5);drawing.DrawImage(tile,new Rectangle(bx+10,by+40,180,60),new Rectangle(210,4,180,60),GraphicsUnit.Pixel);}index++;
+   }
+   string preview=Path.Combine(output,"preview.png");board.Save(preview,System.Drawing.Imaging.ImageFormat.Png);Console.WriteLine("T21_PREVIEW_BASE64 "+Convert.ToBase64String(File.ReadAllBytes(preview)));
+  }
   Console.WriteLine("NATIVE SCREENSHOTS PASS: "+count+" production Direct2D captures; eye/time gap >=11px, fixed gaze, transparent outside path, DPI sizes");
   }finally{MotionApi.MotionDestroy(engine);}
  }}
