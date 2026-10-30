@@ -22,3 +22,9 @@ try{
  settings.set({idleEyes:'false',floating:0});assert.equal(settings.get().idleEyes,true);assert.equal(settings.get().floating,true);
  console.log('Native motion settings: opt-in defaults, malformed persisted values, boolean-only writes, persistence and existing change publication passed');
 }finally{fs.rmSync(profile,{recursive:true,force:true});}
+
+const fractional=alignPanel({window:{x:288,y:0},card:{x:100,y:8,width:360,height:440},display:{x:0,y:0,width:1024,height:768},anchor:{x:512,y:6},zoom:.8});
+assert.equal(fractional.y,0);assert.equal(Object.is(fractional.y,-0),false);
+for(const n of [fractional.x,fractional.y])assert.ok(Number.isInteger(n)&&!Object.is(n,-0),'Electron int32 coordinates must reject negative zero');
+assert.throws(()=>alignPanel({window:{x:0,y:0},card:{x:0,y:NaN,width:360,height:440},display:{x:0,width:1024},anchor:{x:512,y:8},zoom:.8}),/Invalid native panel geometry/);
+console.log('Native first-panel regression: fractional anchor produces valid Electron int32 zero, never -0; invalid geometry rejected');
