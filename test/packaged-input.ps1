@@ -70,7 +70,9 @@ function Probe-Command([string]$Value) { [IO.File]::WriteAllText("$probe/command
 function Point-ToIsland {
  $window=[PanelInput]::Find($hostProcess.Id); $rect=[PanelInput+RECT]::new()
  if($window -eq [IntPtr]::Zero -or ![PanelInput]::GetWindowRect($window,[ref]$rect)){throw 'Native window unavailable'}
- [void][PanelInput]::SetCursorPos([int](($rect.left+$rect.right)/2),[int](($rect.top+$rect.bottom)/2))
+ $native=Status
+ if($native.motion){[void][PanelInput]::SetCursorPos([int]$native.motion.center,[int]($native.motion.top+18*$native.motion.scale))}
+ else{[void][PanelInput]::SetCursorPos([int](($rect.left+$rect.right)/2),[int](($rect.top+$rect.bottom)/2))}
 }
 function Move-Away { [void][PanelInput]::SetCursorPos(800,500); Start-Sleep -Milliseconds 350 }
 try {

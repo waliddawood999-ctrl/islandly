@@ -24,7 +24,7 @@ static class MotionApi {
  public static void Check(int hr){if(hr<0)Marshal.ThrowExceptionForHR(hr);}
 }
 sealed class MotionOptions {
- public Rectangle screen;public float scale=1,center,top;public bool eyes,eco,fullscreen,compact,light,rtl,acrylic,floating,hidden,sliver;public string mode="full",label="",date="";
+ public Rectangle screen;public float scale=1,center,top;public bool eyes,eco,fullscreen,compact,light,rtl,acrylic,floating,hidden,sliver,loading;public string mode="full",label="",date="";
 }
 sealed class NativeMotion:IDisposable {
  readonly Form owner;readonly Action hover,leave;readonly bool diagnostics;
@@ -46,13 +46,13 @@ sealed class NativeMotion:IDisposable {
  public bool Opening {get{return target!=0;}}
  public bool VisibleEyes {get{return snapshot.visible!=0;}}
  public object Report {get{return new{backend="Direct2D/DirectComposition",body=snapshot.body,drop=snapshot.drop,gx=snapshot.gx,gy=snapshot.gy,lid=snapshot.lid,blink=snapshot.blink,eyesVisible=snapshot.visible!=0,frameLoop=loop!=0,cursorTimer=eyesTimer.Enabled&&tracking,cursorReads=cursorReads,renders=renders,inputSequence=inputSequence,inputFirstMs=firstResponse,center=options.center,top=options.top,scale=options.scale,floating=options.floating,cardWidth=cardWidth,cardHeight=cardHeight};}}
- public void Configure(MotionOptions next){bool changed=options.eyes!=next.eyes||options.eco!=next.eco||options.mode!=next.mode||options.fullscreen!=next.fullscreen||options.compact!=next.compact||options.light!=next.light||options.rtl!=next.rtl||options.acrylic!=next.acrylic||options.floating!=next.floating||options.center!=next.center||options.top!=next.top||options.scale!=next.scale||options.label!=next.label||options.date!=next.date||options.hidden!=next.hidden||options.sliver!=next.sliver||options.screen!=next.screen;
+ public void Configure(MotionOptions next){bool changed=options.eyes!=next.eyes||options.eco!=next.eco||options.mode!=next.mode||options.fullscreen!=next.fullscreen||options.compact!=next.compact||options.light!=next.light||options.rtl!=next.rtl||options.acrylic!=next.acrylic||options.floating!=next.floating||options.center!=next.center||options.top!=next.top||options.scale!=next.scale||options.label!=next.label||options.date!=next.date||options.hidden!=next.hidden||options.sliver!=next.sliver||options.screen!=next.screen||options.loading!=next.loading;
   options=next;float s=options.scale;int w=Math.Min(options.screen.Width,(int)Math.Ceiling(600*s)),h=Math.Min(options.screen.Height,(int)Math.Ceiling(920*s));
   int left=Math.Max(options.screen.Left,Math.Min(options.screen.Right-w,(int)(options.center-w/2f)));
   var bounds=new Rectangle(left,options.screen.Top,w,h);if(owner.Bounds!=bounds)owner.Bounds=bounds;
-  frame=new MotionApi.Frame{width=w,height=h,scale=s,center=(options.center-left)/s,top=(options.top-options.screen.Top)/s,left=(options.screen.Left-left)/s,right=(options.screen.Right-left)/s,cardWidth=cardWidth,cardHeight=cardHeight,opacity=fading?frame.opacity:1,anticipation=anticipation,flags=(options.light?1:0)|(options.rtl?2:0)|(options.acrylic?4:0)|(options.floating?8:0)|(options.sliver?16:0)};
+  frame=new MotionApi.Frame{width=w,height=h,scale=s,center=(options.center-left)/s,top=(options.top-options.screen.Top)/s,left=(options.screen.Left-left)/s,right=(options.screen.Right-left)/s,cardWidth=cardWidth,cardHeight=cardHeight,opacity=fading?frame.opacity:1,anticipation=anticipation,flags=(options.light?1:0)|(options.rtl?2:0)|(options.acrylic?4:0)|(options.floating?8:0)|(options.sliver?16:0)|(options.loading?64:0)};
   if(options.hidden){StopEyes();halo.Hide();owner.Hide();return;}
-  if(changed){Input();Step(0);Draw(false);if(snapshot.visible!=0&&options.mode=="full"){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();}}
+  if(changed&&!fading){Input();Step(0);Draw(false);if(snapshot.visible!=0&&options.mode=="full"){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();}}
   if(!fading&&owner.Visible)PlaceHalo();
   if(snapshot.moving!=0)StartLoop();
   if(snapshot.visible==0||options.mode!="full"){StopEyes();}else if(!blinkTimer.Enabled)ScheduleBlink();

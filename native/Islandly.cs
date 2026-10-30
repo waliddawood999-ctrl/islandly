@@ -242,8 +242,8 @@ sealed class IslandHost : Form {
             bool light=false;try{using(var key=Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))light=Convert.ToInt32(key==null?0:key.GetValue("AppsUseLightTheme",0))!=0;}catch{}
             bool compact=TimerHasState()||privacyLabel!=""||SystemInformation.PowerStatus.BatteryChargeStatus!=BatteryChargeStatus.NoSystemBattery&&SystemInformation.PowerStatus.BatteryLifePercent<.2f;
             string lang=Setting("uiLang",Setting("lang","ar"));if(lang=="auto")lang=Setting("lang","ar");
-            string label=CompactLabel();if(Setting("digits","latn")=="arab")for(int i=0;i<10;i++)label=label.Replace((char)('0'+i),(char)('٠'+i));
-            motion.Configure(new MotionOptions{screen=screen,scale=scale,center=center,top=top,eyes=Setting("idleEyes","False")=="True",eco=nativeEco,mode=Setting("motion","full"),fullscreen=Fullscreen(false),compact=compact,sliver=sliver,light=light,rtl=lang!="en",acrylic=nativeAcrylic,floating=floating,hidden=hide,label=label,date=DateTime.Now.ToString("D",System.Globalization.CultureInfo.GetCultureInfo(lang=="en"?"en-US":"ar-SA"))});
+            string label=motion.Opening?DateTime.Now.ToString("HH:mm"):CompactLabel();if(Setting("digits","latn")=="arab")for(int i=0;i<10;i++)label=label.Replace((char)('0'+i),(char)('٠'+i));
+            motion.Configure(new MotionOptions{screen=screen,scale=scale,center=center,top=top,eyes=Setting("idleEyes","False")=="True",eco=nativeEco,mode=Setting("motion","full"),fullscreen=Fullscreen(false),compact=compact,sliver=sliver,light=light,rtl=lang!="en",acrylic=nativeAcrylic,floating=floating,hidden=hide,loading=launching||child!=null&&!ready,label=label,date=DateTime.Now.ToString("D",System.Globalization.CultureInfo.GetCultureInfo(lang=="en"?"en-US":"ar-SA"))});
             if(!hide && !ready && !Visible)Show();
             return;
         }
