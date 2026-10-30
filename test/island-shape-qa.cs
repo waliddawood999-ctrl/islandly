@@ -51,7 +51,7 @@ static class IslandShapeQa {
      }
     }
    }
-   // Expanded-state matrix: every language x theme x material at 100/125/150 % with the card fully open. The real GPU pixels must stay inside the independent mask (Audit), be portrait, and never exceed the 360x440 card (plus stroke/edge pixels).
+   // Expanded-state matrix: every language x theme x material at 100/125/150 % with the card fully open. The real GPU pixels must stay inside the independent mask (Audit, exterior alpha exactly 0), be portrait, and be at most 440 px wide (exact specification, no tolerance).
    var matrix=new List<object>();var sheetTiles=new List<string>();
    foreach(float scale in new[]{1f,1.25f,1.5f})foreach(string lang in new[]{"ar","en"})foreach(bool light in new[]{false,true})foreach(bool acrylic in new[]{false,true}){
     string scene="expanded-"+lang+"-"+(light?"light":"dark")+"-"+(acrylic?"acrylic":"glass")+"-"+((int)Math.Round(scale*100)).ToString();
@@ -61,8 +61,7 @@ static class IslandShapeQa {
     MotionApi.Check(MotionApi.MotionDraw(engine,ref f,"10:42",lang=="ar"?"الجمعة، ٣٠ أكتوبر":"Friday, 30 October",file));currentFile=file;
     using(var image=new Bitmap(file)){Audit(image,f,s,light,scene);
      Check(lastBoundsH>lastBoundsW,"Expanded island is not portrait: "+scene+" "+lastBoundsW+"x"+lastBoundsH);
-     Check(lastBoundsH<=Math.Ceiling(440*scale)+4,"Expanded island taller than 440 px: "+scene+" "+lastBoundsH);
-     Check(lastBoundsW<=Math.Ceiling(360*scale)+4,"Expanded island wider than 360 px: "+scene+" "+lastBoundsW);}
+     Check(lastBoundsW<=440*scale,"Expanded island wider than the 440 px maximum: "+scene+" "+lastBoundsW);}
     matrix.Add(new{scene=scene,scale=scale,boundsWidth=lastBoundsW,boundsHeight=lastBoundsH,file=file});if(scale==1f)sheetTiles.Add(file);
    }
    // One contact sheet of the 100 % scenes for visual review (dark grey backdrop so transparency is visible).

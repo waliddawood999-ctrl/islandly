@@ -2,6 +2,8 @@ name: T24 island requirements QA
 on:
   pull_request:
     branches: [codex/T21-native-motion]
+  push:
+    branches: [codex/T24-island-qa] # PR #28 conflicts with its base, and GitHub does not start pull_request runs for a PR it cannot merge
   workflow_dispatch:
 permissions:
   contents: read

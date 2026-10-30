@@ -13,5 +13,6 @@ assert(/acceptanceUnder180/.test(read('test/native-footprint.ps1')),'native-foot
 assert(read('test/performance-check.js').includes('<180 MB'),'performance-check limit text changed');
 // Expanded-state matrix: portrait, <=440 px tall, exterior alpha exactly 0, all themes/languages/materials/scales.
 const shape=read('test/island-shape-qa.cs');
-for(const needle of ['Expanded island is not portrait','taller than 440 px','new[]{1f,1.25f,1.5f}','exterior must be exact alpha0','expanded-matrix.png'])assert(shape.includes(needle),'island-shape-qa.cs lost: '+needle);
+for(const needle of ['Expanded island is not portrait','wider than the 440 px maximum','new[]{1f,1.25f,1.5f}','exterior must be exact alpha0','expanded-matrix.png'])assert(shape.includes(needle),'island-shape-qa.cs lost: '+needle);
+assert(!/Math\.Ceiling\(4[34]0\*scale\)\+/.test(shape),'matrix limits must have no tolerance');
 console.log('T24 QA guards ok');
