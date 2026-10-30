@@ -154,6 +154,8 @@ try{
  $far=[Drawing.Point]::new([int]($s.motion.center+420),[int][Math]::Min(700,$s.motion.top+600))
  # Honest reference: the island is HIDDEN (Show on approach, cursor far), so no host window covers the sample points. The shot follows in Always visible with the cursor far; in the reserved-bar job that re-reserves the strip, so a layout shift would show in the TRANSPARENCY RGB lines.
  $cx=[int]$s.motion.center;$ty=[int]$s.motion.top;$sc=[double]$s.motion.scale
+ # Reserving or releasing the strip moves other windows (Windows Terminal under the box showed 46,46,46 in the hidden reference and wallpaper in the shot): minimize them so both captures see the bare desktop.
+ [void](New-Object -ComObject Shell.Application).MinimizeAll();Start-Sleep -Milliseconds 800
  $configuration.islandVisibility='approach';Save-Settings;[Windows.Forms.Cursor]::Position=$far;$s=Wait-Island $false;Start-Sleep -Milliseconds 900
  $barBox=@(($cx-[int](69*$sc)),$ty,[int][Math]::Ceiling(138*$sc),[int][Math]::Ceiling(36*$sc));$cardBox=@(($cx-[int](220*$sc)),$ty,[int][Math]::Ceiling(440*$sc),[int][Math]::Ceiling(480*$sc)) # 40 px of margin each side: the open spring overshoots the nominal 360 px card, so the box corners must lie clear of the animated shape
  $barReference=Grab $barBox[0] $barBox[1] $barBox[2] $barBox[3];$cardReference=Grab $cardBox[0] $cardBox[1] $cardBox[2] $cardBox[3]
