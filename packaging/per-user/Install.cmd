@@ -84,7 +84,7 @@ if /i not "%~1"=="/quiet" pause
 exit /b 0
 :startupOn
 if not exist "%DEST%\.islandly-install" goto failed
-"%SystemRoot%\System32\reg.exe" add "%RUN%" /v Islandly /t REG_SZ /d "\"%DEST%\Islandly.exe\"" /f >nul || goto failed
+"%SystemRoot%\System32\reg.exe" import "%~dp0startup.reg" >nul || goto failed
 echo Startup enabled. / تم تفعيل التشغيل مع Windows.
 exit /b 0
 :startupOff

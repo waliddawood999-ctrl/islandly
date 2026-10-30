@@ -72,13 +72,13 @@ try {
  Assert ($before.Count -eq $installed.Count) 'New binary was introduced'
  foreach($key in $before.Keys){Assert ($before[$key] -eq $installed[$key]) "Changed binary $key"}
  Install /startup-on
- Assert ((Get-ItemProperty $run).Islandly -eq "`"$dest\Islandly.exe`"") 'Startup target quoting incorrect'
+ Assert ([Environment]::ExpandEnvironmentVariables((Get-ItemProperty $run).Islandly) -eq "`"$dest\Islandly.exe`"") 'Startup target quoting incorrect'
  # Updating the same payload must delete obsolete files, retain settings and startup.
  Set-Content "$dest/obsolete-file.txt" 'old release'
  Install
  Assert (!(Test-Path "$dest/obsolete-file.txt")) 'Update retained obsolete release file'
  Assert ((Get-FileHash "$env:APPDATA/islandly/settings.json").Hash -eq $settings) 'Update changed settings'
- Assert ((Get-ItemProperty $run).Islandly -eq "`"$dest\Islandly.exe`"") 'Update lost startup choice'
+ Assert ([Environment]::ExpandEnvironmentVariables((Get-ItemProperty $run).Islandly) -eq "`"$dest\Islandly.exe`"") 'Update lost startup choice'
  Install /startup-off
  Assert (!(Get-ItemProperty $run -Name Islandly -ErrorAction SilentlyContinue)) 'Startup disable failed'
  # Corrupted payload must fail before touching installed files.

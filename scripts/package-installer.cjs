@@ -39,6 +39,12 @@ let result=link;
 if(flags & 1){const length=link.readUInt16LE(76)+2;result=Buffer.concat([link.subarray(0,76),link.subarray(76+length)]);}
 result.writeUInt32LE((flags & ~1)|0x02000000,20);
 fs.writeFileSync(shortcutPath,result.toString('hex').match(/.{1,64}/g).join('\r\n')+'\r\n');fs.unlinkSync(temporary);
+// Use typed registry data for the optional quoted startup command. The user's
+// path is expanded by Windows, never interpolated as CMD command syntax.
+const startupBytes=Buffer.from('"%LOCALAPPDATA%\\Islandly\\Islandly.exe"\0','utf16le');
+const startupReg='\ufeffWindows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run]\r\n"Islandly"=hex(2):'+startupBytes.toString('hex').match(/../g).join(',')+'\r\n';
+fs.writeFileSync(path.join(target,'startup.reg'),startupReg,'utf16le');
+fs.copyFileSync(path.join(target,'startup.reg'),path.join(target,'payload','startup.reg'));
 const cmd=fs.readFileSync('packaging/per-user/Install.cmd','utf8').replace(/\r?\n/g,'\r\n');
 fs.writeFileSync(path.join(target,'Install.cmd'),cmd);
 fs.copyFileSync('docs/INSTALL.md',path.join(target,'INSTALL.txt'));
