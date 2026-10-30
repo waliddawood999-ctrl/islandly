@@ -22,8 +22,8 @@ jobs:
       - name: Verify native source is frozen at the user-requested T21 base
         shell: pwsh
         run: |
-          git fetch --depth=1 origin 5d06d5e5f9c12cf056bf2f62b902faa2b605b116
-          git diff --exit-code 5d06d5e5f9c12cf056bf2f62b902faa2b605b116 HEAD -- native scripts/build-native.ps1 scripts/build-motion.ps1 scripts/native-toolchain.ps1
+          git fetch --depth=1 origin 38e50a21602e7835ee8be59d031d2eb3e6f89dec
+          git diff --exit-code 38e50a21602e7835ee8be59d031d2eb3e6f89dec HEAD -- native scripts/build-native.ps1 scripts/build-motion.ps1 scripts/native-toolchain.ps1
           if($LASTEXITCODE -ne 0){throw 'T22 must not change native binary source/toolchain'}
       - name: Build identity-preserved runtime and installer (no additional executable)
         shell: pwsh

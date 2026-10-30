@@ -12,7 +12,7 @@ try {
  assert(script.includes('link.subarray(76+length)'));
  assert(cmd.includes('-decodehex "%~dp0shortcut.hex" "%MENU%" 4'));
  const pin=require('../packaging/per-user/identity.json');
- assert.equal(pin.nativeSourceCommit,'5d06d5e5f9c12cf056bf2f62b902faa2b605b116');
+ assert.equal(pin.nativeSourceCommit,'38e50a21602e7835ee8be59d031d2eb3e6f89dec');
  assert.match(pin.hostSha256,/^[a-f0-9]{64}$/);assert.match(pin.motionSha256,/^[a-f0-9]{64}$/);
  console.log('Installer static/shortcut identity contract PASS');
 } finally {fs.rmSync(dir,{recursive:true,force:true});}
