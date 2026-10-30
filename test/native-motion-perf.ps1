@@ -17,6 +17,10 @@ public static class MotionInput {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr window,System.Text.StringBuilder text,int size);
  [StructLayout(LayoutKind.Sequential)] struct RECT {public int left,top,right,bottom;}
  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr window,out RECT rect);
+ [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr window,uint command);
+ [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr window,int index);
+ public static bool IsAbove(IntPtr upper,IntPtr lower){IntPtr h=lower;for(int i=0;i<4096;i++){h=GetWindow(h,3);if(h==IntPtr.Zero)return false;if(h==upper)return true;}return false;}
+ public static bool TopMost(IntPtr window){return (GetWindowLong(window,-20)&8)!=0;}
  public static string Describe(IntPtr window){var cls=new System.Text.StringBuilder(128);GetClassName(window,cls,128);RECT r;GetWindowRect(window,out r);return "hwnd="+window.ToInt64()+" class="+cls+" rect="+r.left+","+r.top+","+r.right+","+r.bottom;}
 }
 
@@ -113,6 +117,20 @@ try{
  $until=[DateTime]::UtcNow.AddSeconds(2);do{Refresh;$fullscreen=Read-Status;if($fullscreen.motion.fullscreen-and !$fullscreen.motion.eyesVisible-and !$fullscreen.motion.cursorTimer){break};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow-lt $until)
  if(!($fullscreen.motion.fullscreen-and !$fullscreen.motion.eyesVisible-and !$fullscreen.motion.cursorTimer)){Dump-Fullscreen 'host did not hide'}
  try{Refresh;$fullscreen=Read-Status;if(!$fullscreen.motion.fullscreen-or $fullscreen.motion.eyesVisible-or $fullscreen.motion.cursorTimer){throw 'Real fullscreen foreground did not hide eyes/timers'}}finally{Close-Fullscreen}
+ Refresh
+ # Z-order after the fullscreen hide/reveal: a foreign topmost window shown over the island (foreground change) must end up BELOW the island (Raise() re-asserts topmost). Screenshot and verdict go to the artifacts.
+ $s=Wait-Island $true;$hostWindow=[MotionInput]::Host($hostProcess.Id)
+ $boxRect="$([int]($s.motion.center-100)),$([int]($s.motion.top+4)),200,120"
+ $boxProcess=Start-Process $fullscreenExe -ArgumentList ('"'+$probe+'"'),$boxRect,'box' -PassThru
+ $deadline=[DateTime]::UtcNow.AddSeconds(6);while(!(Test-Path "$probe/box-ready")-and !(Test-Path "$probe/box-not-foreground")){if($boxProcess.HasExited-or [DateTime]::UtcNow-gt $deadline){throw 'Z-order box fixture did not start'};Start-Sleep -Milliseconds 20}
+ try{
+  if(Test-Path "$probe/box-not-foreground"){throw 'Z-order box fixture could not take the foreground (environment), z-order untested'}
+  $boxWindow=[IntPtr][int64](Get-Content "$probe/box-ready" -Raw).Trim();$above=$false;$until=[DateTime]::UtcNow.AddSeconds(3)
+  do{Refresh;if([MotionInput]::IsAbove($hostWindow,$boxWindow)){$above=$true;break};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow-lt $until)
+  New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null;$zshot=[Drawing.Bitmap]::new(240,140);$zg=[Drawing.Graphics]::FromImage($zshot);try{$zg.CopyFromScreen([int]($s.motion.center-120),[int]$s.motion.top,0,0,$zshot.Size)}finally{$zg.Dispose()};$zshot.Save("$root/out/t21/zorder-$Mode.png",[Drawing.Imaging.ImageFormat]::Png);$zshot.Dispose()
+  Write-Output "ZORDER ($Mode): hostTopmost=$([MotionInput]::TopMost($hostWindow)) boxTopmost=$([MotionInput]::TopMost($boxWindow)) hostAboveBox=$above host=$([MotionInput]::Describe($hostWindow)) box=$([MotionInput]::Describe($boxWindow))"
+  if(!$above){throw "Island is below a foreign topmost window shown after fullscreen hide/reveal (Raise() did not take effect)"}
+ }finally{Set-Content "$probe/box-stop" 'stop';if(!$boxProcess.WaitForExit(5000)){$boxProcess.Kill()}}
  Refresh
  # 'Show on mouse approach': hidden (no eyes, no timers) until the cursor nears the island, hidden again when it leaves; 'always' restores it.
  function Wait-Island($visible){$until=[DateTime]::UtcNow.AddSeconds(3);do{Refresh;$s=Read-Status;if([bool]$s.motion.eyesVisible-eq $visible){return $s};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow-lt $until);throw "Island visibility never became $visible"}
