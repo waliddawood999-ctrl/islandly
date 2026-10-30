@@ -60,7 +60,10 @@ try {
  # Exercise the exact command Windows Installed Apps receives, with quiet consent for CI.
  $command=(Get-ItemProperty $arp).UninstallString
  Assert ($command.StartsWith('"'+$env:SystemRoot+'\System32\cmd.exe"')) "Uninstall command malformed: $command"
- & $env:ComSpec /d /c "`"`"$dest\Uninstall.cmd`" /uninstall /quiet`""
+ Assert ($command -match '^"([^"]+)" (.+)$') 'ARP command cannot be parsed'
+ $executable=$Matches[1]; $arguments=$Matches[2] -replace '/uninstall"$', '/uninstall /quiet"'
+ $uninstall=Start-Process $executable -ArgumentList $arguments -Wait -PassThru
+ $global:LASTEXITCODE=$uninstall.ExitCode
  Assert ($LASTEXITCODE -eq 0) 'Uninstall failed'
  Assert (!(Test-Path $dest)) 'Install directory remains'
  Assert (!(Test-Path "$env:APPDATA/islandly")) 'Profile remains'

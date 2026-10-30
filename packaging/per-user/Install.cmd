@@ -45,7 +45,7 @@ if errorlevel 1 goto rollback
 set "ACTIVATED=1"
 if not exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs" mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs"
 rem Generate a local shortcut from serialized link data, not a downloaded executable/script.
-type "%~dp0shortcut.dat" > "%MENU%" || goto rollback
+"%SystemRoot%\System32\certutil.exe" -f -decodehex "%~dp0shortcut.hex" "%MENU%" 4 >nul || goto rollback
 "%SystemRoot%\System32\reg.exe" add "%ARP%" /v DisplayName /t REG_SZ /d Islandly /f >nul || goto rollback
 "%SystemRoot%\System32\reg.exe" add "%ARP%" /v DisplayVersion /t REG_SZ /d 0.4.0 /f >nul || goto rollback
 "%SystemRoot%\System32\reg.exe" add "%ARP%" /v InstallLocation /t REG_SZ /d "%DEST%" /f >nul || goto rollback
