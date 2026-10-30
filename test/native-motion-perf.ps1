@@ -113,7 +113,7 @@ function Measure-Liquid {
  # DWM's nominal60 Hz period is16.667ms. Retain every raw interval and fail missed budgets.
  $late=@($active|Where-Object {$_.interval-gt 16.667}).Count
  $wall=@($active|ForEach-Object{$_.wallMs});$wallP95=Quantile $wall .95;$wallAvg=($wall|Measure-Object -Average).Average;$maxInterval=($active.interval|Measure-Object -Maximum).Maximum
- $slow=@($active|Where-Object{$_.interval-gt 20}|Select-Object -First 14|ForEach-Object{$gate=if($null -eq $_.gateMs){'n/a'}else{[Math]::Round($_.gateMs,1)};"i=$($_.index) interval=$([Math]::Round($_.interval,1)) body=$([Math]::Round($_.body,3)) wait=$([Math]::Round($_.waitMs,1)) gate=$gate queue=$([Math]::Round($_.queueMs,1)) wall=$([Math]::Round($_.wallMs,1)) resizing=$($_.resizing)"})
+ $slow=@($active|Where-Object{$_.interval-gt 20}|Select-Object -First 14|ForEach-Object{$gate=if($null -eq $_.gateMs){'n/a'}else{[Math]::Round($_.gateMs,1)};"i=$($_.index) interval=$([Math]::Round($_.interval,1)) body=$([Math]::Round($_.body,3)) wait=$([Math]::Round($_.waitMs,1)) gate=$gate queue=$([Math]::Round($_.queueMs,1)) wall=$([Math]::Round($_.wallMs,1)) hiRes=$($_.timerHighRes) res100ns=$($_.timerRes100ns) resizing=$($_.resizing)"})
  Write-Output ("SLOW FRAMES ($Mode): "+($slow-join ' | '))
  Write-Output "NATIVE LIQUID ($Mode): frames=$($active.Count) p50=$p50 p95=$p95 late=$late maxInterval=$maxInterval wallAvgMs=$wallAvg wallP95Ms=$wallP95 cpuAvgMs=$cpu response=$response"
  New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null

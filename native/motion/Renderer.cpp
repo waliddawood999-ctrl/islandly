@@ -206,7 +206,9 @@ extern "C" __declspec(dllexport) void __cdecl MotionAdapter(void*p,wchar_t*name,
 // the producer clock: on Windows CI it intermittently blocks30-32ms even when
 // the actual draw takes<1ms. Existing one-shot high-resolution deadlines leave
 // dispatch headroom and follow60/144Hz (15/6.25ms), with no idle worker/spin.
-static HANDLE paceTimer=nullptr;static LARGE_INTEGER paceFrequency={};static motion::FrameClock frameClock;
+static HANDLE paceTimer=nullptr;static LARGE_INTEGER paceFrequency={};static motion::FrameClock frameClock;static bool paceHighRes=false;
+typedef LONG (NTAPI*NtQueryTimerResolutionFn)(PULONG,PULONG,PULONG);
+extern "C" __declspec(dllexport) void __cdecl MotionTimerInfo(int*highRes,unsigned*resolution100ns){static NtQueryTimerResolutionFn q=reinterpret_cast<NtQueryTimerResolutionFn>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"NtQueryTimerResolution"));ULONG a=0,b=0,c=156250;if(q)q(&a,&b,&c);*highRes=paceHighRes?1:0;*resolution100ns=c;}
 extern "C" __declspec(dllexport) void __cdecl MotionBurst(){frameClock=motion::FrameClock();}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionWait(){
  if(!paceFrequency.QuadPart)QueryPerformanceFrequency(&paceFrequency);
@@ -226,7 +228,7 @@ extern "C" __declspec(dllexport) HRESULT __cdecl MotionWait(){
  QueryPerformanceCounter(&counter);now=double(counter.QuadPart)*1000./double(paceFrequency.QuadPart);
  double remaining=deadline-now;
  if(remaining<=0)return S_FALSE;
- if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);}
+ if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);paceHighRes=paceTimer!=nullptr;if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);}
  if(!paceTimer){WaitForSingleObject(GetCurrentThread(),DWORD(std::ceil(remaining)));return S_FALSE;}
  LARGE_INTEGER due;due.QuadPart=-LONGLONG(remaining*10000.);
  if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE)||WaitForSingleObject(paceTimer,INFINITE)!=WAIT_OBJECT_0){
