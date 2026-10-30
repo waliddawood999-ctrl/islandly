@@ -1,7 +1,7 @@
 name: T20 visual and frame timing
 on:
   pull_request:
-    branches: [codex/T19-contracts]
+    branches: [dev, codex/T19-contracts, codex/T20-laptop-fixes]
   workflow_dispatch:
 permissions:
   contents: read

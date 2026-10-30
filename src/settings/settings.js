@@ -10,7 +10,7 @@ current.digits = current.digits || 'latn';
 I18N.configure(current);
 I18N.apply();
 
-const fields = ['position', 'autoHide', 'prayerMethod', 'madhab', 'islandMode', 'material', 'motion'];
+const fields = ['position', 'autoHide', 'prayerMethod', 'madhab', 'islandMode', 'material', 'motion', 'islandVisibility'];
 const checks = ['hideFullscreen', 'clipboard', 'updates', 'prayerAlerts', 'weather', 'timeTracking', 'micCamIndicator', 'ecoMode', 'ecoAuto'];
 
 // material: acrylic needs Windows 11; main says whether it is supported (task T15)

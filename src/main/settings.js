@@ -4,6 +4,7 @@ const { app } = require('electron');
 
 const { ISLAMIC_DEFAULTS } = require('./services/store');
 const DEFAULTS = {
+  floating: false, idleEyes: false,
   uiLang: 'auto', digits: 'latn', fontPairing: 'plex',
   monitorId: '', // Existing T1/T7 display-selection contract; primary fallback.
   islandMode: 'overlay', // Existing T6/T7 contract: overlay | appbar; native owner reserves the strip.
@@ -15,6 +16,7 @@ const DEFAULTS = {
   position: 'center', // 'center' | 'left' | 'right'
   scale: 0.8, // UI size: 0.7 small, 0.8 medium, 1 large
   hideFullscreen: true,
+  islandVisibility: 'always', // 'always' | 'approach' (hidden until the cursor nears the island); read by the native host
   icsUrl: '',
   clipboard: true,
   updates: true,
@@ -50,8 +52,9 @@ function init() {
     data = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
     if (data.islandMode === 'reserved-bar') data.islandMode = 'appbar';
     if (!['acrylic', 'glass'].includes(data.material)) data.material = DEFAULTS.material;
-    for (const key of ['ecoMode', 'ecoAuto']) if (typeof data[key] !== 'boolean') data[key] = DEFAULTS[key];
+    for (const key of ['ecoMode', 'ecoAuto', 'floating', 'idleEyes']) if (typeof data[key] !== 'boolean') data[key] = DEFAULTS[key];
     if (!['full', 'reduced', 'off'].includes(data.motion)) data.motion = DEFAULTS.motion;
+    if (!['always', 'approach'].includes(data.islandVisibility)) data.islandVisibility = DEFAULTS.islandVisibility;
   } catch (_) {
     /* first run */
   }
@@ -70,6 +73,7 @@ function set(patch) {
     if (key === 'digits' && !['latn', 'arab'].includes(patch[key])) continue;
     if (key === 'motion' && !['full', 'reduced', 'off'].includes(patch[key])) continue;
     if (key === 'material' && !['acrylic', 'glass'].includes(patch[key])) continue;
+    if (key === 'islandVisibility' && !['always', 'approach'].includes(patch[key])) continue;
     if (!(key in patch)) continue;
     if (key === 'prayerIqamaMinutes') {
       if (patch[key] && typeof patch[key] === 'object' && !Array.isArray(patch[key])) {

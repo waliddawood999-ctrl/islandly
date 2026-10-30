@@ -224,7 +224,6 @@ function createWindow() {
 
   material = new Material({ window: win, native: win32, zoom,
     dpi: () => screen.getDisplayMatching(win.getBounds()).scaleFactor,
-    initialRect: { x: 0, y: 0, width: envelope.w, height: envelope.h, radius: envelope.h / 2 },
     publish: (state) => {
       for (const target of [win, settingsWin]) {
         if (target && !target.isDestroyed()) {
@@ -674,12 +673,13 @@ function startNativeSession() {
   logError('native session initializing');
   const fs = require('node:fs');
   const stateFile = path.join(app.getPath('userData'), 'native-session.json');
-  let closingPanel = false, nativeActions = 0;
+  let closingPanel = false, nativeActions = 0, awaitingPresent = false;
   const connection = require('node:net').createConnection('\\\\.\\pipe\\' + process.env.ISLANDLY_NATIVE_PIPE);
   connection.on('error', err => { logError('native pipe', err); app.quit(); });
   const renderer = script => win.webContents.executeJavaScript(script);
   const command = async (action, required = false) => {
     try {
+      if (action === 'present') { if (awaitingPresent) { awaitingPresent=false; nativeSurfaceReady=true; applyVisibility(); } return; }
       closingPanel = false;
       if (action === 'settings') {
         openSettings();
@@ -697,13 +697,24 @@ function startNativeSession() {
         closingPanel = true;
         nativeExpanded = false;
         nativeSurfaceReady = false;
-        win.hide();
+        win.hide(); awaitingPresent=false;
+        nativeSession?.send('idle');
       } else {
         const cmd = action === 'pomodoro' ? 'pomodoro' : 'toggle';
         if (cmd === 'toggle') await renderer("Island.open(Island.selectedId() || 'clock'); Island.whenPainted();");
         else { push('shortcut', cmd); await renderer("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"); }
-        panelPaintReady = true; nativeSurfaceReady = true;
-        applyVisibility();
+        panelPaintReady = true;
+        const anchor = require('./native-motion').parseAnchor(process.env.ISLANDLY_NATIVE_ANCHOR);
+        if (anchor) {
+          const card = await renderer("(() => { const r=document.getElementById('island-surface').getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height}; })()");
+          const display=screen.getDisplayMatching(win.getBounds());
+          const point=screen.screenToDipPoint({x:Math.round(anchor.center),y:Math.round(anchor.top)});
+          const aligned=require('./native-motion').alignPanel({window:win.getBounds(),card,display:display.bounds,anchor:point,zoom:zoom()});
+          win.setPosition(aligned.x,aligned.y);
+          awaitingPresent=true;nativeSurfaceReady=false;
+          nativeSession.send('panel:ready',Buffer.from(JSON.stringify({width:aligned.width*display.scaleFactor,height:aligned.height*display.scaleFactor})).toString('base64'));
+        }
+        if (!awaitingPresent) { nativeSurfaceReady = true; applyVisibility(); }
       }
     } catch (err) { logError('native command', err); if (required) throw err; }
   };

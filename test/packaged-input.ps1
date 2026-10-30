@@ -70,7 +70,9 @@ function Probe-Command([string]$Value) { [IO.File]::WriteAllText("$probe/command
 function Point-ToIsland {
  $window=[PanelInput]::Find($hostProcess.Id); $rect=[PanelInput+RECT]::new()
  if($window -eq [IntPtr]::Zero -or ![PanelInput]::GetWindowRect($window,[ref]$rect)){throw 'Native window unavailable'}
- [void][PanelInput]::SetCursorPos([int](($rect.left+$rect.right)/2),[int](($rect.top+$rect.bottom)/2))
+ $native=Status
+ if($native.motion){[void][PanelInput]::SetCursorPos([int]$native.motion.center,[int]($native.motion.top+18*$native.motion.scale))}
+ else{[void][PanelInput]::SetCursorPos([int](($rect.left+$rect.right)/2),[int](($rect.top+$rect.bottom)/2))}
 }
 function Move-Away { [void][PanelInput]::SetCursorPos(800,500); Start-Sleep -Milliseconds 350 }
 try {
@@ -111,6 +113,7 @@ try {
  New-Item 'out/input-diagnostics' -ItemType Directory -Force | Out-Null
  Copy-Item "$profile/*.log" 'out/input-diagnostics' -ErrorAction SilentlyContinue
  if(Test-Path "$profile/native-panels.log") { Write-Output 'PACKAGED NATIVE LAUNCH DIAGNOSTICS:'; Get-Content "$profile/native-panels.log" }
- if(Test-Path "$probe/status.json") { Write-Output 'PACKAGED LAST STATUS:'; Get-Content "$probe/status.json" }
+ if(Test-Path "$probe/status.json") { foreach($name in @('error.log','panel-chromium.log','native-boot.log')){if(Test-Path "$profile/$name"){Write-Output "PACKAGED $name";Get-Content "$profile/$name"|Select-Object -Last 50}}
+ Write-Output 'PACKAGED LAST STATUS:'; Get-Content "$probe/status.json" }
  if(!$hostProcess.HasExited){Probe-Command 'exit';if(!$hostProcess.WaitForExit(10000)){$hostProcess.Kill()}}
 }

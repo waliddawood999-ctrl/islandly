@@ -173,19 +173,36 @@ const Island = (() => {
     return Math.ceil(v.el.offsetHeight);
   }
 
+  // The expanded card is portrait (clearly taller than wide): width grows only as far as the content needs (moderate max), then shrinks toward MIN_W until the content fills a portrait shape, so there is no empty strip.
+  const EXPANDED_MAX_W = 440, EXPANDED_MIN_W = 300, PORTRAIT_RATIO = 1.12;
   function expandedSize(v, id) {
-    const maxWidth = Math.max(160, Math.min(560, workArea.width - 2 * GUTTER));
-    const base = Math.min(360, maxWidth);
-    const preferred = id === 'music' && v.el.querySelector('.m-body')?.style.display !== 'none' ? Math.min(460, maxWidth) : base;
+    const maxWidth = Math.max(160, Math.min(EXPANDED_MAX_W, workArea.width - 2 * GUTTER));
+    const preferred = Math.min(360, maxWidth);
     const clone = v.el.cloneNode(true);
     Object.assign(clone.style, { width: (preferred - 32) + 'px', height: 'auto', position: 'relative', padding: '0', inset: 'auto' });
+    clone.style.setProperty('--roomy', 1); // the cloned element may carry the factor of a previous opening
     meter.classList.add('expanded-grid'); meter.appendChild(clone);
     const needed = Math.max(preferred, Math.min(v.w, clone.scrollWidth + 32));
-    const w = Math.min(maxWidth, needed);
+    let w = Math.min(maxWidth, needed);
     clone.style.width = (w - 32) + 'px';
-    const natural = v.auto ? clone.offsetHeight : v.h;
+    let natural = v.auto ? clone.offsetHeight : v.h;
+    while (v.auto && w > EXPANDED_MIN_W && natural + 64 < w * PORTRAIT_RATIO) {
+      w = Math.max(EXPANDED_MIN_W, w - 20);
+      clone.style.width = (w - 32) + 'px';
+      natural = clone.offsetHeight;
+    }
+    // Sparse panels spread their rows, tiles and gaps (CSS --roomy) until the content fills the portrait shape: no blank strip under the content.
+    const target = Math.ceil(w * PORTRAIT_RATIO);
+    let roomy = 1;
+    while (v.auto && roomy < 4 && natural + 64 < target - 8) {
+      roomy = Math.round((roomy + 0.1) * 10) / 10;
+      clone.style.setProperty('--roomy', roomy);
+      natural = clone.offsetHeight;
+    }
+    if (v.auto) v.el.style.setProperty('--roomy', roomy);
     clone.remove();
-    const hgt = Math.min(Math.max(120, Math.min(800, workArea.height) - TOP - GUTTER - (v.below ? v.below.h + BELOW_GAP : 0)), Math.max(440, natural + FOOTER + 44));
+    const available = Math.max(120, Math.min(560, workArea.height - TOP - GUTTER - (v.below ? v.below.h + BELOW_GAP : 0)));
+    const hgt = Math.min(available, Math.max(180, natural + 64, target));
     return { w, h: hgt };
   }
   const expandable = () => features.filter((f) => f.view('expanded'));
@@ -266,7 +283,8 @@ const Island = (() => {
           'data-interactive': '1',
           onclick: () => select(i),
         })
-      )
+      ),
+      h('button', { class: 'dots-gear', title: t('settings'), 'aria-label': t('settings'), 'data-interactive': '1', onclick: () => API.send('settings:open') }, html(ICONS.gear))
     );
   }
 
@@ -343,7 +361,7 @@ const Island = (() => {
         setTarget(v.w, v.h, v.y, v.r, v.below);
         sizeStage(v);
       }
-      const dotsChanged = v.withDots && dots.childElementCount !== expandable().length;
+      const dotsChanged = v.withDots && dots.querySelectorAll('.dot').length !== expandable().length;
       current = v;
       if (dotsChanged) renderDots();
       return;

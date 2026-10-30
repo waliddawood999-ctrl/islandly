@@ -15,17 +15,18 @@ foreach($name in @('Read-SharedJson','Read-Status')) {
 $publisherSource=Get-Content "$root/native/StatusPublication.cs" -Raw
 Add-Type ($publisherSource + @'
 public static class StatusPublication {
- public static int Published,Busy; public static Exception Failure; static volatile bool stopped; static System.Threading.Thread writer;
+ public static int Published,Busy; public static Exception Failure; static volatile bool stopped,released; static System.Threading.Thread writer;
  public static void Start(string file,int pid) {
-  stopped=false;Failure=null;
-  writer=new System.Threading.Thread(()=>{try{int n=0;while(!stopped){
+  stopped=false;released=false;Failure=null;
+  writer=new System.Threading.Thread(()=>{try{int n=7;while(!stopped){
    string processes="{\"pid\":"+pid+",\"mb\":40,\"cpu\":0}";
    for(int i=1;i<=n%8;i++)processes+=",{\"pid\":"+(pid+i)+",\"mb\":50,\"cpu\":0.125}";
    string data="{\"hostPid\":"+pid+",\"phase\":\"panel\",\"generation\":"+n+",\"processes\":["+processes+"]}";
-   try { NativeStatusPublication.Publish(file,data); Published++; } catch(IOException) { Busy++; }
-   n++;System.Threading.Thread.Sleep(1);
+   try { NativeStatusPublication.Publish(file,data); Published++; if(n==7)while(!released&&!stopped)System.Threading.Thread.Sleep(1); n++; } catch(IOException) { Busy++; }
+   System.Threading.Thread.Sleep(1);
   }}catch(Exception e){Failure=e;}});writer.IsBackground=true;writer.Start();
  }
+ public static void Continue(){released=true;}
  public static void Stop(){stopped=true;if(writer!=null)writer.Join();if(Failure!=null)throw Failure;}
 }
 '@)
@@ -33,6 +34,9 @@ try {
  [StatusPublication]::Start("$probe/status.json",$hostProcess.Id)
  $deadline=[DateTime]::UtcNow.AddSeconds(10)
  while(!(Test-Path "$probe/status.json")){if([DateTime]::UtcNow-gt $deadline){throw 'Publisher never started'};Start-Sleep -Milliseconds 10}
+ $first=Read-Status
+ if(@($first.processes).Count-ne 8){throw 'Initial full ownership fixture was truncated'}
+ [StatusPublication]::Continue()
  $last=-1
  $script:statusReadWarnings=0
  for($n=0;$n-lt 2000;$n++) {

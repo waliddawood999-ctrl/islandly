@@ -43,6 +43,10 @@ try {
     if(!(Test-Path "$koffi/win32_x64/koffi.node")){throw 'Windows x64 koffi binary missing'}
     Get-ChildItem $koffi -Directory | Where-Object {$_.Name -ne 'win32_x64'} | Remove-Item -Recurse -Force
     Copy-Item "$root/native/bin/Islandly.exe" "$package/Islandly.exe"
+    Copy-Item "$root/native/bin/Islandly.Motion.dll" "$package/Islandly.Motion.dll"
+    $motionHash=(Get-FileHash "$package/Islandly.Motion.dll" -Algorithm SHA256).Hash
+    Write-Output "PACKAGED MOTION DLL SHA256: $motionHash"
+    Set-Content "$package/NATIVE-RENDERER-SHA256.txt" $motionHash -Encoding utf8
     $version=[Diagnostics.FileVersionInfo]::GetVersionInfo("$package/panels/Islandly.exe")
     @{ProductName=$version.ProductName;FileDescription=$version.FileDescription;FileVersion=$version.FileVersion;ProductVersion=$version.ProductVersion;OriginalFilename=$version.OriginalFilename;InternalName=$version.InternalName;CompanyName=$version.CompanyName;LegalCopyright=$version.LegalCopyright} | ConvertTo-Json | Set-Content "$package/EXE-VERSION-RESOURCES.json" -Encoding utf8
     & node "$PSScriptRoot/windows-identity.js" $package
