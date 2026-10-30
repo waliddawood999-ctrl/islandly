@@ -2,6 +2,7 @@
 setlocal DisableDelayedExpansion
 chcp 65001 >nul
 set "ACTIVATED="
+set "STAGE=preflight"
 if not defined LOCALAPPDATA goto failed
 if not defined APPDATA goto failed
 set "DEST=%LOCALAPPDATA%\Islandly"
@@ -25,12 +26,14 @@ echo Close Islandly from its tray menu before updating. / أغلق Islandly من
 rem No killing unrelated processes, elevation, policy changes, script execution bypass or downloaded tools.
 "%SystemRoot%\System32\certutil.exe" -hashfile "%SOURCE%\panels\Islandly.exe" SHA256 | "%SystemRoot%\System32\findstr.exe" /i /x /c:"758e43cf25850408fa42d7de76565561ae329b353b8facc508ece9875bcd1592" >nul
 if errorlevel 1 goto failed
+set "STAGE=binary manifest"
 for /f "usebackq tokens=1,*" %%A in ("%SOURCE%\BINARY-SHA256.txt") do (
  "%SystemRoot%\System32\certutil.exe" -hashfile "%SOURCE%\%%B" SHA256 | "%SystemRoot%\System32\findstr.exe" /i /x /c:"%%A" >nul
  if errorlevel 1 goto failed
 )
 if exist "%DEST%.previous" goto failed
 if exist "%DEST%.staging" goto failed
+set "STAGE=staging copy"
 mkdir "%DEST%.staging" || goto failed
 "%SystemRoot%\System32\robocopy.exe" "%SOURCE%" "%DEST%.staging" /E /R:0 /W:0 /NFL /NDL /NJH /NJS >nul
 if errorlevel 8 goto stageFailed
@@ -43,6 +46,7 @@ if exist "%DEST%" goto stageFailed
 move "%DEST%.staging" "%DEST%" >nul
 if errorlevel 1 goto rollback
 set "ACTIVATED=1"
+set "STAGE=shortcut and registration"
 if not exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs" mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs"
 rem Generate a local shortcut from serialized link data, not a downloaded executable/script.
 "%SystemRoot%\System32\certutil.exe" -f -decodehex "%~dp0shortcut.hex" "%MENU%" 4 >nul || goto rollback
@@ -110,7 +114,7 @@ if exist "%DEST%.previous" (
 :stageFailed
 if exist "%DEST%.staging" rmdir /s /q "%DEST%.staging"
 :failed
-echo Installation failed; no security policy was changed. / تعذر التثبيت؛ لم يتم تغيير إعدادات الحماية.
+echo Installation failed at %STAGE%; no security policy was changed. / تعذر التثبيت عند %STAGE%؛ لم يتم تغيير إعدادات الحماية.
 exit /b 1
 
 :checkClosed

@@ -17,7 +17,9 @@ function Run-Installer([string]$argument='/quiet'){
  if($argument -notin @('/quiet','/startup-on','/startup-off')){throw 'Unexpected installer argument'}
  # Match the documented entrypoint: cmd already in the extracted folder. Avoid
  # PowerShell's native-argument re-quoting of a CMD filename containing & and spaces.
- $p=Start-Process $env:ComSpec -WorkingDirectory $Package -ArgumentList "/d /c Install.cmd $argument" -Wait -PassThru
+ $stdout=Join-Path $sandbox 'install-stdout.txt';$stderr=Join-Path $sandbox 'install-stderr.txt'
+ $p=Start-Process $env:ComSpec -WorkingDirectory $Package -ArgumentList "/d /c Install.cmd $argument" -RedirectStandardOutput $stdout -RedirectStandardError $stderr -Wait -PassThru
+ Get-Content $stdout,$stderr | ForEach-Object {Write-Host $_}
  return $p.ExitCode
 }
 function Install([string]$argument='/quiet'){
