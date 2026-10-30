@@ -502,3 +502,60 @@ html.acrylic #island-surface { backdrop-filter: none; -webkit-backdrop-filter: n
 /* Portrait card: clipboard rows get a little more air so the taller shape is not left with a blank strip. */
 .expanded-grid .cl-list { gap: 10px; }
 .expanded-grid .cl-row { height: 46px; }
+
+/* ---- Portrait card, sparse panels: content spreads vertically with --roomy (set by island.js, 1 = compact) so no blank strip is left under it. ---- */
+.count:empty { display: none; }
+.expanded-grid .panel { gap: calc(8px * var(--roomy, 1)); padding-top: calc(14px * var(--roomy, 1)); }
+.expanded-grid .gh-list, .expanded-grid .us-list, .expanded-grid .cal-list, .expanded-grid .nt-list { gap: calc(6px * var(--roomy, 1)); }
+.expanded-grid .gh-row { padding: calc(7px * var(--roomy, 1)) 12px; }
+.expanded-grid .cal-row { height: calc(48px * var(--roomy, 1)); }
+.expanded-grid .nt-row { min-height: calc(34px * var(--roomy, 1)); }
+.expanded-grid .us-row { padding-block: calc(4px * var(--roomy, 1)); }
+.expanded-grid .us-top { margin-bottom: calc(4px * var(--roomy, 1)); }
+.expanded-grid .sh-strip { flex-wrap: wrap; justify-content: center; overflow: visible; gap: calc(8px * var(--roomy, 1)); }
+.expanded-grid .sh-item { height: calc(88px * var(--roomy, 1)); }
+.expanded-grid .t-main { flex-direction: column; text-align: center; gap: calc(14px * var(--roomy, 1)); }
+.expanded-grid .t-side { align-items: stretch; width: 100%; }
+.expanded-grid .ring-wrap:not(.b):not(.s) { width: calc(92px * min(var(--roomy, 1), 2)); height: calc(92px * min(var(--roomy, 1), 2)); }
+.expanded-grid .ring-label { font-size: calc(20px * min(var(--roomy, 1), 1.6)); }
+.expanded-grid .t-side { gap: calc(9px * var(--roomy, 1)); }
+.expanded-grid .chips { gap: calc(8px * var(--roomy, 1)); }
+.expanded-grid .t-actions { margin-block: calc(2px * var(--roomy, 1)); }
+.expanded-grid .system-expanded, .expanded-grid .system-wrap .system-expanded { flex-direction: column; text-align: center; gap: calc(14px * var(--roomy, 1)); }
+.expanded-grid .sys-side { align-items: center; gap: calc(4px * var(--roomy, 1)); }
+.expanded-grid .ring-wrap.s { width: calc(70px * min(var(--roomy, 1), 1.6)); height: calc(70px * min(var(--roomy, 1), 1.6)); }
+@media (prefers-color-scheme: light) {
+  .sys-label { color: var(--text); }
+}
+.expanded-grid .battery-expanded { gap: calc(16px * var(--roomy, 1)); padding-top: calc(18px * var(--roomy, 1)); }
+.expanded-grid .battery-expanded .b-text { gap: calc(4px * var(--roomy, 1)); }
+.expanded-grid .ring-wrap.b { width: calc(78px * min(var(--roomy, 1), 2.2)); height: calc(78px * min(var(--roomy, 1), 2.2)); }
+/* github rows stack icon, title and repo vertically; usage, notes and timer controls grow with --roomy */
+.expanded-grid .gh-row { flex-direction: column; align-items: center; text-align: center; gap: calc(6px * var(--roomy, 1)); padding: calc(10px * var(--roomy, 1)) 12px; }
+.expanded-grid .gh-type { width: calc(26px * min(var(--roomy, 1), 1.8)); height: calc(26px * min(var(--roomy, 1), 1.8)); }
+.expanded-grid .gh-text { align-items: center; max-width: 100%; }
+.expanded-grid .gh-title { white-space: normal; text-align: center; }
+.expanded-grid .us-top { font-size: calc(13px * min(var(--roomy, 1), 1.4)); }
+.expanded-grid .us-row { padding-block: calc(6px * var(--roomy, 1)); }
+.expanded-grid .nt-input { height: calc(34px * min(var(--roomy, 1), 1.8)); }
+.expanded-grid .nt-text { font-size: calc(13px * min(var(--roomy, 1), 1.3)); }
+.expanded-grid .t-actions .pill { min-height: calc(36px * min(var(--roomy, 1), 1.6)); }
+.expanded-grid .battery-expanded .ring-icon svg { width: calc(26px * min(var(--roomy, 1), 1.6)); height: calc(26px * min(var(--roomy, 1), 1.6)); }
+.expanded-grid .b-eta, .expanded-grid .b-tip { margin-top: calc(6px * var(--roomy, 1)); }
+.expanded-grid .gh-type { width: calc(26px * min(var(--roomy, 1), 2.6)); height: calc(26px * min(var(--roomy, 1), 2.6)); font-size: calc(11px * min(var(--roomy, 1), 1.5)); }
+.expanded-grid .gh-title { font-size: calc(13px * min(var(--roomy, 1), 1.5)); line-height: 1.35; }
+.expanded-grid .gh-repo { font-size: calc(11px * min(var(--roomy, 1), 1.4)); }
+.expanded-grid .t-title { font-size: calc(16px * min(var(--roomy, 1), 1.5)); }
+.expanded-grid .ring-wrap:not(.b):not(.s) { width: calc(92px * min(var(--roomy, 1), 1.7)); height: calc(92px * min(var(--roomy, 1), 1.7)); }
+.expanded-grid .chip { height: calc(26px * min(var(--roomy, 1), 1.5)); }
+.expanded-grid .t-actions .pill { min-height: calc(36px * min(var(--roomy, 1), 2)); }
+.expanded-grid .t-main { gap: calc(18px * var(--roomy, 1)); }
+.expanded-grid .t-side { gap: calc(12px * var(--roomy, 1)); }
+/* Review fixes: timer stacks (it is a grid in the portrait card), rings scale with their wrapper, empty count pills disappear, GitHub type badge readable in light mode. */
+.expanded-grid .t-main { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; }
+.expanded-grid .ring-wrap svg { width: 100%; height: 100%; }
+.p-title-wrap .count:empty, .count.wide:empty { display: none !important; }
+@media (prefers-color-scheme: light) {
+  .gh-type { background: rgba(124, 58, 237, .16); color: #4c2f9e; }
+}
+.expanded-grid .chips { justify-content: center; }

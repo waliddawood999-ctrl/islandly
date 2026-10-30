@@ -180,6 +180,7 @@ const Island = (() => {
     const preferred = Math.min(360, maxWidth);
     const clone = v.el.cloneNode(true);
     Object.assign(clone.style, { width: (preferred - 32) + 'px', height: 'auto', position: 'relative', padding: '0', inset: 'auto' });
+    clone.style.setProperty('--roomy', 1); // the cloned element may carry the factor of a previous opening
     meter.classList.add('expanded-grid'); meter.appendChild(clone);
     const needed = Math.max(preferred, Math.min(v.w, clone.scrollWidth + 32));
     let w = Math.min(maxWidth, needed);
@@ -190,9 +191,18 @@ const Island = (() => {
       clone.style.width = (w - 32) + 'px';
       natural = clone.offsetHeight;
     }
+    // Sparse panels spread their rows, tiles and gaps (CSS --roomy) until the content fills the portrait shape: no blank strip under the content.
+    const target = Math.ceil(w * PORTRAIT_RATIO);
+    let roomy = 1;
+    while (v.auto && roomy < 4 && natural + 64 < target - 8) {
+      roomy = Math.round((roomy + 0.1) * 10) / 10;
+      clone.style.setProperty('--roomy', roomy);
+      natural = clone.offsetHeight;
+    }
+    if (v.auto) v.el.style.setProperty('--roomy', roomy);
     clone.remove();
     const available = Math.max(120, Math.min(560, workArea.height - TOP - GUTTER - (v.below ? v.below.h + BELOW_GAP : 0)));
-    const hgt = Math.min(available, Math.max(180, natural + 64, Math.ceil(w * PORTRAIT_RATIO)));
+    const hgt = Math.min(available, Math.max(180, natural + 64, target));
     return { w, h: hgt };
   }
   const expandable = () => features.filter((f) => f.view('expanded'));
