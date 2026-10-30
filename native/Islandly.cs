@@ -98,7 +98,8 @@ sealed class IslandHost : Form {
     long cpuSampleAt;
     uint taskbarCreated;
     bool barBlocked;
-    long lastBackground, compactAt;
+    long lastBackground, compactAt, activityAt; FileSystemWatcher settingsWatch, commandWatch;
+    void Wake() { activityAt = clock.ElapsedMilliseconds; if (IsHandleCreated && !closing) try { BeginInvoke((Action)delegate { if (!closing) Tick(null, EventArgs.Empty); }); } catch { } }
     int breakSeconds;
     readonly List<string> pendingClipboard = new List<string>();
     ConsentWatcher consent;
@@ -150,6 +151,11 @@ sealed class IslandHost : Form {
         launchRetry.Interval=1500;
         launchRetry.Tick+=delegate { launchRetry.Stop(); string requested=retryCommand; retryCommand=""; if(requested!="") OpenPanel(requested,"retry",true); };
         ticker.Interval = 1000; ticker.Tick += Tick; ticker.Start();
+        // File changes wake the host (ReadDirectoryChangesW completes on the thread pool: no polling). With nothing to do the 1 s ticker relaxes to the next minute boundary (see Tick).
+        try { settingsWatch = new FileSystemWatcher(profile, "settings.json") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size, EnableRaisingEvents = true };
+            settingsWatch.Changed += delegate { Wake(); }; settingsWatch.Created += delegate { Wake(); }; settingsWatch.Renamed += delegate { Wake(); }; } catch { }
+        if (probe != "") try { commandWatch = new FileSystemWatcher(probe, "command.txt") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size, EnableRaisingEvents = true };
+            commandWatch.Changed += delegate { Wake(); }; commandWatch.Created += delegate { Wake(); }; commandWatch.Renamed += delegate { Wake(); }; } catch { }
         FormClosed += delegate { Cleanup(); };
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += DisplayChanged;
         Microsoft.Win32.SystemEvents.PowerModeChanged += PowerChanged;
@@ -502,7 +508,7 @@ sealed class IslandHost : Form {
     void Tick(object sender, EventArgs e) {
         Counters.ticks++;
         bool settingsChanged=ReadSettings();
-        if(clock.ElapsedMilliseconds-lastBackground >= 5000) { lastBackground=clock.ElapsedMilliseconds; if(child == null) BackgroundTick(); }
+        if(clock.ElapsedMilliseconds-lastBackground >= 5000) { int seconds=lastBackground==0?5:(int)Math.Max(5,Math.Min(120,(clock.ElapsedMilliseconds-lastBackground)/1000)); lastBackground=clock.ElapsedMilliseconds; if(child == null) BackgroundTick(seconds); }
         if(!launching && child != null && (child.HasExited || shutdownAt > 0 && clock.ElapsedMilliseconds-shutdownAt > 1500 || !ready && clock.ElapsedMilliseconds-launchedAt > (hasLaunchedSuccessfully?60000:120000))) EndSession();
         if(TimerRunning() && Convert.ToInt64(state["endAt"]) <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() && child == null) {
             state["running"] = false; state["remaining"] = 0; state["completed"] = true; SaveState();
@@ -511,7 +517,8 @@ sealed class IslandHost : Form {
         if(settingsChanged||TimerHasState()||child!=null||launching||clockMinute!=DateTime.Now.Hour*60+DateTime.Now.Minute)Position();
         if(probe != "") {
             string commandFile = Path.Combine(probe,"command.txt");
-            if(File.Exists(commandFile)) { string command = File.ReadAllText(commandFile).Trim(); File.Delete(commandFile);
+            string command = ""; if(File.Exists(commandFile)) { try { command = File.ReadAllText(commandFile).Trim(); if(command != "") File.Delete(commandFile); } catch(IOException) { command = ""; } } // the watcher can fire before the writer finished: an empty or locked file is retried
+            if(command != "") {
                 if(command == "measure") measuring = true;
                 else if(command == "exit") Close();
                 else if(command == "close") {if(motion!=null)motion.Open(false);Send("close");}
@@ -520,6 +527,11 @@ sealed class IslandHost : Form {
             }
             if(!quietProbe)Status();
         }
+        if(closing) return;
+        // Nothing running: wake once a minute (clock label) instead of every second. Settings and commands arrive through the file watchers.
+        bool busy = settingsChanged || TimerHasState() || child != null || launching || (probe != "" && !quietProbe) || clock.ElapsedMilliseconds - activityAt < 5000;
+        int want = busy ? 1000 : (int)Math.Max(1000, Math.Min(60000, (60 - DateTime.Now.Second) * 1000 - DateTime.Now.Millisecond + 100));
+        if(ticker.Interval != want) ticker.Interval = want;
     }
     int[] JobPids() {
         if(job == IntPtr.Zero) return new int[0];
@@ -564,7 +576,7 @@ sealed class IslandHost : Form {
             } finally { if(Native.SHAppBarMessage(1,ref recovery).ToUInt64() != 0) DeleteBarMarker(); else barBlocked=true; }
         } catch { barBlocked=true; }
     }
-    void BackgroundTick() {
+    void BackgroundTick(int seconds) {
         var input=new Native.LASTINPUT(); input.size=(uint)Marshal.SizeOf(input);
         bool active=Native.GetLastInputInfo(ref input) && unchecked((uint)Environment.TickCount-input.time)<60000;
         if(Setting("timeTracking","True") != "False" && !nativeEco && active) {
@@ -585,7 +597,7 @@ sealed class IslandHost : Form {
                     string day=DateTime.Now.ToString("yyyy-MM-dd"); object data;
                     var counts=usage.TryGetValue(day,out data) ? data as Dictionary<string,object> : null;
                     if(counts == null) { counts=new Dictionary<string,object>(); usage[day]=counts; }
-                    object seconds; counts[name]=(counts.TryGetValue(name,out seconds)?Convert.ToInt32(seconds):0)+5;
+                    object previous; counts[name]=(counts.TryGetValue(name,out previous)?Convert.ToInt32(previous):0)+seconds;
                     foreach(string old in usage.Keys.OrderBy(x=>x).Take(Math.Max(0,usage.Count-14)).ToArray()) usage.Remove(old);
                     File.WriteAllText(file+".tmp",json.Serialize(usage)); if(File.Exists(file)) File.Replace(file+".tmp",file,null); else File.Move(file+".tmp",file);
                 }
@@ -602,7 +614,7 @@ sealed class IslandHost : Form {
         }
     }
     protected override void WndProc(ref Message m) {
-        if(probe!="" && motion!=null && m.Msg==0x8021){motion.Probe(m.WParam.ToInt32()==0?"motion-close":m.WParam.ToInt32()==2?"motion-measure":"motion-open");Status();return;}
+        if(probe!="" && motion!=null && m.Msg==0x8021){motion.Probe(m.WParam.ToInt32()==0?"motion-close":m.WParam.ToInt32()==2?"motion-measure":m.WParam.ToInt32()==3?"motion-alpha":"motion-open");Status();return;}
         if(probe!="" && motion!=null && m.Msg==0x8022){ReadSettings();Position();Status();File.WriteAllText(Path.Combine(probe,"motion-frames.json"),json.Serialize(motion.FrameSamples));return;}
         if(taskbarCreated != 0 && m.Msg == taskbarCreated) { bar=false; DeleteBarMarker(); Position(); }
         if(m.Msg == 0x031D && child == null && Setting("clipboard","True") != "False") {

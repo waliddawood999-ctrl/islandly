@@ -18,6 +18,8 @@ static class MotionApi {
  [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl)] public static extern int MotionBlink(IntPtr renderer,int animateModel);
  [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl)] public static extern void MotionPose(IntPtr renderer,ref Snapshot snapshot);
  [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl)] public static extern void MotionApproach(IntPtr renderer,float value);
+ [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl)] public static extern void MotionAudit(IntPtr renderer,int on);
+ [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl)] public static extern void MotionLeak(IntPtr renderer,out uint count,out int x,out int y);
  [DllImport("Islandly.Motion.dll",CallingConvention=CallingConvention.Cdecl)] public static extern int MotionFade(IntPtr renderer);
  [DllImport("user32.dll")] public static extern bool GetCursorPos(out Point point);
  [DllImport("kernel32.dll")] static extern IntPtr GetCurrentThread();
@@ -47,12 +49,15 @@ sealed class NativeMotion:IDisposable {
  }
  public event Action<double> FrameChanged;
  public Action Reveal;
+ public object alphaAudit;
+ /* Diagnostic: simulate an open and a close frame by frame (60 Hz steps) and count non-transparent composition-surface pixels outside the island's bounding box, including the very first frame. */
+ void RunAlphaAudit(){MotionApi.MotionAudit(renderer,1);int frames=0;try{Open(true);for(int i=0;i<45;i++){Step(1/60f);UpdateMeasuredSize();Draw(false);frames++;}Open(false);for(int i=0;i<45;i++){Step(1/60f);Draw(false);frames++;}}finally{MotionApi.MotionAudit(renderer,0);}uint count;int x,y;MotionApi.MotionLeak(renderer,out count,out x,out y);alphaAudit=new{frames=frames,leakPixels=count,firstX=x,firstY=y};}
  [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr window,IntPtr region,bool redraw);[DllImport("gdi32.dll")] static extern IntPtr CreateRectRgn(int a,int b,int c,int d);
  void ClearRegion(){if(owner.IsHandleCreated&&owner.Visible){IntPtr empty=CreateRectRgn(0,0,0,0);SetWindowRgn(owner.Handle,empty,false);}}
  public void PlaceHaloNow(){PlaceHalo();}
  public bool Opening {get{return target!=0;}}
  public bool VisibleEyes {get{return snapshot.visible!=0;}}
- public object Report {get{return new{backend="Direct2D/DirectComposition",adapter=adapter,body=snapshot.body,drop=snapshot.drop,gx=snapshot.gx,gy=snapshot.gy,lid=snapshot.lid,blink=snapshot.blink,eyesVisible=snapshot.visible!=0&&owner.Visible,frameLoop=loop!=0,cursorTimer=eyesTimer.Enabled&&tracking,cursorReads=cursorReads,renders=renders,inputSequence=inputSequence,inputFirstMs=firstResponse,center=options.center,top=options.top,scale=options.scale,floating=options.floating,light=options.light,fullscreen=options.fullscreen,hidden=options.hidden,cardWidth=cardWidth,cardHeight=cardHeight,ticks=Counters.ticks,positions=Counters.positions,hookEvents=Counters.hooks,blinks=Counters.blinks};}}
+ public object Report {get{return new{backend="Direct2D/DirectComposition",adapter=adapter,body=snapshot.body,drop=snapshot.drop,gx=snapshot.gx,gy=snapshot.gy,lid=snapshot.lid,blink=snapshot.blink,eyesVisible=snapshot.visible!=0&&owner.Visible,frameLoop=loop!=0,cursorTimer=eyesTimer.Enabled&&tracking,cursorReads=cursorReads,renders=renders,inputSequence=inputSequence,inputFirstMs=firstResponse,center=options.center,top=options.top,scale=options.scale,floating=options.floating,light=options.light,fullscreen=options.fullscreen,hidden=options.hidden,cardWidth=cardWidth,cardHeight=cardHeight,alphaAudit=alphaAudit,ticks=Counters.ticks,positions=Counters.positions,hookEvents=Counters.hooks,blinks=Counters.blinks};}}
  public void Configure(MotionOptions next){bool changed=options.eyes!=next.eyes||options.eco!=next.eco||options.mode!=next.mode||options.fullscreen!=next.fullscreen||options.compact!=next.compact||options.light!=next.light||options.rtl!=next.rtl||options.acrylic!=next.acrylic||options.floating!=next.floating||options.center!=next.center||options.top!=next.top||options.scale!=next.scale||options.label!=next.label||options.date!=next.date||options.hidden!=next.hidden||options.hotZone!=next.hotZone||options.sliver!=next.sliver||options.screen!=next.screen||options.loading!=next.loading;
   options=next;float s=options.scale;int w=Math.Min(options.screen.Width,(int)Math.Ceiling(600*s)),h=Math.Min(options.screen.Height,(int)Math.Ceiling(920*s));
   int left=Math.Max(options.screen.Left,Math.Min(options.screen.Right-w,(int)(options.center-w/2f)));
@@ -129,7 +134,7 @@ sealed class NativeMotion:IDisposable {
   if(sample&&samples.Count<2048)samples.Add(new{at=end,interval=lastFrame==0?0:start-lastFrame,cpuMs=MotionApi.CpuMs()-cpu,wallMs=end-start,inputMs=firstResponse,body=snapshot.body,cardWidth=cardWidth,cardHeight=cardHeight,resizing=resizing});lastFrame=start;
  }
  public object[] FrameSamples {get{return samples.ToArray();}}
- public void Probe(string command){if(command=="motion-open"){samples.Clear();lastFrame=0;Open(true);}else if(command=="motion-close")Open(false);else if(command=="motion-pointer")PointerEvent();else if(command=="motion-measure")Ready(360*options.scale,300*options.scale,delegate{});}
+ public void Probe(string command){if(command=="motion-open"){samples.Clear();lastFrame=0;Open(true);}else if(command=="motion-close")Open(false);else if(command=="motion-alpha")RunAlphaAudit();else if(command=="motion-pointer")PointerEvent();else if(command=="motion-measure")Ready(360*options.scale,300*options.scale,delegate{});}
  public void Dispose(){disposed=true;Interlocked.Exchange(ref loop,0);StopEyes();fadeTimer.Stop();eyesTimer.Dispose();blinkTimer.Dispose();fadeTimer.Dispose();halo.Dispose();if(renderer!=IntPtr.Zero){MotionApi.MotionDestroy(renderer);renderer=IntPtr.Zero;}}
  sealed class Halo:Form {
   public Halo(){FormBorderStyle=FormBorderStyle.None;ShowInTaskbar=false;TopMost=true;BackColor=Color.Black;Opacity=1/255.0;AutoScaleMode=AutoScaleMode.None;}

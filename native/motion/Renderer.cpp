@@ -106,6 +106,16 @@ struct Renderer {
  HRESULT blink(bool animateModel){if(!eyeSurface)return S_FALSE;double duration=model.nearby?.28:.38;gpuBlinkAt=GetTickCount64();gpuBlinkDuration=duration;gpuOnlyBlink=!animateModel;if(animateModel)model.blinkStart=model.age;
   for(int i=0;i<2;i++){ComPtr<IDCompositionAnimation> a;HRESULT hr=composition->CreateAnimation(&a);if(FAILED(hr))return hr;float base=baseEyeScale[i],close=float(.4*duration),open=float(.52*duration);a->AddCubic(0,base,0,-.9f*base/(close*close),0);a->AddCubic(.4*duration,.1f*base,0,0,0);a->AddCubic(.48*duration,.1f*base,1.8f*base/open,-.9f*base/(open*open),0);a->End(duration,base);eyeScale[i]->SetScaleX(a.Get());}return composition->Commit();
  }
+ // Alpha audit (diagnostics): after each frame, every pixel of the composition surface outside the island's bounding box must be fully transparent. The count and first position are kept for the host status.
+ bool auditAlpha=false;unsigned leakCount=0;int leakX=-1,leakY=-1;
+ HRESULT auditLeak(const motion::Shape&s,const Frame&f){ComPtr<ID3D11Texture2D> back;HRESULT hr=swap->GetBuffer(0,IID_PPV_ARGS(&back));if(FAILED(hr))return hr;
+  D3D11_TEXTURE2D_DESC desc;back->GetDesc(&desc);desc.BindFlags=0;desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;desc.Usage=D3D11_USAGE_STAGING;desc.MiscFlags=0;
+  ComPtr<ID3D11Texture2D> staging;hr=gpu->CreateTexture2D(&desc,nullptr,&staging);if(FAILED(hr))return hr;gpuContext->CopyResource(staging.Get(),back.Get());
+  D3D11_MAPPED_SUBRESOURCE pixels;hr=gpuContext->Map(staging.Get(),0,D3D11_MAP_READ,0,&pixels);if(FAILED(hr))return hr;
+  float k=f.scale;int x0=int(std::floor((s.x-6)*k)),x1=int(std::ceil((s.x+s.w+6)*k)),y0=int(std::floor((s.y-6)*k)),y1=int(std::ceil((s.y+s.h+s.bulge+6)*k));
+  for(UINT y=0;y<desc.Height;y++){const BYTE*row=static_cast<const BYTE*>(pixels.pData)+size_t(y)*pixels.RowPitch;for(UINT x=0;x<desc.Width;x++){
+    if(int(x)>=x0&&int(x)<=x1&&int(y)>=y0&&int(y)<=y1)continue;if(row[x*4+3]!=0){if(leakCount==0){leakX=int(x);leakY=int(y);}leakCount++;}}}
+  gpuContext->Unmap(staging.Get(),0);return S_OK;}
  HRESULT capture(const wchar_t*file){if(!file||!*file)return S_OK;ComPtr<ID3D11Texture2D> back;HRESULT hr=swap->GetBuffer(0,IID_PPV_ARGS(&back));if(FAILED(hr))return hr;
   D3D11_TEXTURE2D_DESC desc;back->GetDesc(&desc);desc.BindFlags=0;desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;desc.Usage=D3D11_USAGE_STAGING;desc.MiscFlags=0;
   ComPtr<ID3D11Texture2D> staging;hr=gpu->CreateTexture2D(&desc,nullptr,&staging);if(FAILED(hr))return hr;gpuContext->CopyResource(staging.Get(),back.Get());D3D11_MAPPED_SUBRESOURCE pixels;
@@ -142,7 +152,7 @@ struct Renderer {
   }else{brush->SetColor(D2D1::ColorF(.33f,.8f,.5f,a));dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x+(rtl?120:18),y+18),3,3),brush.Get());label(clock,15,D2D1::RectF(x+25,y,x+w-10,y+h),false,a,light);}
   float content=float(motion::clamp((model.body.x-.3)/.5,0,1));label(clock,42,D2D1::RectF(x+24,y+22,x+w-24,y+85),false,content,light);label(date,16,D2D1::RectF(x+24,y+90,x+w-24,y+125),rtl,content*.75f,light);
   if(f.flags&64)label(rtl?L"جارٍ التحميل…":L"Loading…",12,D2D1::RectF(x+24,y+140,x+w-24,y+162),rtl,content*.65f,light);
-  dc->PopLayer();if(f.flags&32)dc->PopAxisAlignedClip();hr=dc->EndDraw();if(FAILED(hr))return hr;if(file&&*file){hr=capture(file);if(FAILED(hr))return hr;}
+  dc->PopLayer();if(f.flags&32)dc->PopAxisAlignedClip();hr=dc->EndDraw();if(FAILED(hr))return hr;if(file&&*file){hr=capture(file);if(FAILED(hr))return hr;}if(auditAlpha&&!(f.flags&32)){hr=auditLeak(s,f);if(FAILED(hr))return hr;}
   if(!(f.flags&32)){auto sink=new OutlineSink();path->Simplify(D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,&scale,.75f,sink); /* window-region polygon: 0.75 px flattening tolerance keeps it to a few dozen points; SetWindowRgn per frame was the heaviest call */
   if(sink->points.size()>=3){HRGN region=CreatePolygonRgn(sink->points.data(),int(sink->points.size()),WINDING);if(region&&!SetWindowRgn(window,region,FALSE))DeleteObject(region);}sink->Release();}
   hr=updateEyes(f,s,file&&*file);if(FAILED(hr))return hr;opacity->SetOpacity(f.opacity);if(f.flags&32){RECT rect={LONG(std::floor(dirty.left*f.scale)),LONG(std::floor(dirty.top*f.scale)),LONG(std::ceil(dirty.right*f.scale)),LONG(std::ceil(dirty.bottom*f.scale))};DXGI_PRESENT_PARAMETERS p={};p.DirtyRectsCount=1;p.pDirtyRects=&rect;hr=swap->Present1(0,0,&p);}else hr=swap->Present(0,0);if(FAILED(hr))return hr;return composition->Commit();
@@ -151,6 +161,8 @@ struct Renderer {
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionCreate(HWND hwnd,void**out){if(!out)return E_POINTER;*out=nullptr;auto r=new Renderer();HRESULT hr=r->initialize(hwnd);if(FAILED(hr)){delete r;return hr;}*out=r;return S_OK;}
 extern "C" __declspec(dllexport) void __cdecl MotionDestroy(void*p){delete static_cast<Renderer*>(p);}
 extern "C" __declspec(dllexport) void __cdecl MotionStep(void*p,float dt,int flags,float dx,float dy,int pointer,int target,Snapshot*out){auto&r=*static_cast<Renderer*>(p);auto&m=r.model;m.eyes=(flags&1)!=0;m.eco=(flags&2)!=0;m.mode=(flags&8)?2:(flags&4)?1:0;m.fullscreen=(flags&16)!=0;m.compact=(flags&32)!=0;if(pointer>=0)m.pointer(dx,dy,pointer!=0,pointer==2);if(r.gpuOnlyBlink){double elapsed=(GetTickCount64()-r.gpuBlinkAt)/1000.;if(elapsed<r.gpuBlinkDuration)m.blinkStart=m.age-elapsed;else m.blinkStart=-1;r.gpuOnlyBlink=false;}m.nextBlink=1e30;m.target(target!=0);m.step(dt);*out={float(m.body.x),float(m.drop.x),float(m.gx),float(m.gy),float(m.lid),float(m.squint),float(m.blink),m.eyeVisible()?1:0,m.moving()?1:0};}
+extern "C" __declspec(dllexport) void __cdecl MotionAudit(void*p,int on){auto&r=*static_cast<Renderer*>(p);r.auditAlpha=on!=0;if(on){r.leakCount=0;r.leakX=-1;r.leakY=-1;}}
+extern "C" __declspec(dllexport) void __cdecl MotionLeak(void*p,unsigned*count,int*x,int*y){auto&r=*static_cast<Renderer*>(p);*count=r.leakCount;*x=r.leakX;*y=r.leakY;}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionDraw(void*p,const Frame*f,const wchar_t*time,const wchar_t*date,const wchar_t*file){return static_cast<Renderer*>(p)->draw(*f,time,date,file);}
 extern "C" __declspec(dllexport) void __cdecl MotionApproach(void*p,float value){auto&m=static_cast<Renderer*>(p)->model;m.anticipation=motion::clamp(value,0,.1);if(!m.opening)m.drop.target=m.anticipation;}
 extern "C" __declspec(dllexport) void __cdecl MotionPose(void*p,const Snapshot*s){auto&m=static_cast<Renderer*>(p)->model;m.body.x=s->body;m.drop.x=s->drop;m.body.v=m.drop.v=0;m.body.target=s->body;m.drop.target=s->drop;m.gx=s->gx;m.gy=s->gy;m.lid=s->lid;m.squint=s->squint;m.blink=s->blink;m.opening=s->body>.05;m.eyes=s->visible!=0;m.mode=0;m.eco=false;m.fullscreen=false;m.compact=false;}
