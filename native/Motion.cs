@@ -44,7 +44,7 @@ sealed class NativeMotion:IDisposable {
  float cardWidth=360,cardHeight=440;
  readonly object workerGate=new object();Thread worker;
  // frameGate serializes every renderer call and every piece of animation state: the burst thread steps and draws frames under it, the UI thread takes it in each entry point (Configure, Open, Ready, pointer, eye timers, blink, present, dispose). A busy UI thread can no longer delay a frame; it only waits for the frame that is in flight.
- readonly object frameGate=new object();int presentQueued;bool regionOff;
+ readonly object frameGate=new object();int presentQueued;bool regionOff;double lastWaitMs,lastGateMs;long burstFrames;
  public NativeMotion(Form form,Action onHover,Action onLeave,Action onClick,bool measure){owner=form;hover=onHover;leave=onLeave;diagnostics=measure;
   MotionApi.Check(MotionApi.MotionCreate(owner.Handle,out renderer));var adapterName=new System.Text.StringBuilder(256);MotionApi.MotionAdapter(renderer,adapterName,adapterName.Capacity);adapter=adapterName.ToString();
   halo=new Halo();halo.MouseEnter+=delegate{if(options.hidden&&!options.hotZone.IsEmpty){if(Reveal!=null)Reveal();return;}PointerEvent();hover();};halo.MouseMove+=delegate{PointerEvent();};halo.MouseLeave+=delegate{leave();};halo.MouseClick+=delegate(object s,MouseEventArgs e){if(e.Button==MouseButtons.Left){PointerEvent();onClick();}};
@@ -135,9 +135,9 @@ sealed class NativeMotion:IDisposable {
  [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);[DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms); // 1 ms timer resolution only while a liquid burst runs: the default 15.6 ms quantum turned 16 ms waits into 31 ms
  void StartLoop(){lock(workerGate){Interlocked.Exchange(ref loop,1);lock(frameGate){if(!regionOff){regionOff=true;frame.flags|=128;if(owner.IsHandleCreated&&owner.Visible)SetWindowRgn(owner.Handle,IntPtr.Zero,false);}} /* no window region while the burst thread draws: the swap chain is transparent outside the shape, and the exact region is applied on the UI thread when the burst ends */
   if(worker!=null)return;
-  bool precise=!options.eco;worker=new Thread(delegate(){if(precise){timeBeginPeriod(1);try{Thread.CurrentThread.Priority=ThreadPriority.AboveNormal;}catch{}}try{MotionApi.MotionBurst();while(!disposed&&Volatile.Read(ref loop)!=0){MotionApi.MotionWait();if(disposed)break;
-    bool present=false,end=false;
-    try{lock(frameGate){WorkerFrame(out present,out end);}}catch(Exception ex){var report=Fault;if(report!=null)try{report("burst-frame",ex);}catch{}Interlocked.Exchange(ref loop,0);end=true;}
+  bool precise=!options.eco;worker=new Thread(delegate(){if(precise){timeBeginPeriod(1);try{Thread.CurrentThread.Priority=ThreadPriority.AboveNormal;}catch{}}try{MotionApi.MotionBurst();while(!disposed&&Volatile.Read(ref loop)!=0){double w0=clock.Elapsed.TotalMilliseconds;MotionApi.MotionWait();if(disposed)break;
+    bool present=false,end=false;double g0=clock.Elapsed.TotalMilliseconds;
+    try{lock(frameGate){lastWaitMs=g0-w0;lastGateMs=clock.Elapsed.TotalMilliseconds-g0;WorkerFrame(out present,out end);}}catch(Exception ex){var report=Fault;if(report!=null)try{report("burst-frame",ex);}catch{}Interlocked.Exchange(ref loop,0);end=true;}
     if(present||end)try{bool p=present,e=end;owner.BeginInvoke((Action)delegate{PostFrame(p,e);});}catch(InvalidOperationException){break;}
   }}finally{if(precise)timeEndPeriod(1);lock(workerGate){worker=null;}if(!disposed&&Volatile.Read(ref loop)!=0)try{owner.BeginInvoke((Action)StartLoop);}catch(InvalidOperationException){}}}){IsBackground=true,Name="Islandly motion burst"};worker.Start();}
  }
@@ -162,7 +162,7 @@ sealed class NativeMotion:IDisposable {
   try{MotionApi.Check(MotionApi.MotionDraw(renderer,ref frame,options.label,options.date,null));}finally{frame.flags&=~32;}renders++;
   double end=clock.Elapsed.TotalMilliseconds;bool changed=Math.Abs(frame.anticipation-paintedAnticipation)>.00001||Math.Abs(snapshot.body-paintedBody)>.00001||Math.Abs(snapshot.drop-paintedDrop)>.00001||Math.Abs(snapshot.gx-paintedGx)>.0001||Math.Abs(snapshot.gy-paintedGy)>.0001||Math.Abs(snapshot.lid-paintedLid)>.0001||Math.Abs(snapshot.blink-paintedBlink)>.0001||snapshot.visible!=paintedEyes||options.label!=paintedLabel||options.loading!=paintedLoading; /* the loading caption is a visible change: the synchronous Draw in Configure reports it at once instead of waiting for the first paced loop frame (~16-50 ms) */
   if(firstResponse<0&&changed)firstResponse=end-inputAt;paintedAnticipation=frame.anticipation;paintedBody=snapshot.body;paintedDrop=snapshot.drop;paintedGx=snapshot.gx;paintedGy=snapshot.gy;paintedLid=snapshot.lid;paintedBlink=snapshot.blink;paintedEyes=snapshot.visible;paintedLabel=options.label;paintedLoading=options.loading;if(changed&&FrameChanged!=null)FrameChanged(end);
-  if(sample&&samples.Count<2048)samples.Add(new{at=end,interval=lastFrame==0?0:start-lastFrame,cpuMs=MotionApi.CpuMs()-cpu,wallMs=end-start,inputMs=firstResponse,body=snapshot.body,cardWidth=cardWidth,cardHeight=cardHeight,resizing=resizing});lastFrame=start;
+  if(sample&&samples.Count<2048)samples.Add(new{at=end,waitMs=lastWaitMs,gateMs=lastGateMs,index=burstFrames++,interval=lastFrame==0?0:start-lastFrame,cpuMs=MotionApi.CpuMs()-cpu,wallMs=end-start,inputMs=firstResponse,body=snapshot.body,cardWidth=cardWidth,cardHeight=cardHeight,resizing=resizing});lastFrame=start;
  }
  public object[] FrameSamples {get{lock(frameGate){return samples.ToArray();}}}
  public void Probe(string command){if(command=="motion-open"){lock(frameGate){samples.Clear();lastFrame=0;}Open(true);}else if(command=="motion-close")Open(false);else if(command=="motion-alpha")RunAlphaAudit();else if(command=="motion-pointer")PointerEvent();else if(command=="motion-measure")Ready(360*options.scale,300*options.scale,delegate{});}
