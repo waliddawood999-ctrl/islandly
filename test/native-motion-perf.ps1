@@ -13,6 +13,11 @@ public static class MotionInput {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int GetWindowText(IntPtr window,System.Text.StringBuilder text,int size);
  public static IntPtr Host(int owner){IntPtr result=IntPtr.Zero;EnumWindows((h,p)=>{uint id;GetWindowThreadProcessId(h,out id);var name=new System.Text.StringBuilder(128);GetWindowText(h,name,128);if(id==owner&&name.ToString()=="Islandly Native"){result=h;return false;}return true;},IntPtr.Zero);if(result==IntPtr.Zero)throw new Exception("Native host HWND not found");return result;}
  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr window,uint message,IntPtr a,IntPtr b);
+ [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr window,System.Text.StringBuilder text,int size);
+ [StructLayout(LayoutKind.Sequential)] struct RECT {public int left,top,right,bottom;}
+ [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr window,out RECT rect);
+ public static string Describe(IntPtr window){var cls=new System.Text.StringBuilder(128);GetClassName(window,cls,128);RECT r;GetWindowRect(window,out r);return "hwnd="+window.ToInt64()+" class="+cls+" rect="+r.left+","+r.top+","+r.right+","+r.bottom;}
 }
 
 public static class MotionProcessTree {
@@ -100,7 +105,13 @@ try{
  }
  $configuration.motion='full';Save-Settings;Refresh
  $fullscreenProcess=Start-Process $fullscreenExe -ArgumentList ('"'+$probe+'"') -PassThru
- $deadline=[DateTime]::UtcNow.AddSeconds(5);while(!(Test-Path "$probe/fullscreen-ready")){if($fullscreenProcess.HasExited-or [DateTime]::UtcNow-gt $deadline){throw 'Fullscreen fixture did not start'};Start-Sleep -Milliseconds 20}
+ $deadline=[DateTime]::UtcNow.AddSeconds(6);while(!(Test-Path "$probe/fullscreen-ready")-and !(Test-Path "$probe/fullscreen-not-foreground")){if($fullscreenProcess.HasExited-or [DateTime]::UtcNow-gt $deadline){throw 'Fullscreen fixture did not start'};Start-Sleep -Milliseconds 20}
+ function Dump-Fullscreen($reason){$screen=[Windows.Forms.Screen]::PrimaryScreen.Bounds;Write-Output "FULLSCREEN DIAGNOSTIC ($reason): foreground=$([MotionInput]::Describe([MotionInput]::GetForegroundWindow())) monitor=$($screen.Left),$($screen.Top),$($screen.Right),$($screen.Bottom) fixture=$(Get-Content "$probe/fullscreen-ready","$probe/fullscreen-not-foreground" -ErrorAction SilentlyContinue) status=$((Read-Status).motion|ConvertTo-Json -Compress)"}
+ if(Test-Path "$probe/fullscreen-not-foreground"){Dump-Fullscreen 'fixture never became the foreground window';Close-Fullscreen;throw 'Fullscreen fixture could not take the foreground (environment), host policy untested'}
+ # The fixture announces readiness only when foreground; allow up to 2 s for the host to see it.
+ $fixtureWindow=[IntPtr][int64](Get-Content "$probe/fullscreen-ready" -Raw).Trim();$until=[DateTime]::UtcNow.AddSeconds(2);while([MotionInput]::GetForegroundWindow()-ne $fixtureWindow-and [DateTime]::UtcNow-lt $until){Start-Sleep -Milliseconds 50}
+ $until=[DateTime]::UtcNow.AddSeconds(2);do{Refresh;$fullscreen=Read-Status;if($fullscreen.motion.fullscreen-and !$fullscreen.motion.eyesVisible-and !$fullscreen.motion.cursorTimer){break};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow-lt $until)
+ if(!($fullscreen.motion.fullscreen-and !$fullscreen.motion.eyesVisible-and !$fullscreen.motion.cursorTimer)){Dump-Fullscreen 'host did not hide'}
  try{Refresh;$fullscreen=Read-Status;if(!$fullscreen.motion.fullscreen-or $fullscreen.motion.eyesVisible-or $fullscreen.motion.cursorTimer){throw 'Real fullscreen foreground did not hide eyes/timers'}}finally{Close-Fullscreen}
  Refresh
  # 'Show on mouse approach': hidden (no eyes, no timers) until the cursor nears the island, hidden again when it leaves; 'always' restores it.

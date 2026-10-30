@@ -172,10 +172,10 @@ static HRESULT paceWait(double periodMs){
  if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))return S_OK;WaitForSingleObject(paceTimer,INFINITE);return S_OK;
 }
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionWait(){
- if(paced){if(++paceProbe<30)return paceWait(15.0);paced=false;paceProbe=0;instantWaits=0;}
+ if(paced){if(++paceProbe<30)return paceWait(16.0);paced=false;paceProbe=0;instantWaits=0;}
  LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);HRESULT hr=DwmFlush();QueryPerformanceCounter(&b);
  double ms=double(b.QuadPart-a.QuadPart)*1000.0/double(f.QuadPart);
  if(SUCCEEDED(hr)&&ms>=1.0){instantWaits=0;paceNext=0;return S_OK;}
- if(++instantWaits>=2){paced=true;paceProbe=0;return paceWait(15.0);}
+ if(++instantWaits>=2){paced=true;paceProbe=0;return paceWait(16.0);}
  return S_OK;
 }

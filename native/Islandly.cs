@@ -36,6 +36,11 @@ static class Native {
     [DllImport("advapi32.dll")] public static extern int RegNotifyChangeKeyValue(IntPtr key,bool subtree,uint filter,IntPtr ev,bool async);
 
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT rect);
+    [StructLayout(LayoutKind.Sequential)] public struct MONITORINFO { public int size; public RECT monitor, work; public uint flags; }
+    [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
+    [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+    [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out RECT rect, int size);
+    [DllImport("shell32.dll")] public static extern int SHQueryUserNotificationState(out int state);
     [DllImport("user32.dll")] public static extern int GetClassName(IntPtr h, StringBuilder text, int count);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr context);
@@ -204,18 +209,30 @@ sealed class IslandHost : Form {
         if(!nativeAcrylic) NativeMaterial.Apply(Handle,false,nativeLight);
     }
     void DisplayChanged(object s, EventArgs e) { if (!closing && IsHandleCreated) BeginInvoke((Action)Position); }
-    bool revealed; string fullscreenSeen="";
+    bool revealed; string fullscreenSeen=""; readonly uint ownPid=(uint)Process.GetCurrentProcess().Id;
+    // Real fullscreen = a foreign foreground window covering its whole monitor (monitor rect from GetMonitorInfo, visible frame from DWM), or Windows reporting a busy/D3D-fullscreen/presentation session. Islandly's own windows (owner, halo) never count.
     bool Fullscreen(bool preference=true) {
         if (preference && Setting("hideFullscreen","True").Equals("False",StringComparison.OrdinalIgnoreCase)) return false;
         IntPtr h = Native.GetForegroundWindow(); var name = new StringBuilder(128); Native.GetClassName(h,name,128);
-        bool result=false; Native.RECT r=new Native.RECT(); Rectangle b=Rectangle.Empty; string why="";
-        if (h == Handle || name.ToString() == "Progman" || name.ToString() == "WorkerW" || name.ToString() == "Shell_TrayWnd") why="shell-or-own";
-        else if (!Native.GetWindowRect(h,out r)) why="no-rect";
-        else if(preference && Screen.FromHandle(h).DeviceName != TargetScreen().DeviceName) why="other-screen";
-        else { b = Screen.FromHandle(h).Bounds; result = r.left <= b.Left && r.top <= b.Top && r.right >= b.Right && r.bottom >= b.Bottom; why=result?"covers":"smaller"; }
+        bool result=false; Native.RECT r=new Native.RECT(); Native.MONITORINFO mi=new Native.MONITORINFO(); string why=""; int quns=0;
+        uint pid=0; if(h!=IntPtr.Zero) Native.GetWindowThreadProcessId(h,out pid);
+        if (h == IntPtr.Zero) why="no-foreground";
+        else if (h == Handle || pid == ownPid) why="own-window";
+        else if (name.ToString() == "Progman" || name.ToString() == "WorkerW" || name.ToString() == "Shell_TrayWnd") why="shell";
+        else {
+            if (Native.DwmGetWindowAttribute(h,9,out r,Marshal.SizeOf(typeof(Native.RECT))) != 0 && !Native.GetWindowRect(h,out r)) why="no-rect";
+            else {
+                IntPtr monitor=Native.MonitorFromWindow(h,2); mi.size=Marshal.SizeOf(typeof(Native.MONITORINFO));
+                if(monitor==IntPtr.Zero||!Native.GetMonitorInfo(monitor,ref mi)) why="no-monitor";
+                else if(preference && Screen.FromHandle(h).DeviceName != TargetScreen().DeviceName) why="other-screen";
+                else { result = r.left <= mi.monitor.left && r.top <= mi.monitor.top && r.right >= mi.monitor.right && r.bottom >= mi.monitor.bottom; why=result?"covers":"smaller"; }
+            }
+            // Exclusive-mode games and presentations may not cover the monitor with a normal window rect: ask the shell as well (busy, D3D fullscreen, presentation mode).
+            if (!result && why!="other-screen") { try { if(Native.SHQueryUserNotificationState(out quns)==0 && (quns==2||quns==3||quns==4)) { result=true; why="shell-state-"+quns; } } catch(EntryPointNotFoundException) {} }
+        }
         // Diagnostic for CI: log only when the foreground window or the verdict changes (no per-tick I/O).
         string seen=h.ToInt64()+"|"+result+"|"+why;
-        if(preference && probe!="" && seen!=fullscreenSeen){fullscreenSeen=seen;NativeLog.Write("fullscreen-check","fg="+h.ToInt64()+" class="+name+" rect="+r.left+","+r.top+","+r.right+","+r.bottom+" screen="+b+" own="+Handle.ToInt64()+" why="+why+" result="+result);}
+        if(preference && probe!="" && seen!=fullscreenSeen){fullscreenSeen=seen;NativeLog.Write("fullscreen-check","fg="+h.ToInt64()+" class="+name+" pid="+pid+" rect="+r.left+","+r.top+","+r.right+","+r.bottom+" monitor="+mi.monitor.left+","+mi.monitor.top+","+mi.monitor.right+","+mi.monitor.bottom+" own="+Handle.ToInt64()+" quns="+quns+" why="+why+" result="+result);}
         return result;
     }
     void Position() {

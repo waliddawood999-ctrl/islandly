@@ -115,9 +115,9 @@ sealed class NativeMotion:IDisposable {
  }
  [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);[DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms); // 1 ms timer resolution only while a liquid burst runs: the default 15.6 ms quantum turned 16 ms waits into 31 ms
  void StartLoop(){lock(workerGate){Interlocked.Exchange(ref loop,1);if(worker!=null)return;
-  worker=new Thread(delegate(){timeBeginPeriod(1);try{while(!disposed&&Volatile.Read(ref loop)!=0){MotionApi.MotionWait();if(disposed)break;
+  bool precise=!options.eco;worker=new Thread(delegate(){if(precise)timeBeginPeriod(1);try{while(!disposed&&Volatile.Read(ref loop)!=0){MotionApi.MotionWait();if(disposed)break;
     if(Interlocked.CompareExchange(ref pending,1,0)==0)try{owner.BeginInvoke((Action)delegate{Interlocked.Exchange(ref pending,0);if(disposed)return;FrameTick();});}catch(InvalidOperationException){break;}
-  }}finally{timeEndPeriod(1);lock(workerGate){worker=null;}if(!disposed&&Volatile.Read(ref loop)!=0)try{owner.BeginInvoke((Action)StartLoop);}catch(InvalidOperationException){}}}){IsBackground=true,Name="Islandly motion burst"};worker.Start();}
+  }}finally{if(precise)timeEndPeriod(1);lock(workerGate){worker=null;}if(!disposed&&Volatile.Read(ref loop)!=0)try{owner.BeginInvoke((Action)StartLoop);}catch(InvalidOperationException){}}}){IsBackground=true,Name="Islandly motion burst"};worker.Start();}
  }
  void FrameTick(){if(options.hidden){Interlocked.Exchange(ref loop,0);return;}Step((clock.ElapsedMilliseconds-lastStep)/1000f);UpdateMeasuredSize();Draw(false);if(!resizing&&presentPanel!=null)Present();if(snapshot.moving==0&&!resizing){Interlocked.Exchange(ref loop,0);PlaceHalo();if(snapshot.visible!=0){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();ScheduleBlink();}}}
  void Draw(bool dirty){if(disposed||options.hidden)return;double start=clock.Elapsed.TotalMilliseconds,cpu=diagnostics?MotionApi.CpuMs():0;if(dirty)frame.flags|=32;
