@@ -28,7 +28,7 @@ static class MotionApi {
  public static void Check(int hr){if(hr<0)Marshal.ThrowExceptionForHR(hr);}
 }
 sealed class MotionOptions {
- public Rectangle screen;public float scale=1,center,top;public Rectangle hotZone;public bool eyes,eco,fullscreen,compact,light,rtl,acrylic,floating,hidden,sliver,loading;public string mode="full",label="",date="";
+ public Rectangle screen;public float scale=1,center,top;public Rectangle hotZone;public bool eyes,eco,fullscreen,compact,light,rtl,acrylic,floating,hidden,sliver,loading;public string mode="full",label="",date="";public MotionOptions Clone(){return (MotionOptions)MemberwiseClone();}
 }
 sealed class NativeMotion:IDisposable {
  readonly Form owner;readonly string adapter;readonly Action hover,leave;readonly bool diagnostics;
@@ -90,7 +90,10 @@ sealed class NativeMotion:IDisposable {
   float x=Math.Max(options.screen.Left+12*s,Math.Min(options.screen.Right-12*s-w,options.center-w/2));return p.X>=x-16*s&&p.X<=x+w+16*s&&p.Y>=options.top-16*s&&p.Y<=options.top+h+16*s;
  }
  public void Hide(){StopEyes();halo.Hide();owner.Hide();}
- void PlaceHalo(){if(disposed||options.hidden||!owner.Visible)return;float s=options.scale;float f=snapshot.body;float w=(138+(cardWidth-138)*f)*s,h=(36+(cardHeight-36)*f)*s;
+ [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr window,IntPtr after,int x,int y,int cx,int cy,uint flags);
+ // After a fullscreen hide/reveal (or any other topmost window) the island must still be above ordinary windows: re-assert HWND_TOPMOST without moving, sizing or activating.
+ void Raise(){if(halo.IsHandleCreated&&halo.Visible)SetWindowPos(halo.Handle,new IntPtr(-1),0,0,0,0,0x0013);if(owner.IsHandleCreated&&owner.Visible)SetWindowPos(owner.Handle,new IntPtr(-1),0,0,0,0,0x0013);} // halo first, island last: the island stays on top of its input strip
+ void PlaceHalo(){if(disposed||options.hidden||!owner.Visible)return;Raise();float s=options.scale;float f=snapshot.body;float w=(138+(cardWidth-138)*f)*s,h=(36+(cardHeight-36)*f)*s;
   int x=(int)Math.Max(options.screen.Left+12*s,Math.Min(options.screen.Right-12*s-w,options.center-w/2));
   var rect=new Rectangle(x-(int)(20*s),(int)(options.top-20*s),(int)(w+40*s),(int)(h+40*s));
   // A separate input-only HWND avoids acrylic blurring the invisible halo.

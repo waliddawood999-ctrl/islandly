@@ -211,10 +211,13 @@ sealed class IslandHost : Form {
         string requested=Setting("material","acrylic");
         string identity=requested+(nativeLight?":light":":dark");if(identity==appliedMaterial) return;
         appliedMaterial=identity; clippedSize=Size.Empty;
+        // The DirectComposition motion host never gets the DWM accent: it tints the whole window rectangle (not clipped by the per-frame region on a NOREDIRECTIONBITMAP window), so the area outside the island showed #EDEDED. The island material is drawn by the renderer inside the shape only.
+        if(motion!=null){ NativeMaterial.Apply(Handle,false,nativeLight); nativeAcrylic=requested=="acrylic" && NativeMaterial.Supported(); NativeLog.Write("material","host=motion accent=none requested="+requested); return; }
         nativeAcrylic=requested=="acrylic" && NativeMaterial.Apply(Handle,true,nativeLight);
         if(!nativeAcrylic) NativeMaterial.Apply(Handle,false,nativeLight);
     }
     void DisplayChanged(object s, EventArgs e) { if (!closing && IsHandleCreated) BeginInvoke((Action)Position); }
+    string barKeyApplied=""; MotionOptions lastMotion;
     bool revealed; string fullscreenSeen=""; readonly uint ownPid=(uint)Process.GetCurrentProcess().Id;
     // Real fullscreen = a foreign foreground window covering its whole monitor (monitor rect from GetMonitorInfo, visible frame from DWM), or Windows reporting a busy/D3D-fullscreen/presentation session. Islandly's own windows (owner, halo) never count.
     // Position() asks twice (policy and eye option) and runs on foreground/hover events: reuse one verdict per foreground window for 500 ms so DWM/shell queries stay off the pointer path.
@@ -267,7 +270,7 @@ sealed class IslandHost : Form {
         bool wantBar = reserved && !hide;
         if (wantBar != bar) {
             if (bar) RemoveBar();
-            bar = wantBar;
+            bar = wantBar; barKeyApplied="";
             if (bar) { abd = new Native.APPBARDATA(); abd.cbSize = Marshal.SizeOf(abd); abd.hWnd = Handle; abd.callback = 0x8001; MarkBar(); if(Native.SHAppBarMessage(0,ref abd).ToUInt64() == 0) { bar=false; DeleteBarMarker(); } }
         }
         float scale; if (!Single.TryParse(Setting("scale","0.8"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture,out scale)) scale = .8f;
@@ -280,9 +283,13 @@ sealed class IslandHost : Form {
         int strip=Setting("floating","False")=="True"?58:44;
         int w = (int)((sliver ? 84 : 138)*scale), height = Math.Max(4,(int)((sliver ? 5 : 36)*scale));
         if (bar) {
-            var previous = abd.rect;
-            abd.edge = 1; abd.rect = new Native.RECT { left = screen.Left, top = screen.Top, right = screen.Right, bottom = screen.Top + (int)(strip*scale) };
-            Native.SHAppBarMessage(2,ref abd); abd.rect.bottom = abd.rect.top + (int)(strip*scale); if(previous.left != abd.rect.left || previous.right != abd.rect.right || previous.top != abd.rect.top || previous.bottom != abd.rect.bottom) { MarkBar(); Native.SHAppBarMessage(3,ref abd); }
+            // QUERYPOS/SETPOS only when the screen, the strip height or the scale changed (or the bar was just registered): every call makes the shell re-lay out the work area.
+            string barKey=screen.ToString()+"|"+(int)(strip*scale);
+            if(barKey!=barKeyApplied){
+                barKeyApplied=barKey; var previous = abd.rect;
+                abd.edge = 1; abd.rect = new Native.RECT { left = screen.Left, top = screen.Top, right = screen.Right, bottom = screen.Top + (int)(strip*scale) };
+                Native.SHAppBarMessage(2,ref abd); abd.rect.bottom = abd.rect.top + (int)(strip*scale); if(previous.left != abd.rect.left || previous.right != abd.rect.right || previous.top != abd.rect.top || previous.bottom != abd.rect.bottom) { MarkBar(); Native.SHAppBarMessage(3,ref abd); }
+            }
         }
         string pos = Setting("position","center");
         int x = pos == "left" ? screen.Left+16 : pos == "right" ? screen.Right-w-16 : screen.Left+(screen.Width-w)/2;
@@ -295,8 +302,8 @@ sealed class IslandHost : Form {
             bool light=nativeLight;
             bool compact=TimerHasState()||privacyLabel!=""||SystemInformation.PowerStatus.BatteryChargeStatus!=BatteryChargeStatus.NoSystemBattery&&SystemInformation.PowerStatus.BatteryLifePercent<.2f;
             string lang=Setting("uiLang",Setting("lang","ar"));if(lang=="auto")lang=Setting("lang","ar");
-            string label=motion.Opening?DateTime.Now.ToString("HH:mm"):CompactLabel();if(Setting("digits","latn")=="arab")for(int i=0;i<10;i++)label=label.Replace((char)('0'+i),(char)('٠'+i));
-            motion.Configure(new MotionOptions{screen=screen,scale=scale,center=center,top=top,eyes=Setting("idleEyes","False")=="True",eco=nativeEco,mode=Setting("motion","full"),fullscreen=Fullscreen(false),hotZone=hotZone,compact=compact,sliver=sliver,light=light,rtl=lang!="en",acrylic=nativeAcrylic,floating=floating,hidden=hide,loading=launching||child!=null&&!ready,label=label,date=DateTime.Now.ToString("D",System.Globalization.CultureInfo.GetCultureInfo(lang=="en"?"en-US":"ar-SA"))});
+            string label=MotionLabel();
+            lastMotion=new MotionOptions{screen=screen,scale=scale,center=center,top=top,eyes=Setting("idleEyes","False")=="True",eco=nativeEco,mode=Setting("motion","full"),fullscreen=Fullscreen(false),hotZone=hotZone,compact=compact,sliver=sliver,light=light,rtl=lang!="en",acrylic=false,floating=floating,hidden=hide,loading=launching||child!=null&&!ready,label=label,date=DateTime.Now.ToString("D",System.Globalization.CultureInfo.GetCultureInfo(lang=="en"?"en-US":"ar-SA"))};motion.Configure(lastMotion);
             if(!hide && !ready && !Visible){Show();motion.PlaceHaloNow();}
             return;
         }
@@ -508,13 +515,14 @@ sealed class IslandHost : Form {
     void Tick(object sender, EventArgs e) {
         Counters.ticks++;
         bool settingsChanged=ReadSettings();
-        if(clock.ElapsedMilliseconds-lastBackground >= 5000) { int seconds=lastBackground==0?5:(int)Math.Max(5,Math.Min(120,(clock.ElapsedMilliseconds-lastBackground)/1000)); lastBackground=clock.ElapsedMilliseconds; if(child == null) BackgroundTick(seconds); }
+        bool background=BackgroundNeeded(); if(!background) lastBackground=clock.ElapsedMilliseconds;
+        if(background && clock.ElapsedMilliseconds-lastBackground >= 5000) { int seconds=lastBackground==0?5:(int)Math.Max(5,Math.Min(120,(clock.ElapsedMilliseconds-lastBackground)/1000)); lastBackground=clock.ElapsedMilliseconds; if(child == null) BackgroundTick(seconds); }
         if(!launching && child != null && (child.HasExited || shutdownAt > 0 && clock.ElapsedMilliseconds-shutdownAt > 1500 || !ready && clock.ElapsedMilliseconds-launchedAt > (hasLaunchedSuccessfully?60000:120000))) EndSession();
         if(TimerRunning() && Convert.ToInt64(state["endAt"]) <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() && child == null) {
             state["running"] = false; state["remaining"] = 0; state["completed"] = true; SaveState();
             Position();System.Media.SystemSounds.Asterisk.Play(); tray.ShowBalloonTip(5000,"Islandly","Timer complete",ToolTipIcon.Info);
         }
-        if(settingsChanged||TimerHasState()||child!=null||launching||clockMinute!=DateTime.Now.Hour*60+DateTime.Now.Minute)Position();
+        if(settingsChanged||TimerHasState()||child!=null||launching)Position();else if(clockMinute!=DateTime.Now.Hour*60+DateTime.Now.Minute)MinuteChanged();
         if(probe != "") {
             string commandFile = Path.Combine(probe,"command.txt");
             string command = ""; if(File.Exists(commandFile)) { try { command = File.ReadAllText(commandFile).Trim(); if(command != "") File.Delete(commandFile); } catch(IOException) { command = ""; } } // the watcher can fire before the writer finished: an empty or locked file is retried
@@ -531,6 +539,7 @@ sealed class IslandHost : Form {
         // Nothing running: wake once a minute (clock label) instead of every second. Settings and commands arrive through the file watchers.
         bool busy = settingsChanged || TimerHasState() || child != null || launching || (probe != "" && !quietProbe) || clock.ElapsedMilliseconds - activityAt < 5000;
         int want = busy ? 1000 : (int)Math.Max(1000, Math.Min(60000, (60 - DateTime.Now.Second) * 1000 - DateTime.Now.Millisecond + 100));
+        if(background) want = Math.Min(want, 5000);
         if(ticker.Interval != want) ticker.Interval = want;
     }
     int[] JobPids() {
@@ -576,6 +585,18 @@ sealed class IslandHost : Form {
             } finally { if(Native.SHAppBarMessage(1,ref recovery).ToUInt64() != 0) DeleteBarMarker(); else barBlocked=true; }
         } catch { barBlocked=true; }
     }
+    string MotionLabel() {
+        string label=motion.Opening?DateTime.Now.ToString("HH:mm"):CompactLabel();if(Setting("digits","latn")=="arab")for(int i=0;i<10;i++)label=label.Replace((char)('0'+i),(char)('٠'+i));
+        return label;
+    }
+    // A minute boundary only changes the clock text: redraw the label from the last options instead of a full Position() (no shell, display or AppBar work).
+    void MinuteChanged() {
+        clockMinute=DateTime.Now.Hour*60+DateTime.Now.Minute;
+        if(motion==null||lastMotion==null||TimerHasState()||child!=null||launching){Position();return;}
+        var next=lastMotion.Clone();next.label=MotionLabel();next.date=DateTime.Now.ToString("D",System.Globalization.CultureInfo.GetCultureInfo(next.rtl?"ar-SA":"en-US"));
+        lastMotion=next;motion.Configure(next);
+    }
+    bool BackgroundNeeded() { if(nativeEco) return false; int every; Int32.TryParse(Setting("breakEvery","60"),out every); return Setting("timeTracking","True")!="False"||every>0; }
     void BackgroundTick(int seconds) {
         var input=new Native.LASTINPUT(); input.size=(uint)Marshal.SizeOf(input);
         bool active=Native.GetLastInputInfo(ref input) && unchecked((uint)Environment.TickCount-input.time)<60000;
