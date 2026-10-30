@@ -249,7 +249,8 @@ sealed class IslandHost : Form {
         clockMinute=DateTime.Now.Hour*60+DateTime.Now.Minute;
         ApplyNativeMaterial();
         string mode=modeOverride == "" ? Setting("islandMode","overlay") : modeOverride;
-        bool reserved = !barBlocked && (mode == "appbar" || mode == "reserved-bar");
+        // "Show on mouse approach" never reserves the strip: hiding the island would release it and every reveal would re-reserve it, making other windows jump.
+        bool reserved = !barBlocked && (mode == "appbar" || mode == "reserved-bar") && Setting("islandVisibility","always") != "approach";
         bool fs = Fullscreen();
         bool approach = !fs && Setting("islandVisibility","always") == "approach";
         if (!fs && !approach) revealed = false;
