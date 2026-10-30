@@ -122,6 +122,28 @@ try{
  [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$s.motion.center,[int]($s.motion.top+500));$s=Wait-Island $false
  $configuration.islandVisibility='always';Save-Settings;$s=Wait-Island $true
  Write-Output 'NATIVE ISLAND VISIBILITY: approach hides, cursor near reveals, leaving hides, always restores'
+ # Transparency: pixels outside the island/card shape (the bounding-box corners) must show the desktop exactly as when the island is hidden. Reference = hidden capture, shot = visible capture.
+ function Grab($x,$y,$w,$h){$b=[Drawing.Bitmap]::new($w,$h);$g=[Drawing.Graphics]::FromImage($b);try{$g.CopyFromScreen($x,$y,0,0,$b.Size)}finally{$g.Dispose()};return $b}
+ function Assert-Transparent($name,$reference,$shot){
+  New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null;$reference.Save("$root/out/t21/transparency-$Mode-$name-hidden.png",[Drawing.Imaging.ImageFormat]::Png);$shot.Save("$root/out/t21/transparency-$Mode-$name-visible.png",[Drawing.Imaging.ImageFormat]::Png)
+  $w=$shot.Width;$h=$shot.Height
+  foreach($point in @(@(1,1),@(($w-2),1),@(1,($h-2)),@(($w-2),($h-2)))){
+   $a=$reference.GetPixel($point[0],$point[1]);$b=$shot.GetPixel($point[0],$point[1])
+   if([Math]::Abs($a.R-$b.R)-gt 6-or [Math]::Abs($a.G-$b.G)-gt 6-or [Math]::Abs($a.B-$b.B)-gt 6){throw "$name has an opaque/tinted pixel outside the island shape at $($point -join ',') (desktop $($a.R),$($a.G),$($a.B) vs $($b.R),$($b.G),$($b.B))"}
+  }
+  $reference.Dispose();$shot.Dispose()
+ }
+ $far=[Drawing.Point]::new([int]($s.motion.center+420),[int][Math]::Min(700,$s.motion.top+600))
+ $configuration.islandVisibility='approach';Save-Settings;[Windows.Forms.Cursor]::Position=$far;$s=Wait-Island $false;Start-Sleep -Milliseconds 300
+ $cx=[int]$s.motion.center;$ty=[int]$s.motion.top;$sc=[double]$s.motion.scale
+ $barBox=@(($cx-[int](69*$sc)),$ty,[int][Math]::Ceiling(138*$sc),[int][Math]::Ceiling(36*$sc));$cardBox=@(($cx-[int](180*$sc)),$ty,[int][Math]::Ceiling(360*$sc),[int][Math]::Ceiling(440*$sc))
+ $barReference=Grab $barBox[0] $barBox[1] $barBox[2] $barBox[3];$cardReference=Grab $cardBox[0] $cardBox[1] $cardBox[2] $cardBox[3]
+ $configuration.islandVisibility='always';Save-Settings;$s=Wait-Island $true;[Windows.Forms.Cursor]::Position=$far;Start-Sleep -Milliseconds 500
+ Assert-Transparent 'bar' $barReference (Grab $barBox[0] $barBox[1] $barBox[2] $barBox[3])
+ [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]1,[IntPtr]::Zero);Start-Sleep -Milliseconds 700
+ Assert-Transparent 'card' $cardReference (Grab $cardBox[0] $cardBox[1] $cardBox[2] $cardBox[3])
+ [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]::Zero,[IntPtr]::Zero);Start-Sleep -Milliseconds 500;Refresh
+ Write-Output 'NATIVE TRANSPARENCY: corner pixels outside the bar and the open card match the desktop'
  # Real Win32 message dispatch: input timestamp is captured at UI dispatch, never at a later timer.
  $frames=@();$inputs=@()
  for($n=0;$n-lt 12;$n++){

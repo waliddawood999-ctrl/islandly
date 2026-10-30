@@ -211,7 +211,14 @@ sealed class IslandHost : Form {
     void DisplayChanged(object s, EventArgs e) { if (!closing && IsHandleCreated) BeginInvoke((Action)Position); }
     bool revealed; string fullscreenSeen=""; readonly uint ownPid=(uint)Process.GetCurrentProcess().Id;
     // Real fullscreen = a foreign foreground window covering its whole monitor (monitor rect from GetMonitorInfo, visible frame from DWM), or Windows reporting a busy/D3D-fullscreen/presentation session. Islandly's own windows (owner, halo) never count.
+    // Position() asks twice (policy and eye option) and runs on foreground/hover events: reuse one verdict per foreground window for 500 ms so DWM/shell queries stay off the pointer path.
+    IntPtr[] fullscreenWindow=new IntPtr[2]; long[] fullscreenAt=new long[2]; bool[] fullscreenVerdict=new bool[2];
     bool Fullscreen(bool preference=true) {
+        int slot=preference?1:0; IntPtr h=Native.GetForegroundWindow(); long now=clock.ElapsedMilliseconds;
+        if(h==fullscreenWindow[slot] && now-fullscreenAt[slot]<500 && now>=fullscreenAt[slot]) return fullscreenVerdict[slot];
+        bool result=FullscreenNow(preference); fullscreenWindow[slot]=h; fullscreenAt[slot]=now; fullscreenVerdict[slot]=result; return result;
+    }
+    bool FullscreenNow(bool preference) {
         if (preference && Setting("hideFullscreen","True").Equals("False",StringComparison.OrdinalIgnoreCase)) return false;
         IntPtr h = Native.GetForegroundWindow(); var name = new StringBuilder(128); Native.GetClassName(h,name,128);
         bool result=false; Native.RECT r=new Native.RECT(); Native.MONITORINFO mi=new Native.MONITORINFO(); string why=""; int quns=0;
