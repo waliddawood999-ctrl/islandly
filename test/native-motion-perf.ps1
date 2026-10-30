@@ -208,8 +208,10 @@ try{
  # DWM's nominal60 Hz period is16.667ms. Retain every raw interval and fail missed budgets.
  $late=@($active|Where-Object {$_.interval-gt 16.667}).Count
  $wall=@($active|ForEach-Object{$_.wallMs});$wallP95=Quantile $wall .95;$wallAvg=($wall|Measure-Object -Average).Average;$maxInterval=($active.interval|Measure-Object -Maximum).Maximum
- $slow=@($active|Where-Object{$_.interval-gt 20}|Select-Object -First 14|ForEach-Object{"i=$($_.index) interval=$([Math]::Round($_.interval,1)) body=$([Math]::Round($_.body,3)) wait=$([Math]::Round($_.waitMs,1)) gate=$([Math]::Round($_.gateMs,1)) wall=$([Math]::Round($_.wallMs,1)) hiRes=$($_.timerHighRes) res100ns=$($_.timerRes100ns)"})
+ $slow=@($active|Where-Object{$_.interval-gt 20}|Select-Object -First 14|ForEach-Object{"i=$($_.index) interval=$([Math]::Round($_.interval,1)) body=$([Math]::Round($_.body,3)) wait=$([Math]::Round($_.waitMs,1)) gate=$([Math]::Round($_.gateMs,1)) wall=$([Math]::Round($_.wallMs,1)) hiRes=$($_.timerHighRes) res100ns=$($_.timerRes100ns) tid=$($_.tid)"})
  Write-Output ("SLOW FRAMES ($Mode): "+($slow-join ' | '))
+ $trace=@($active|Select-Object -First 36|ForEach-Object{"$($_.index):$([Math]::Round($_.interval,1))/w$([Math]::Round($_.waitMs,1))/t$($_.tid)"})
+ Write-Output ("BURST TRACE ($Mode) index:interval/wait/thread: "+($trace-join ' '))
  Write-Output "NATIVE LIQUID ($Mode): frames=$($active.Count) p50=$p50 p95=$p95 late=$late maxInterval=$maxInterval wallAvgMs=$wallAvg wallP95Ms=$wallP95 cpuAvgMs=$cpu response=$response"
  if($p95-gt 16.667-or $response-ge 50-or $cpu-ge 2){throw "Native motion failed60fps/input/CPU: p95=$p95 response=$response cpu=$cpu late=$late"}
  New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null

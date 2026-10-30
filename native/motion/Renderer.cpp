@@ -190,8 +190,8 @@ static HRESULT paceWait(double periodMs){
  if(paceNext<=now.QuadPart){paceNext=now.QuadPart;return S_OK;} // already late: run the frame now and re-anchor
  const bool sleepOk=paceTimer&&paceHighRes; /* CI evidence: no high-resolution timer there (hiRes=0) and, although NtQueryTimerResolution reports 1 ms, a normal timer still fired a full 15.6 ms tick late (waits of 30-32 ms) because the 1 ms request is not honoured for this process; only a yield loop on the QPC clock is exact */
  for(;;){QueryPerformanceCounter(&now);LONGLONG left=paceNext-now.QuadPart;if(left<=0)break;double ms=double(left)*1000.0/double(paceFrequency.QuadPart);
-  if(sleepOk&&ms>2.0){LARGE_INTEGER due;due.QuadPart=-LONGLONG((double(left)*10000000.0/double(paceFrequency.QuadPart))-15000.0);if(due.QuadPart>=0)due.QuadPart=-1;if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))SwitchToThread();else WaitForSingleObject(paceTimer,INFINITE);}
-  else SwitchToThread();}
+  if(sleepOk&&ms>2.0){LARGE_INTEGER due;due.QuadPart=-LONGLONG((double(left)*10000000.0/double(paceFrequency.QuadPart))-15000.0);if(due.QuadPart>=0)due.QuadPart=-1;if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))YieldProcessor();else WaitForSingleObject(paceTimer,INFINITE);}
+  else YieldProcessor();} /* a busy spin: SwitchToThread hands the processor to any ready thread, which then keeps it for a whole scheduler quantum (15.6 ms) */
  return S_OK;
 }
 extern "C" __declspec(dllexport) void __cdecl MotionTimerInfo(int*highRes,unsigned*resolution100ns){*highRes=paceHighRes?1:0;*resolution100ns=timerResolution100ns();}
