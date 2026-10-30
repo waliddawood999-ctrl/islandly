@@ -1,7 +1,7 @@
 name: T9 native idle and on-demand panels
 on:
   pull_request:
-    branches: [dev, codex/T17-integration, codex/T18-sac-reputation, codex/T19-contracts, codex/T20-laptop-fixes]
+    branches: [dev, codex/T17-integration, codex/T18-sac-reputation, codex/T19-contracts, codex/T20-laptop-fixes, codex/T21-native-motion]
     paths:
       - 'src/**'
       - 'native/**'
@@ -33,9 +33,21 @@ jobs:
       - name: Reproducible frozen host (two clean build roots)
         shell: pwsh
         run: ./test/native-reproducible.ps1
+      - name: Deterministic fullscreen policy and invalidation
+        shell: pwsh
+        run: ./test/native-fullscreen-policy.ps1
+      - name: Process exit during ownership sampling cannot corrupt totals
+        shell: pwsh
+        run: ./test/native-process-observation.ps1
+      - name: Concurrent publishers and retained snapshot handles
+        shell: pwsh
+        run: ./test/status-concurrent.ps1
       - name: Ownership snapshot concurrent publication regression
         shell: pwsh
         run: ./test/status-io.ps1
+      - name: Deterministic empty null and partial settings publication
+        shell: pwsh
+        run: ./test/native-settings-snapshot.ps1
       - name: Live AppBar ownership reads after opening settings
         shell: pwsh
         run: ./test/status-live.ps1
@@ -61,6 +73,7 @@ jobs:
             out/t20-startup/**
             out/status-diagnostics/**
             out/status-live/**
+            out/settings-snapshot/**
           if-no-files-found: warn
   packaged-windows:
     runs-on: windows-latest

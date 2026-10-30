@@ -1,4 +1,4 @@
-param([ValidateSet('overlay','reserved-bar')][string]$Mode='overlay')
+param([ValidateSet('overlay','reserved-bar')][string]$Mode='overlay',[switch]$FrameSmoke)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 Add-Type -AssemblyName System.Windows.Forms
@@ -61,10 +61,11 @@ function Capture-Native {
   Write-Output ('T21_DESKTOP_BASE64 '+[Convert]::ToBase64String([IO.File]::ReadAllBytes($file)))
  }finally{$graphics.Dispose();$bitmap.Dispose()}
 }
+function Wait-Island($visible){$until=[DateTime]::UtcNow.AddSeconds(3);do{Refresh;$s=Read-Status;if([bool]$s.motion.eyesVisible-eq $visible){return $s};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow-lt $until);throw "Island visibility never became $visible"}
 function Quantile($values,$q){$ordered=@($values|Sort-Object);return $ordered[[Math]::Min($ordered.Count-1,[Math]::Floor($q*$ordered.Count))]}
 function Phase($name,$moving){
  Refresh;$before=Read-Status
- Start-Sleep -Seconds 15;$samples=@();$watch=[Diagnostics.Stopwatch]::StartNew();$next=1000
+ Start-Sleep -Seconds 15;$threadCpu=@{};$hostProcess.Refresh();foreach($thread in $hostProcess.Threads){try{$threadCpu[$thread.Id]=$thread.TotalProcessorTime.TotalMilliseconds}catch{}};$samples=@();$watch=[Diagnostics.Stopwatch]::StartNew();$next=1000
  $hostProcess.Refresh();$lastCpu=$hostProcess.TotalProcessorTime.TotalMilliseconds;$lastTime=$watch.Elapsed.TotalMilliseconds
  for($i=0;$i-lt 60;){
   if($moving){$t=$watch.Elapsed.TotalSeconds;[Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]($center+110*[Math]::Sin($t*2)),[int]($top+100+15*[Math]::Cos($t*2)))}
@@ -76,17 +77,50 @@ function Phase($name,$moving){
   }
   Start-Sleep -Milliseconds 30
  }
+ $hostProcess.Refresh();$threadDeltas=@();foreach($thread in $hostProcess.Threads){try{$was=$threadCpu[$thread.Id];if($null-ne $was){$threadDeltas+=@{id=$thread.Id;cpuMs=$thread.TotalProcessorTime.TotalMilliseconds-$was}}}catch{}}
+ Write-Host ("NATIVE THREAD CPU $Mode $name "+($threadDeltas|Sort-Object cpuMs -Descending|ConvertTo-Json -Compress))
  Refresh;$after=Read-Status
  if(@($after.processes).Count-ne 1-or $after.phase-ne 'idle'){throw 'Native idle retained an owned process'}
  $avg=($samples|ForEach-Object{$_.totalMB}|Measure-Object -Average).Average;$cpu=($samples|ForEach-Object{$_.totalCPU}|Measure-Object -Average).Average;$peak=($samples|ForEach-Object{$_.totalMB}|Measure-Object -Maximum).Maximum
  New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null
  @{name=$name;averageMB=$avg;peakMB=$peak;averageCPU=$cpu;samples=$samples;before=$before.motion;after=$after.motion}|ConvertTo-Json -Depth 12|Set-Content "$root/out/t21/phase-$Mode-$name.json" -Encoding utf8
- Write-Output "MOTION PHASE RAW: $Mode $name RAM=$avg/$peak CPU=$cpu renders=$($after.motion.renders-$before.motion.renders) cursorReads=$($after.motion.cursorReads-$before.motion.cursorReads) start=$($before.motion|ConvertTo-Json -Compress) end=$($after.motion|ConvertTo-Json -Compress)"
+ Write-Host "MOTION PHASE RAW: $Mode $name RAM=$avg/$peak CPU=$cpu renders=$($after.motion.renders-$before.motion.renders) cursorReads=$($after.motion.cursorReads-$before.motion.cursorReads) start=$($before.motion|ConvertTo-Json -Compress) end=$($after.motion|ConvertTo-Json -Compress)"
  if($peak-ge 180){throw "$name RAM exceeds180 MB"}
  $limit=if($moving){.5}else{.1};if($cpu-ge $limit){throw "$name CPU $cpu exceeds $limit% of one core"}
+ if(!$moving-and $after.motion.priorityBoosted){throw "$name retained burst-only UI priority"}
  if(!$moving-and $after.motion.cursorReads-ne $before.motion.cursorReads){throw "$name polled a far/hidden cursor"}
- Write-Output "NATIVE MOTION PERF: $Mode $name RAM avg=$avg peak=$peak MB; CPU=$cpu%; cursorReads=$($after.motion.cursorReads-$before.motion.cursorReads)"
+ Write-Host "NATIVE MOTION PERF: $Mode $name RAM avg=$avg peak=$peak MB; CPU=$cpu%; cursorReads=$($after.motion.cursorReads-$before.motion.cursorReads)"
  return @{name=$name;averageMB=$avg;peakMB=$peak;averageCPU=$cpu;samples=$samples;before=$before.motion;after=$after.motion;method='external process CPU/working set,15s warmup/60samples; diagnostic status disk writes disabled; Toolhelp child detection; original T9 JobObject full guards remain separate'}
+}
+
+function Measure-Liquid {
+ # Real Win32 message dispatch: input timestamp is captured at UI dispatch, never at a later timer.
+ $frames=@();$inputs=@()
+ for($n=0;$n-lt 12;$n++){
+  [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]1,[IntPtr]::Zero);Start-Sleep -Milliseconds 340;Refresh
+  $frames+=Get-Content "$probe/motion-frames.json" -Raw|ConvertFrom-Json;$inputs+=(Read-Status).motion.inputFirstMs
+  [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]::Zero,[IntPtr]::Zero);Start-Sleep -Milliseconds 340
+ }
+ if(@($inputs|Where-Object {$_-lt 0}).Count-ne 0-or $inputs.Count-ne 12){throw 'Native input measurement never observed a changed frame'}
+ [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]1,[IntPtr]::Zero);Start-Sleep -Milliseconds 340
+ [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]2,[IntPtr]::Zero);Start-Sleep -Milliseconds 160;Refresh
+ $measured=Read-Status;$resizeFrames=@(Get-Content "$probe/motion-frames.json" -Raw|ConvertFrom-Json|Where-Object{$_.resizing})
+ if([Math]::Abs($measured.motion.cardHeight-300)-gt .1-or $resizeFrames.Count-lt 4){throw 'Measured card size did not ease over120ms'}
+ [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]::Zero,[IntPtr]::Zero)
+ $active=@($frames|Where-Object {$_.body-gt .01-and $_.body-lt .99-and $_.interval-gt 0})
+ if($active.Count-lt 100){throw 'Insufficient native motion frames'}
+ $p50=Quantile $active.interval .5;$p95=Quantile $active.interval .95;$cpu=($active|Measure-Object cpuMs -Average).Average;$response=($inputs|Measure-Object -Maximum).Maximum
+ # DWM's nominal60 Hz period is16.667ms. Retain every raw interval and fail missed budgets.
+ $late=@($active|Where-Object {$_.interval-gt 16.667}).Count
+ $wall=@($active|ForEach-Object{$_.wallMs});$wallP95=Quantile $wall .95;$wallAvg=($wall|Measure-Object -Average).Average;$maxInterval=($active.interval|Measure-Object -Maximum).Maximum
+ $slow=@($active|Where-Object{$_.interval-gt 20}|Select-Object -First 14|ForEach-Object{$gate=if($null -eq $_.gateMs){'n/a'}else{[Math]::Round($_.gateMs,1)};"i=$($_.index) interval=$([Math]::Round($_.interval,1)) body=$([Math]::Round($_.body,3)) wait=$([Math]::Round($_.waitMs,1)) gate=$gate queue=$([Math]::Round($_.queueMs,1)) wall=$([Math]::Round($_.wallMs,1)) hiRes=$($_.timerHighRes) res100ns=$($_.timerRes100ns) resizing=$($_.resizing)"})
+ Write-Output ("SLOW FRAMES ($Mode): "+($slow-join ' | '))
+ Write-Output "NATIVE LIQUID ($Mode): frames=$($active.Count) p50=$p50 p95=$p95 late=$late maxInterval=$maxInterval wallAvgMs=$wallAvg wallP95Ms=$wallP95 cpuAvgMs=$cpu response=$response"
+ New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null
+ @{mode=$Mode;idle=$idle;moving=$moving;hidden=$hidden;liquid=@{frameP50=$p50;frameP95=$p95;lateFrames=$late;frameCpuAverageMs=$cpu;inputMaxMs=$response;inputSamples=$inputs;frames=$frames;measuredResizeFrames=$resizeFrames};hardware='Windows CI single monitor; laptop SAC/second physical monitor/144Hz not run'}|ConvertTo-Json -Depth 14|Set-Content "$root/out/t21/perf-$Mode.json" -Encoding utf8
+ Write-Host ('NATIVE FRAME DIAGNOSTICS '+(@($active|Select-Object interval,wallMs,cpuMs,drawMs,regionMs,presentMs,commitMs,waitMs,queueMs,waitMode)|ConvertTo-Json -Compress))
+ if($p95-gt 16.667-or $response-ge 50-or $cpu-ge 2){throw "Native motion failed60fps/input/CPU: p95=$p95 response=$response cpu=$cpu late=$late"}
+ Write-Output "NATIVE LIQUID: $Mode frame p50/p95=$p50/$p95 ms, CPU mean=$cpu ms/frame, input max=$response ms, >16.667ms=$late"
 }
 
 try{
@@ -94,6 +128,7 @@ try{
  $initial=Read-Status;$center=$initial.motion.center;$top=$initial.motion.top
  [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$center,[int]($top+400));Start-Sleep -Seconds 2
  Capture-Native
+ if($FrameSmoke){Measure-Liquid;return}
  $idle=Phase 'eyes-idle' $false
  [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$center,[int]($top+18));Start-Sleep -Milliseconds 150
  $moving=Phase 'eyes-moving' $true
@@ -140,6 +175,13 @@ try{
   if(!$above){throw "Island is below a foreign topmost window shown after fullscreen hide/reveal (Raise() did not take effect)"}
  }finally{Set-Content "$probe/box-stop" 'stop';if(!$boxProcess.WaitForExit(5000)){$boxProcess.Kill()}}
  Refresh
+ # 'Show on mouse approach': hidden (no eyes, no timers) until the cursor nears the island, hidden again when it leaves; 'always' restores it.
+ $configuration.islandVisibility='approach';Save-Settings;$s=Wait-Island $false
+ if($s.motion.cursorTimer-or $s.motion.frameLoop){throw 'Approach mode left timers running while hidden'}
+ [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$s.motion.center,[int]($s.motion.top+10));$s=Wait-Island $true
+ [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$s.motion.center,[int]($s.motion.top+500));$s=Wait-Island $false
+ $configuration.islandVisibility='always';Save-Settings;$s=Wait-Island $true
+ Write-Output 'NATIVE ISLAND VISIBILITY: approach hides, cursor near reveals, leaving hides, always restores'
  # Transparency: pixels outside the island/card shape (the bounding-box corners) must show the desktop exactly as when the island is hidden. Reference = hidden capture, shot = visible capture.
  function Grab($x,$y,$w,$h){$b=[Drawing.Bitmap]::new($w,$h);$g=[Drawing.Graphics]::FromImage($b);try{$g.CopyFromScreen($x,$y,0,0,$b.Size)}finally{$g.Dispose()};return $b}
  function Assert-Transparent($name,$reference,$shot){
@@ -152,14 +194,21 @@ try{
   $shot.Dispose()
  }
  $far=[Drawing.Point]::new([int]($s.motion.center+420),[int][Math]::Min(700,$s.motion.top+600))
- # Honest reference: the island is HIDDEN (Show on approach, cursor far), so no host window covers the sample points. The shot follows in Always visible with the cursor far; in the reserved-bar job that re-reserves the strip, so a layout shift would show in the TRANSPARENCY RGB lines.
- $cx=[int]$s.motion.center;$ty=[int]$s.motion.top;$sc=[double]$s.motion.scale
- # Reserving or releasing the strip moves other windows (Windows Terminal under the box showed 46,46,46 in the hidden reference and wallpaper in the shot): minimize them so both captures see the bare desktop.
  [void](New-Object -ComObject Shell.Application).MinimizeAll();Start-Sleep -Milliseconds 800
- $configuration.islandVisibility='approach';Save-Settings;[Windows.Forms.Cursor]::Position=$far;$s=Wait-Island $false;Start-Sleep -Milliseconds 900
- $barBox=@(($cx-[int](69*$sc)),$ty,[int][Math]::Ceiling(138*$sc),[int][Math]::Ceiling(36*$sc));$cardBox=@(($cx-[int](220*$sc)),$ty,[int][Math]::Ceiling(440*$sc),[int][Math]::Ceiling(480*$sc)) # 40 px of margin each side: the open spring overshoots the nominal 360 px card, so the box corners must lie clear of the animated shape
+ $configuration.islandVisibility='approach';Save-Settings;[Windows.Forms.Cursor]::Position=$far;$s=Wait-Island $false;Start-Sleep -Milliseconds 300
+ $cx=[int]$s.motion.center;$ty=[int]$s.motion.top;$sc=[double]$s.motion.scale
+ $barBox=@(($cx-[int](69*$sc)),$ty,[int][Math]::Ceiling(138*$sc),[int][Math]::Ceiling(36*$sc));$cardBox=@(($cx-[int](180*$sc)),$ty,[int][Math]::Ceiling(360*$sc),[int][Math]::Ceiling(440*$sc))
+ # AppBar registration changes the work area and can move the ordinary desktop
+ # windows. Compare against an inelastic, non-activating backdrop, not two
+ # different terminal layouts. Same fixture executable; no new shipped binary.
+ Remove-Item "$probe/fullscreen-stop" -ErrorAction SilentlyContinue
+ $fullscreenProcess=Start-Process $fullscreenExe -ArgumentList @(('"'+$probe+'"'),'--backdrop') -PassThru
+ $deadline=[DateTime]::UtcNow.AddSeconds(6)
+ while(!(Test-Path "$probe/backdrop-ready")){if($fullscreenProcess.HasExited-or [DateTime]::UtcNow-gt $deadline){throw 'Stable transparency backdrop did not start'};Start-Sleep -Milliseconds 20}
+ Start-Sleep -Milliseconds 300
  $barReference=Grab $barBox[0] $barBox[1] $barBox[2] $barBox[3];$cardReference=Grab $cardBox[0] $cardBox[1] $cardBox[2] $cardBox[3]
  $diagBounds=[Windows.Forms.Screen]::PrimaryScreen.Bounds;$fullReference=Grab 0 0 $diagBounds.Width $diagBounds.Height
+ $configuration.islandVisibility='always';Save-Settings;$s=Wait-Island $true;[Windows.Forms.Cursor]::Position=$far;Start-Sleep -Milliseconds 500
  # The shot is taken with the island visible and the cursor FAR (Always visible): a cursor on the island makes it lean toward the pointer (anticipation, drop=0.1), which grows the pill over the box corner.
  $configuration.islandVisibility='always';Save-Settings;[Windows.Forms.Cursor]::Position=$far;$s=Wait-Island $true;Start-Sleep -Milliseconds 900;Refresh;Start-Sleep -Milliseconds 600
  $fullShot=Grab 0 0 $diagBounds.Width $diagBounds.Height;$barShot=Grab $barBox[0] $barBox[1] $barBox[2] $barBox[3]
@@ -173,6 +222,9 @@ try{
  $materialLines=@(($materialLog-split"`n")|Where-Object{$_-match 'material host=motion accent=none'})
  Write-Output "MATERIAL LOG ($Mode): $($materialLines.Count) line(s) 'material host=motion accent=none'"
  if($materialLines.Count-lt 1){throw "Native log never recorded 'material host=motion accent=none' ($Mode): the DWM accent may still tint the whole host window"}
+ Assert-Transparent 'bar' $barReference (Grab $barBox[0] $barBox[1] $barBox[2] $barBox[3])
+ function Assert-CornersMatch($name,$reference,$shot){$w=$shot.Width;$h=$shot.Height;if(-not $script:cornerLogged){$script:cornerLogged=$true;Write-Output "TRANSPARENCY RGB ($name first frame at 1,1): hidden $($reference.GetPixel(1,1).R),$($reference.GetPixel(1,1).G),$($reference.GetPixel(1,1).B) vs frame $($shot.GetPixel(1,1).R),$($shot.GetPixel(1,1).G),$($shot.GetPixel(1,1).B)"};foreach($point in @(@(1,1),@(($w-2),1),@(1,($h-2)),@(($w-2),($h-2)))){$x=$reference.GetPixel($point[0],$point[1]);$y=$shot.GetPixel($point[0],$point[1]);if([Math]::Abs($x.R-$y.R)-gt 6-or [Math]::Abs($x.G-$y.G)-gt 6-or [Math]::Abs($x.B-$y.B)-gt 6){$minX=99999;$minY=99999;$maxX=-1;$maxY=-1;$diffCount=0;for($gy=0;$gy-lt $h;$gy+=4){for($gx=0;$gx-lt $w;$gx+=4){$p=$reference.GetPixel($gx,$gy);$q=$shot.GetPixel($gx,$gy);if([Math]::Abs($p.R-$q.R)-gt 6-or [Math]::Abs($p.G-$q.G)-gt 6-or [Math]::Abs($p.B-$q.B)-gt 6){$diffCount++;if($gx-lt $minX){$minX=$gx};if($gy-lt $minY){$minY=$gy};if($gx-gt $maxX){$maxX=$gx};if($gy-gt $maxY){$maxY=$gy}}}};Write-Output "TRANSPARENCY DIFF ($name, 4 px grid, box $w x $h): differing samples=$diffCount bounds=($minX,$minY)-($maxX,$maxY)";New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null;$tag=($name -replace ' ','-');$shot.Save("$root/out/t21/transparency-failure-$Mode-$tag-shot.png",[Drawing.Imaging.ImageFormat]::Png);$reference.Save("$root/out/t21/transparency-failure-$Mode-$tag-reference.png",[Drawing.Imaging.ImageFormat]::Png);throw "$name frame shows an opaque/tinted pixel outside the island shape at $($point -join ',') (reference $($x.R),$($x.G),$($x.B) vs frame $($y.R),$($y.G),$($y.B))"}}}
+
  # Which surface? The host reads its own DirectComposition surface back for every frame of a simulated open and close (frame 0 included) and counts non-transparent pixels outside the island's bounding box. 0 here while the screen differs means the tint comes from outside the composition surface (window material, region, halo, another window).
  [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]3,[IntPtr]::Zero);Start-Sleep -Milliseconds 400;Refresh;$audit=(Read-Status).motion.alphaAudit
  Write-Output "ALPHA AUDIT (composition surface outside the island, open and close frame by frame): frames=$($audit.frames) leakPixels=$($audit.leakPixels) first=($($audit.firstX),$($audit.firstY))"
@@ -187,40 +239,11 @@ try{
   if($frames-lt 5){throw "Transparency sampling captured only $frames frames during $($direction.name)"}
   if($direction.message-eq 1){Assert-Transparent 'card' $cardReference $last}
  }
- $configuration.islandVisibility='always';Save-Settings;Start-Sleep -Milliseconds 300;Refresh
+ Start-Sleep -Milliseconds 300;Refresh
+ Close-Fullscreen
  Write-Output 'NATIVE TRANSPARENCY: corner pixels outside the bar and the open card match the desktop'
- # Real Win32 message dispatch: input timestamp is captured at UI dispatch, never at a later timer.
- $frames=@();$inputs=@()
- for($n=0;$n-lt 12;$n++){
-  [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]1,[IntPtr]::Zero);Start-Sleep -Milliseconds 340;Refresh
-  $frames+=Get-Content "$probe/motion-frames.json" -Raw|ConvertFrom-Json;$inputs+=(Read-Status).motion.inputFirstMs
-  [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]::Zero,[IntPtr]::Zero);Start-Sleep -Milliseconds 340
- }
- if(@($inputs|Where-Object {$_-lt 0}).Count-ne 0-or $inputs.Count-ne 12){throw 'Native input measurement never observed a changed frame'}
- [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]1,[IntPtr]::Zero);Start-Sleep -Milliseconds 340
- [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]2,[IntPtr]::Zero);Start-Sleep -Milliseconds 160;Refresh
- $measured=Read-Status;$resizeFrames=@(Get-Content "$probe/motion-frames.json" -Raw|ConvertFrom-Json|Where-Object{$_.resizing})
- if([Math]::Abs($measured.motion.cardHeight-300)-gt .1-or $resizeFrames.Count-lt 4){throw 'Measured card size did not ease over120ms'}
- [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]::Zero,[IntPtr]::Zero)
- $active=@($frames|Where-Object {$_.body-gt .01-and $_.body-lt .99-and $_.interval-gt 0})
- if($active.Count-lt 100){throw 'Insufficient native motion frames'}
- $p50=Quantile $active.interval .5;$p95=Quantile $active.interval .95;$cpu=($active|Measure-Object cpuMs -Average).Average;$response=($inputs|Measure-Object -Maximum).Maximum
- # DWM's nominal60 Hz period is16.667ms. Retain every raw interval and fail missed budgets.
- $late=@($active|Where-Object {$_.interval-gt 16.667}).Count
- $wall=@($active|ForEach-Object{$_.wallMs});$wallP95=Quantile $wall .95;$wallAvg=($wall|Measure-Object -Average).Average;$maxInterval=($active.interval|Measure-Object -Maximum).Maximum
- $idx=0;$slow=@($active|ForEach-Object{[pscustomobject]@{index=$idx++;interval=$_.interval;body=$_.body;wallMs=$_.wallMs;cpuMs=$_.cpuMs}}|Where-Object{$_.interval-gt 20}|Select-Object -First 14|ForEach-Object{"i=$($_.index) interval=$([Math]::Round($_.interval,1)) body=$([Math]::Round($_.body,3)) wall=$([Math]::Round($_.wallMs,2)) cpu=$([Math]::Round($_.cpuMs,2))"})
- Write-Output ("SLOW FRAMES ($Mode): "+($slow-join ' | '))
- # Attribution of the 16.7-20 ms frames: draw time of the frame itself and of the frame before it (a draw that blocks for a timer tick delays the next start), and what the heavy draws were (resize or not).
- $rows=@();$k=0;foreach($f in $active){$rows+=[pscustomobject]@{i=$k++;interval=$f.interval;wall=$f.wallMs;resizing=$f.resizing;w=$f.cardWidth;h=$f.cardHeight;body=$f.body;endMs=$f.endMs;regionMs=$f.regionMs;eyesMs=$f.eyesMs;presentMs=$f.presentMs;commitMs=$f.commitMs}}
- $heavy=@($rows|Where-Object{$_.wall-gt 4}|Select-Object -First 16|ForEach-Object{"i=$($_.i) wall=$([Math]::Round($_.wall,1)) interval=$([Math]::Round($_.interval,1)) resizing=$($_.resizing) card=$([Math]::Round($_.w))x$([Math]::Round($_.h)) body=$([Math]::Round($_.body,2)) end=$([Math]::Round($_.endMs,1)) region=$([Math]::Round($_.regionMs,1)) eyes=$([Math]::Round($_.eyesMs,1)) present=$([Math]::Round($_.presentMs,1)) commit=$([Math]::Round($_.commitMs,1))"})
- Write-Output ("HEAVY DRAWS ($Mode) count=$(@($rows|Where-Object{$_.wall-gt 4}).Count): "+($heavy-join ' | '))
- $lateRows=@();for($k=1;$k-lt $rows.Count;$k++){if($rows[$k].interval-gt 16.667-and $rows[$k].interval-le 20){$lateRows+="i=$($rows[$k].i) interval=$([Math]::Round($rows[$k].interval,1)) wall=$([Math]::Round($rows[$k].wall,1)) prevWall=$([Math]::Round($rows[$k-1].wall,1))"}}
- Write-Output ("LATE 16.7-20 ms ($Mode) count=$($lateRows.Count): "+((@($lateRows|Select-Object -First 16))-join ' | '))
- Write-Output "NATIVE LIQUID ($Mode): frames=$($active.Count) p50=$p50 p95=$p95 late=$late maxInterval=$maxInterval wallAvgMs=$wallAvg wallP95Ms=$wallP95 cpuAvgMs=$cpu response=$response"
- if($p95-gt 16.667-or $response-ge 50-or $cpu-ge 2){throw "Native motion failed60fps/input/CPU: p95=$p95 response=$response cpu=$cpu late=$late"}
- New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null
- @{mode=$Mode;idle=$idle;moving=$moving;hidden=$hidden;liquid=@{frameP50=$p50;frameP95=$p95;lateFrames=$late;frameCpuAverageMs=$cpu;inputMaxMs=$response;inputSamples=$inputs;frames=$frames;measuredResizeFrames=$resizeFrames};hardware='Windows CI single monitor; laptop SAC/second physical monitor/144Hz not run'}|ConvertTo-Json -Depth 14|Set-Content "$root/out/t21/perf-$Mode.json" -Encoding utf8
- Write-Output "NATIVE LIQUID: $Mode frame p50/p95=$p50/$p95 ms, CPU mean=$cpu ms/frame, input max=$response ms, >16.667ms=$late"
+ Measure-Liquid
+
 }finally{
  try{Close-Fullscreen;Refresh;Write-Output ('MOTION LAST STATUS: '+((Read-Status)|ConvertTo-Json -Compress -Depth 8))}catch{}
  if(!$hostProcess.HasExited){Set-Content "$probe/command.txt" 'exit';if(!$hostProcess.WaitForExit(10000)){$hostProcess.Kill()}}

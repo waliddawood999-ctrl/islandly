@@ -1,7 +1,7 @@
 name: T10 Islamic backend verification
 on:
   pull_request:
-    branches: [dev, codex/T17-integration, codex/T18-sac-reputation, codex/T19-contracts, codex/T20-laptop-fixes]
+    branches: [dev, codex/T17-integration, codex/T18-sac-reputation, codex/T19-contracts, codex/T20-laptop-fixes, codex/T21-native-motion]
   workflow_dispatch:
 permissions:
   contents: read
