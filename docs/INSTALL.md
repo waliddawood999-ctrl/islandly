@@ -5,7 +5,7 @@
 1. نزّل `Islandly-install-win64.zip` وفكّه كاملًا إلى مجلد عادي. لا تشغّل من داخل ZIP.
 2. أغلق أي نسخة تعمل من Islandly من قائمة الأيقونة بجانب الساعة.
 3. في المجلد المفكوك اكتب `cmd` في شريط عنوان مستكشف الملفات واضغط Enter، ثم اكتب `Install.cmd`. لا تشغّل كمسؤول. يثبت إلى `%LOCALAPPDATA%\Islandly` ويضيف اختصار `Islandly` إلى قائمة ابدأ وإدخالًا في التطبيقات المثبتة.
-4. اختر Y للتشغيل مع Windows أو N لتركه معطلًا. يمكن لاحقًا تشغيل `Install.cmd /startup-on` أو `/startup-off` من الحزمة المفكوكة.
+4. اختر Y للتشغيل مع Windows أو N لعدم تغيير الاختيار (معطل في التثبيت الجديد). يمكن لاحقًا تشغيل `Install.cmd /startup-on` أو `/startup-off` من الحزمة المفكوكة.
 5. افتح Islandly من قائمة ابدأ. يمكنك حذف مجلد ZIP المفكوك بعد التثبيت.
 
 **التحديث:** أغلق Islandly، فك الحزمة الجديدة وشغّل `Install.cmd` من Command Prompt كما سبق. تبقى الإعدادات والسجلات في `%APPDATA%\islandly`، ويبقى اختيار التشغيل مع Windows كما هو إذا اخترت N.
@@ -39,3 +39,15 @@ The source is fixed to T21 `5d06d5e`. Its host and `Islandly.Motion.dll` necessa
 Use the documented Command Prompt entrypoint from the start: Explorer may block downloaded CMD/LNK files by extension/origin even when cmd.exe itself is allowed. Installation uses only Windows-provided commands; no application EXE is run during installation. The Start link is generated locally from serialized data; it is not a downloaded shortcut. Executable download-origin streams are not deliberately removed and every launched EXE/DLL remains subject to application-control checks. This is not a promise that a policy that prohibits Command Prompt, the Windows tools or the inherited app binaries can be satisfied.
 
 References: [Microsoft script enforcement](https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/design/script-enforcement) and [SAC overview](https://learn.microsoft.com/en-us/windows/apps/develop/smart-app-control/overview). A clean double-click installer with guaranteed SAC acceptance cannot be promised under the no-signing/no-new-binary constraints.
+
+## Frozen binary identities
+
+T22 adds no EXE/DLL and refuses changes to these T21 identities:
+
+| File under payload | SHA256 |
+| --- | --- |
+| `Islandly.exe` (native host) | `DF47E8C6A7286C90EA809E4E457FC8F900CB572A8D607A10E731F5C822F66A41` |
+| `Islandly.Motion.dll` | `9CD13715DA2F77FB5205380ED99743C587979B098A021D954405098F13F28F72` |
+| `panels/Islandly.exe` | `758E43CF25850408FA42D7DE76565561AE329B353B8FACC508ECE9875BCD1592` |
+
+The host matches the requested T21 base, not the older laptop-accepted C7A5 build. The complete EXE/DLL/addon inventory is `IDENTITY.json` in the release ZIP. `t22-overlay.json` and `t22-appbar.json` contain the installed-build RAM/CPU samples; the Windows CI summary applies the <180MB idle guard to every sample, before and after panels close. These Windows Server results do not establish SAC acceptance on the laptop.
