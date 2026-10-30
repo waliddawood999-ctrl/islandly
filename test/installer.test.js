@@ -10,6 +10,9 @@ try {
  assert(script.includes("if(!(flags & 0x200))"));
  assert(script.includes('0x02000000'));
  assert(script.includes('link.subarray(76+length)'));
- assert(cmd.includes('type "%~dp0shortcut.dat" > "%MENU%"'));
+ assert(cmd.includes('-decodehex "%~dp0shortcut.hex" "%MENU%" 4'));
+ const pin=require('../packaging/per-user/identity.json');
+ assert.equal(pin.nativeSourceCommit,'5d06d5e5f9c12cf056bf2f62b902faa2b605b116');
+ assert.match(pin.hostSha256,/^[a-f0-9]{64}$/);assert.match(pin.motionSha256,/^[a-f0-9]{64}$/);
  console.log('Installer static/shortcut identity contract PASS');
 } finally {fs.rmSync(dir,{recursive:true,force:true});}
