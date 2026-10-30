@@ -203,14 +203,19 @@ sealed class IslandHost : Form {
         if(!nativeAcrylic) NativeMaterial.Apply(Handle,false,nativeLight);
     }
     void DisplayChanged(object s, EventArgs e) { if (!closing && IsHandleCreated) BeginInvoke((Action)Position); }
+    string fullscreenSeen="";
     bool Fullscreen(bool preference=true) {
         if (preference && Setting("hideFullscreen","True").Equals("False",StringComparison.OrdinalIgnoreCase)) return false;
         IntPtr h = Native.GetForegroundWindow(); var name = new StringBuilder(128); Native.GetClassName(h,name,128);
-        if (h == Handle || name.ToString() == "Progman" || name.ToString() == "WorkerW" || name.ToString() == "Shell_TrayWnd") return false;
-        Native.RECT r; if (!Native.GetWindowRect(h,out r)) return false;
-        if(preference && Screen.FromHandle(h).DeviceName != TargetScreen().DeviceName) return false;
-        var b = Screen.FromHandle(h).Bounds;
-        return r.left <= b.Left && r.top <= b.Top && r.right >= b.Right && r.bottom >= b.Bottom;
+        bool result=false; Native.RECT r=new Native.RECT(); Rectangle b=Rectangle.Empty; string why="";
+        if (h == Handle || name.ToString() == "Progman" || name.ToString() == "WorkerW" || name.ToString() == "Shell_TrayWnd") why="shell-or-own";
+        else if (!Native.GetWindowRect(h,out r)) why="no-rect";
+        else if(preference && Screen.FromHandle(h).DeviceName != TargetScreen().DeviceName) why="other-screen";
+        else { b = Screen.FromHandle(h).Bounds; result = r.left <= b.Left && r.top <= b.Top && r.right >= b.Right && r.bottom >= b.Bottom; why=result?"covers":"smaller"; }
+        // Diagnostic for CI: log only when the foreground window or the verdict changes (no per-tick I/O).
+        string seen=h.ToInt64()+"|"+result+"|"+why;
+        if(preference && probe!="" && seen!=fullscreenSeen){fullscreenSeen=seen;NativeLog.Write("fullscreen-check","fg="+h.ToInt64()+" class="+name+" rect="+r.left+","+r.top+","+r.right+","+r.bottom+" screen="+b+" own="+Handle.ToInt64()+" why="+why+" result="+result);}
+        return result;
     }
     void Position() {
         if (closing || !IsHandleCreated) return;
