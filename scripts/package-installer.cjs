@@ -19,24 +19,26 @@ function walk(dir) {
 }
 walk(source);
 fs.writeFileSync(path.join(target,'payload','BINARY-SHA256.txt'),binaries.map(e=>`${e.sha256} ${e.path}`).join('\r\n')+'\r\n');
-// MS-SHLLINK EnvironmentVariableDataBlock: resolve the user's LOCALAPPDATA at launch,
-// never bake the CI account's profile into a shortcut. No script or command target.
-function shortcut() {
- const h = Buffer.alloc(76);
- h.writeUInt32LE(76,0); Buffer.from('0114020000000000c000000000000046','hex').copy(h,4);
- h.writeUInt32LE(0x02000280,20); // IsUnicode | HasExpString | PreferEnvironmentPath
- h.writeUInt32LE(1,60); // SW_SHOWNORMAL
- const b = Buffer.alloc(788); b.writeUInt32LE(788); b.writeUInt32LE(0xa0000001,4);
- const p = '%LOCALAPPDATA%\\Islandly\\Islandly.exe';
- b.write(p,8,260,'ascii'); b.write(p,268,520,'utf16le');
- return Buffer.concat([h,b,Buffer.alloc(4)]);
-}
-fs.writeFileSync(path.join(target,'Islandly.lnk'),shortcut());
+// Build-time Windows Shell serialization, never COM/PowerShell on the user's machine.
+// Keep the environment data block and prefer it over build-account ID/link information.
+const {spawnSync}=require('node:child_process');
+const shortcutPath=path.resolve(target,'shortcut.dat');
+const script="$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:T22_LINK);$s.TargetPath='%LOCALAPPDATA%\\Islandly\\Islandly.exe';$s.Save()";
+const temporary=shortcutPath+'.lnk';
+const made=spawnSync('powershell.exe',['-NoProfile','-Command',script],{env:{...process.env,T22_LINK:temporary},encoding:'utf8'});
+if(made.status!==0)throw Error('Windows shortcut serialization failed: '+made.stderr);
+const link=fs.readFileSync(temporary);
+const flags=link.readUInt32LE(20);
+if(!(flags & 0x200))throw Error('Shortcut lost its environment variable block');
+// A target ID list can take precedence over environment paths; remove it.
+let result=link;
+if(flags & 1){const length=link.readUInt16LE(76)+2;result=Buffer.concat([link.subarray(0,76),link.subarray(76+length)]);}
+result.writeUInt32LE((flags & ~1)|0x02000000,20);
+fs.writeFileSync(shortcutPath,result);fs.unlinkSync(temporary);
 const cmd=fs.readFileSync('packaging/per-user/Install.cmd','utf8').replace(/\r?\n/g,'\r\n');
 fs.writeFileSync(path.join(target,'Install.cmd'),cmd);
 fs.copyFileSync('docs/INSTALL.md',path.join(target,'INSTALL.txt'));
-const report={sourceCommit:process.env.GITHUB_SHA||null,binaries,noNewExecutableOrDll:true,electronMatchesKnownGood:true,hostSha256:digest(path.join(source,'Islandly.exe')),acceptedHostSha256:lock.host.laptopAcceptedSha256};
+const report={sourceCommit:require('node:child_process').execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),binaries,noNewExecutableOrDll:true,electronMatchesKnownGood:true,hostSha256:digest(path.join(source,'Islandly.exe')),acceptedHostSha256:lock.host.laptopAcceptedSha256};
 report.hostMatchesLaptopAccepted=report.hostSha256===report.acceptedHostSha256;
 fs.writeFileSync(path.join(target,'IDENTITY.json'),JSON.stringify(report,null,2)+'\n');
 console.log(JSON.stringify(report,null,2));
-module.exports={shortcut};
