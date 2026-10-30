@@ -10,7 +10,7 @@ using System.Web.Script.Serialization;
 // Independent CPU mask of the specified rounded card + absolute164px droplet.
 // Compare every non-transparent GPU pixel, including rounded corners, not just a bounding box.
 static class IslandShapeQa {
- static string currentFile;
+ static string currentFile;static bool negativeControl;
  static void Check(bool ok,string why){if(!ok)throw new Exception(why);}
  static GraphicsPath Mask(MotionApi.Frame f,MotionApi.Snapshot s){
   float w=Math.Max(36,138+(f.cardWidth-138)*s.body),h=Math.Max(5,36+(f.cardHeight-36)*s.body);
@@ -27,7 +27,7 @@ static class IslandShapeQa {
   using(var mask=new Bitmap(image.Width,image.Height,PixelFormat.Format32bppArgb))using(var path=Mask(f,s))using(var g=Graphics.FromImage(mask))using(var edge=new Pen(Color.White,2)){
    g.Clear(Color.Transparent);g.PixelOffsetMode=PixelOffsetMode.Half;g.SmoothingMode=SmoothingMode.None;g.FillPath(Brushes.White,path);g.DrawPath(edge,path);g.Flush(FlushIntention.Sync); // one physical pixel covers raster edge antialiasing; exterior must be exact alpha0
    var a=Bytes(image);var m=Bytes(mask);int visible=0;
-   for(int i=0;i<a.Length;i+=4)if(a[i+3]!=0){visible++;if(m[i+3]==0){Console.Error.WriteLine("SHAPE_FAILURE_RGBA="+a[i+2]+","+a[i+1]+","+a[i]+","+a[i+3]+" body="+s.body+" drop="+s.drop+" center="+f.center+" top="+f.top);Console.Error.WriteLine("T24_SHAPE_FAILURE_BASE64 "+Convert.ToBase64String(File.ReadAllBytes(currentFile)));using(var data=new MemoryStream()){mask.Save(data,ImageFormat.Png);Console.Error.WriteLine("T24_MASK_FAILURE_BASE64 "+Convert.ToBase64String(data.ToArray()));}throw new Exception("Opaque/tinted pixel outside rounded shape: "+name+" x="+((i/4)%image.Width)+" y="+((i/4)/image.Width));}}
+   for(int i=0;i<a.Length;i+=4)if(a[i+3]!=0){visible++;if(m[i+3]==0){if(!negativeControl){Console.Error.WriteLine("SHAPE_FAILURE_RGBA="+a[i+2]+","+a[i+1]+","+a[i]+","+a[i+3]+" body="+s.body+" drop="+s.drop+" center="+f.center+" top="+f.top);Console.Error.WriteLine("T24_SHAPE_FAILURE_BASE64 "+Convert.ToBase64String(File.ReadAllBytes(currentFile)));using(var data=new MemoryStream()){mask.Save(data,ImageFormat.Png);Console.Error.WriteLine("T24_MASK_FAILURE_BASE64 "+Convert.ToBase64String(data.ToArray()));}}throw new Exception("Opaque/tinted pixel outside rounded shape: "+name+" x="+((i/4)%image.Width)+" y="+((i/4)/image.Width));}}
    Check(visible>100,"Empty surface: "+name);
    int cx=(int)(f.center*f.scale),cy=(int)((f.top+4)*f.scale);Color fill=image.GetPixel(cx,cy);
    Check(fill.A>100&&(light?fill.R>200&&fill.G>200&&fill.B>200:fill.R<40&&fill.G<40&&fill.B<40),"Wrong island theme: "+name+" "+fill);
@@ -42,7 +42,7 @@ static class IslandShapeQa {
     foreach(bool open in new[]{true,false}){var s=new MotionApi.Snapshot{body=open?0:1,drop=open?0:1,visible=0,blink=1};MotionApi.MotionPose(engine,ref s);
      for(int frame=0;frame<45;frame++){if(frame>0)MotionApi.MotionStep(engine,1f/60,0,0,0,-1,open?1:0,out s);
       string name=(open?"open":"close")+"-"+frame.ToString("D2"),file=Path.Combine(dir,name+".png");MotionApi.Check(MotionApi.MotionDraw(engine,ref f,"10:42",lang=="ar"?"الجمعة، ٣٠ أكتوبر":"Friday, 30 October",file));currentFile=file;using(var image=new Bitmap(file)){Audit(image,f,s,light,scene+"/"+name);
-       if(frame==0){image.SetPixel(0,0,Color.White);bool rejected=false;try{Audit(image,f,s,light,"injected-white-rectangle");}catch(Exception){rejected=true;}Check(rejected,"QA failed to reject an injected exterior white pixel");}
+       if(frame==0){image.SetPixel(0,0,Color.White);bool rejected=false;negativeControl=true;try{Audit(image,f,s,light,"injected-white-rectangle");}catch(Exception){rejected=true;}finally{negativeControl=false;}Check(rejected,"QA failed to reject an injected exterior white pixel");}
       }count++;
       rows.Add(new{scene=scene,direction=open?"open":"close",frame=frame,timeMs=frame*1000.0/60,body=s.body,drop=s.drop,file=file});
      }
