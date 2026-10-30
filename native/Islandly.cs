@@ -140,7 +140,7 @@ sealed class IslandHost : Form {
         MouseMove += delegate { if(motion!=null)motion.PointerEvent(); };
         MouseLeave += delegate { LeaveHover(); };
         MouseClick += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) OpenPanel("expand","click"); };
-        leaveGrace.Interval=200; leaveGrace.Tick+=delegate { leaveGrace.Stop(); if(hoverLaunch && motion!=null && motion.Opening && !ready && !motion.ContainsPointer()) { NativeLog.Write("hover-cancel","pointer outside current card+16 after200ms");cancelLaunch=true; motion.Open(false); Send("close"); } };
+        leaveGrace.Interval=200; leaveGrace.Tick+=delegate { leaveGrace.Stop(); if(motion!=null&&!motion.ContainsPointer()){motion.LeaveApproach();if(hoverLaunch&&motion.Opening&&!ready){NativeLog.Write("hover-cancel","pointer outside current card+16 after200ms");cancelLaunch=true;motion.Open(false);Send("close");}}if(motion!=null&&!motion.Opening)Position(); };
         hoverDwell.Interval = 120; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring) OpenPanel("expand","hover"); };
         launchRetry.Interval=1500;
         launchRetry.Tick+=delegate { launchRetry.Stop(); string requested=retryCommand; retryCommand=""; if(requested!="") OpenPanel(requested,"retry",true); };
@@ -179,7 +179,7 @@ sealed class IslandHost : Form {
         foregroundWatcher=new ForegroundWatcher(this,Position);
         Position();Status();
     }
-    void ArmHover(){hoverArmed=true;leaveGrace.Stop();if(motion!=null)motion.PointerEvent();hoverDwell.Start();}
+    void ArmHover(){hoverArmed=true;leaveGrace.Stop();Position();if(motion!=null)motion.PointerEvent();hoverDwell.Start();}
     void LeaveHover(){hoverArmed=false;hoverDwell.Stop();leaveGrace.Start();}
     bool RegisterShortcut(int id,uint mods,uint key,string name) {
         bool ok=Native.RegisterHotKey(Handle,id,mods,key); int error=ok?0:Marshal.GetLastWin32Error();
@@ -230,7 +230,7 @@ sealed class IslandHost : Form {
         var screen = TargetScreen().Bounds;
         string autoHide=Setting("autoHide","auto");
         bool sliver = autoHide == "always" || autoHide == "auto" && (!TimerHasState() || clock.ElapsedMilliseconds-compactAt>=5000);
-        if(privacyLabel != "" && Setting("micCamIndicator","True") != "False" || launching || child!=null && !ready) sliver=false;
+        if(privacyLabel != "" && Setting("micCamIndicator","True") != "False" || hoverArmed || launching || child!=null && !ready) sliver=false;
         if(Setting("idleEyes","False")=="True" && autoHide!="always") sliver=false;
         int strip=Setting("floating","False")=="True"?58:44;
         int w = (int)((sliver ? 84 : 138)*scale), height = Math.Max(4,(int)((sliver ? 5 : 36)*scale));
@@ -243,7 +243,7 @@ sealed class IslandHost : Form {
         int x = pos == "left" ? screen.Left+16 : pos == "right" ? screen.Right-w-16 : screen.Left+(screen.Width-w)/2;
         bool floating=Setting("floating","False")=="True";
         if(floating) x=pos=="left"?screen.Left+(int)(20*scale):pos=="right"?screen.Right-w-(int)(20*scale):x;
-        float center=x+w/2f,top=screen.Top+(sliver?0:(floating?14:8)*scale);
+        float anchorMargin=(floating?20:16)*scale;float center=pos=="left"?screen.Left+anchorMargin+69*scale:pos=="right"?screen.Right-anchorMargin-69*scale:screen.Left+screen.Width/2f,top=screen.Top+(sliver?0:(floating?14:8)*scale);
         if(motion!=null){
             bool light=nativeLight;
             bool compact=TimerHasState()||privacyLabel!=""||SystemInformation.PowerStatus.BatteryChargeStatus!=BatteryChargeStatus.NoSystemBattery&&SystemInformation.PowerStatus.BatteryLifePercent<.2f;

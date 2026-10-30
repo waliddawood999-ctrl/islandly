@@ -14,6 +14,7 @@ try {
     $motionSecond=(Get-FileHash "$clean/native/bin/Islandly.Motion.dll" -Algorithm SHA256).Hash
     if($motionOriginal-ne $motionSecond){throw 'Native renderer DLL differs between clean roots'}
     $second=(Get-FileHash "$clean/native/bin/Islandly.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+    Write-Output "REPRODUCIBLE MOTION DLL SHA256: $motionOriginal"
     if($original -ne $second){throw "Native host is not reproducible across clean roots: $original != $second"}
     New-Item "$root/out" -ItemType Directory -Force | Out-Null
     $identity=Get-Content "$root/packaging/windows-identity.json" -Raw | ConvertFrom-Json

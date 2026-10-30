@@ -7,6 +7,11 @@ using System;
 using System.Runtime.InteropServices;
 public static class MotionInput {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls,string text);
+ delegate bool Callback(IntPtr window,IntPtr data);
+ [DllImport("user32.dll")]static extern bool EnumWindows(Callback callback,IntPtr data);
+ [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr window,out uint pid);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int GetWindowText(IntPtr window,System.Text.StringBuilder text,int size);
+ public static IntPtr Host(int owner){IntPtr result=IntPtr.Zero;EnumWindows((h,p)=>{uint id;GetWindowThreadProcessId(h,out id);var name=new System.Text.StringBuilder(128);GetWindowText(h,name,128);if(id==owner&&name.ToString()=="Islandly Native"){result=h;return false;}return true;},IntPtr.Zero);if(result==IntPtr.Zero)throw new Exception("Native host HWND not found");return result;}
  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr window,uint message,IntPtr a,IntPtr b);
 }
 
@@ -37,7 +42,7 @@ $hostProcess=Start-Process "$root/native/bin/Islandly.exe" -ArgumentList @('--ro
 $owned=[Collections.Generic.HashSet[int]]::new()
 $ast=[Management.Automation.Language.Parser]::ParseFile("$root/test/native-footprint.ps1",[ref]$null,[ref]$null)
 foreach($name in @('Read-SharedJson','Read-Status')){$node=$ast.Find({param($n)$n-is [Management.Automation.Language.FunctionDefinitionAst]-and $n.Name-eq $name},$true);. ([scriptblock]::Create($node.Extent.Text))}
-function Refresh {[void][MotionInput]::SendMessage(([MotionInput]::FindWindow($null,'Islandly Native')),0x8022,[IntPtr]::Zero,[IntPtr]::Zero)}
+function Refresh {[void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8022,[IntPtr]::Zero,[IntPtr]::Zero)}
 function Quantile($values,$q){$ordered=@($values|Sort-Object);return $ordered[[Math]::Min($ordered.Count-1,[Math]::Floor($q*$ordered.Count))]}
 function Phase($name,$moving){
  Refresh;$before=Read-Status
@@ -86,15 +91,16 @@ try{
  $configuration.motion='full';Save-Settings;Refresh
  $fullscreenProcess=Start-Process $fullscreenExe -ArgumentList ('"'+$probe+'"') -PassThru
  $deadline=[DateTime]::UtcNow.AddSeconds(5);while(!(Test-Path "$probe/fullscreen-ready")){if($fullscreenProcess.HasExited-or [DateTime]::UtcNow-gt $deadline){throw 'Fullscreen fixture did not start'};Start-Sleep -Milliseconds 20}
- try{Refresh;$fullscreen=Read-Status;if($fullscreen.motion.eyesVisible-or $fullscreen.motion.cursorTimer){throw 'Real fullscreen foreground did not hide eyes/timers'}}finally{Close-Fullscreen}
+ try{Refresh;$fullscreen=Read-Status;if(!$fullscreen.motion.fullscreen-or $fullscreen.motion.eyesVisible-or $fullscreen.motion.cursorTimer){throw 'Real fullscreen foreground did not hide eyes/timers'}}finally{Close-Fullscreen}
  Refresh
  # Real Win32 message dispatch: input timestamp is captured at UI dispatch, never at a later timer.
  $frames=@();$inputs=@()
  for($n=0;$n-lt 12;$n++){
-  [void][MotionInput]::SendMessage(([MotionInput]::FindWindow($null,'Islandly Native')),0x8021,[IntPtr]1,[IntPtr]::Zero);Start-Sleep -Milliseconds 340;Refresh
+  [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]1,[IntPtr]::Zero);Start-Sleep -Milliseconds 340;Refresh
   $frames+=Get-Content "$probe/motion-frames.json" -Raw|ConvertFrom-Json;$inputs+=(Read-Status).motion.inputFirstMs
-  [void][MotionInput]::SendMessage(([MotionInput]::FindWindow($null,'Islandly Native')),0x8021,[IntPtr]::Zero,[IntPtr]::Zero);Start-Sleep -Milliseconds 340
+  [void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8021,[IntPtr]::Zero,[IntPtr]::Zero);Start-Sleep -Milliseconds 340
  }
+ if(@($inputs|Where-Object {$_-lt 0}).Count-ne 0-or $inputs.Count-ne 12){throw 'Native input measurement never observed a changed frame'}
  $active=@($frames|Where-Object {$_.body-gt .01-and $_.body-lt .99-and $_.interval-gt 0})
  if($active.Count-lt 100){throw 'Insufficient native motion frames'}
  $p50=Quantile $active.interval .5;$p95=Quantile $active.interval .95;$cpu=($active|Measure-Object cpuMs -Average).Average;$response=($inputs|Measure-Object -Maximum).Maximum
