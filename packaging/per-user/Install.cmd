@@ -27,10 +27,24 @@ rem No killing unrelated processes, elevation, policy changes, script execution 
 "%SystemRoot%\System32\certutil.exe" -hashfile "%SOURCE%\panels\Islandly.exe" SHA256 | "%SystemRoot%\System32\findstr.exe" /i /x /c:"758e43cf25850408fa42d7de76565561ae329b353b8facc508ece9875bcd1592" >nul
 if errorlevel 1 goto failed
 set "STAGE=binary manifest"
+set "HASHLOG=%TEMP%\Islandly-verify-%RANDOM%-%RANDOM%.txt"
 for /f "usebackq tokens=1,*" %%A in ("%SOURCE%\BINARY-SHA256.txt") do (
- "%SystemRoot%\System32\certutil.exe" -hashfile "%SOURCE%\%%B" SHA256 | "%SystemRoot%\System32\findstr.exe" /i /x /c:"%%A" >nul
- if errorlevel 1 goto failed
+ rem Extended-length paths are required for deep OneDrive / Node addon paths.
+ "%SystemRoot%\System32\certutil.exe" -hashfile "\\?\%SOURCE%\%%B" SHA256 > "%HASHLOG%" 2>&1
+ if errorlevel 1 (
+  echo Cannot verify binary / تعذر التحقق من الملف: %%B
+  type "%HASHLOG%"
+  del /q "%HASHLOG%"
+  goto failed
+ )
+ "%SystemRoot%\System32\findstr.exe" /i /x /c:"%%A" "%HASHLOG%" >nul
+ if errorlevel 1 (
+  echo Binary checksum mismatch / بصمة الملف غير مطابقة: %%B
+  del /q "%HASHLOG%"
+  goto failed
+ )
 )
+del /q "%HASHLOG%"
 if exist "%DEST%.previous" goto failed
 if exist "%DEST%.staging" goto failed
 set "STAGE=staging copy"
