@@ -70,8 +70,9 @@ try {
   Set-Content "$probe/command.txt" 'exit' -NoNewline
   $hostProcess=Get-Process -Id $status.hostPid
   Assert ($hostProcess.WaitForExit(10000)) 'Shortcut host did not quit cleanly'
+  $hostProcess.Dispose()
  } finally {
-  if($launched -and !$launched.HasExited){$launched.Kill();$launched.WaitForExit()}
+  if($launched){if(!$launched.HasExited){$launched.Kill();$launched.WaitForExit()};$launched.Dispose()}
  }
  $registration=Get-ItemProperty $arp
  Assert ($registration.InstallLocation -eq $dest) 'ARP installation location mismatch'
@@ -102,10 +103,21 @@ try {
  $command=(Get-ItemProperty $arp).UninstallString
  Assert ($command.StartsWith('"'+$env:SystemRoot+'\System32\cmd.exe"')) "Uninstall command malformed: $command"
  Assert ($command -match '^"([^"]+)" (.+)$') 'ARP command cannot be parsed'
- $executable=$Matches[1]; $arguments=$Matches[2] -replace '/uninstall"$', '/uninstall /quiet"'
- $uninstall=Start-Process $executable -ArgumentList $arguments -Wait -PassThru
- $global:LASTEXITCODE=$uninstall.ExitCode
- Assert ($LASTEXITCODE -eq 0) 'Uninstall failed'
+ $executable=$Matches[1]; $arguments=$Matches[2]
+ Assert ($arguments -match '/uninstall"$') "Uninstall arguments malformed: $arguments"
+ $arguments=$arguments -replace '/uninstall"$', '/uninstall /quiet"'
+ Write-Host "Installed Apps uninstall command: $executable $arguments"
+ # Redirecting also requests CreateProcess rather than shell activation, preserving
+ # this fixture's overridden APPDATA/LOCALAPPDATA instead of Explorer's environment.
+ $stdout=Join-Path $sandbox 'uninstall-stdout.txt';$stderr=Join-Path $sandbox 'uninstall-stderr.txt'
+ $uninstall=Start-Process $executable -ArgumentList $arguments -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+ try {
+  $finished=$uninstall.WaitForExit(15000)
+  if(!$finished){$uninstall.Kill();$uninstall.WaitForExit()}
+  Get-Content $stdout,$stderr | ForEach-Object {Write-Host $_}
+  Assert $finished 'Uninstall did not finish within15s'
+  Assert ($uninstall.ExitCode -eq 0) "Uninstall failed with exit $($uninstall.ExitCode)"
+ } finally {$uninstall.Dispose()}
  Assert (!(Test-Path $dest)) 'Install directory remains'
  Assert (!(Test-Path "$env:APPDATA/islandly")) 'Profile remains'
  Assert (!(Test-Path $menu)) 'Shortcut remains'
