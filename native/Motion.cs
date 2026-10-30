@@ -90,7 +90,7 @@ sealed class NativeMotion:IDisposable {
   float oldAnticipation=anticipation;float edgeX=Math.Max(0,Math.Abs(dx)-69),edgeY=Math.Max(0,Math.Abs(dy)-18),edgeDistance=(float)Math.Sqrt(edgeX*edgeX+edgeY*edgeY);anticipation=options.mode=="full"&&!options.eco&&target==0?.1f*Math.Max(0,1-edgeDistance/48):0;frame.anticipation=0;MotionApi.MotionApproach(renderer,anticipation);
   Step(0);if(snapshot.visible!=0||Math.Abs(oldAnticipation-anticipation)>.00001f)Input();if(snapshot.visible!=0&&options.mode=="full")StartEyes();if(snapshot.moving!=0)StartLoop();
  }
- void StartEyes(){if(snapshot.visible==0||options.mode!="full"||options.eco)return;eyesTimer.Interval=33;eyesTimer.Start();}
+ void StartEyes(){if(snapshot.visible==0||options.mode!="full"||options.eco)return;if(eyesTimer.Interval!=45)eyesTimer.Interval=45;if(!eyesTimer.Enabled)eyesTimer.Start();}
  void StopEyes(){eyesTimer.Stop();blinkTimer.Stop();tracking=false;pointer=-1;}
  void ScheduleBlink(){if(snapshot.visible==0||options.mode!="full")return;blinkTimer.Interval=tracking?random.Next(3000,4001):random.Next(8000,14001);blinkTimer.Start();}
  void EyeTick(){if(disposed||snapshot.visible==0||options.eco||options.mode!="full"){StopEyes();return;}
@@ -101,7 +101,8 @@ sealed class NativeMotion:IDisposable {
   // Redraw only when something moved by at least half a pixel: gaze travels 4 x 3 px, the lid slot is 30 px, the blink changes a 13 px width.
   bool dirty=Math.Abs(snapshot.gx-eyeDirtyX)*4>=.5||Math.Abs(snapshot.gy-eyeDirtyY)*3>=.5||Math.Abs(snapshot.lid-eyeDirtyLid)*30>=.5||Math.Abs(snapshot.blink-eyeDirtyBlink)*13>=.25;
   if(dirty){Draw(true);eyeDirtyX=snapshot.gx;eyeDirtyY=snapshot.gy;eyeDirtyLid=snapshot.lid;eyeDirtyBlink=snapshot.blink;}
-  eyesTimer.Interval=clock.ElapsedMilliseconds-lastMove<1500?33:100;
+  // Assigning Interval on a running WinForms Timer kills and re-creates it: only touch it when the rate really changes. 45 ms (~21 Hz after the 15.6 ms timer quantum) while the cursor moves, 100 ms when still.
+  int wantInterval=clock.ElapsedMilliseconds-lastMove<1500?45:100;if(eyesTimer.Interval!=wantInterval)eyesTimer.Interval=wantInterval;
   if(!tracking&&clock.ElapsedMilliseconds>eyeUntil){eyesTimer.Stop();ScheduleBlink();}
  }
  void Step(float dt){int flags=(options.eyes?1:0)|(options.eco?2:0)|(options.mode=="reduced"?4:0)|(options.mode=="off"?8:0)|(options.fullscreen?16:0)|(options.compact?32:0);
