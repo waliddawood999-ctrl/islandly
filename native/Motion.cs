@@ -55,7 +55,7 @@ sealed class NativeMotion:IDisposable {
   var bounds=new Rectangle(left,options.screen.Top,w,h);if(owner.Bounds!=bounds)owner.Bounds=bounds;
   frame=new MotionApi.Frame{width=w,height=h,scale=s,center=(options.center-left)/s,top=(options.top-options.screen.Top)/s,left=(options.screen.Left-left)/s,right=(options.screen.Right-left)/s,cardWidth=cardWidth,cardHeight=cardHeight,opacity=fading?frame.opacity:1,anticipation=0,flags=(options.light?1:0)|(options.rtl?2:0)|(options.acrylic?4:0)|(options.floating?8:0)|(options.sliver?16:0)|(options.loading?64:0)};
   if(options.hidden){Input();Step(0);Interlocked.Exchange(ref loop,0);StopEyes();halo.Hide();owner.Hide();firstResponse=clock.ElapsedMilliseconds-inputAt;return;}
-  if(changed&&!fading){Input();Step(0);Draw(false);if(snapshot.visible!=0&&options.mode=="full"){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();}}
+  if(changed&&!fading){Input();Step(0);Draw(false);if(snapshot.visible!=0&&options.mode=="full"){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();}else StopEyes();}
   if(!fading&&owner.Visible)PlaceHalo();
   if(snapshot.moving!=0||resizing)StartLoop();else if(options.mode=="off")Interlocked.Exchange(ref loop,0);
   if(snapshot.visible==0||options.mode!="full"){StopEyes();}else if(!blinkTimer.Enabled)ScheduleBlink();
@@ -108,10 +108,11 @@ sealed class NativeMotion:IDisposable {
  void Step(float dt){int flags=(options.eyes?1:0)|(options.eco?2:0)|(options.mode=="reduced"?4:0)|(options.mode=="off"?8:0)|(options.fullscreen?16:0)|(options.compact?32:0);
   MotionApi.MotionStep(renderer,dt,flags,dx,dy,pointer,target,out snapshot);pointer=-1;lastStep=clock.ElapsedMilliseconds;
  }
+ [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);[DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms); // 1 ms timer resolution only while a liquid burst runs: the default 15.6 ms quantum turned 16 ms waits into 31 ms
  void StartLoop(){lock(workerGate){Interlocked.Exchange(ref loop,1);if(worker!=null)return;
-  worker=new Thread(delegate(){try{while(!disposed&&Volatile.Read(ref loop)!=0){MotionApi.MotionWait();if(disposed)break;
+  worker=new Thread(delegate(){timeBeginPeriod(1);try{while(!disposed&&Volatile.Read(ref loop)!=0){MotionApi.MotionWait();if(disposed)break;
     if(Interlocked.CompareExchange(ref pending,1,0)==0)try{owner.BeginInvoke((Action)delegate{Interlocked.Exchange(ref pending,0);if(disposed)return;FrameTick();});}catch(InvalidOperationException){break;}
-  }}finally{lock(workerGate){worker=null;}if(!disposed&&Volatile.Read(ref loop)!=0)try{owner.BeginInvoke((Action)StartLoop);}catch(InvalidOperationException){}}}){IsBackground=true,Name="Islandly motion burst"};worker.Start();}
+  }}finally{timeEndPeriod(1);lock(workerGate){worker=null;}if(!disposed&&Volatile.Read(ref loop)!=0)try{owner.BeginInvoke((Action)StartLoop);}catch(InvalidOperationException){}}}){IsBackground=true,Name="Islandly motion burst"};worker.Start();}
  }
  void FrameTick(){if(options.hidden){Interlocked.Exchange(ref loop,0);return;}Step((clock.ElapsedMilliseconds-lastStep)/1000f);UpdateMeasuredSize();Draw(false);if(!resizing&&presentPanel!=null)Present();if(snapshot.moving==0&&!resizing){Interlocked.Exchange(ref loop,0);PlaceHalo();if(snapshot.visible!=0){eyeUntil=clock.ElapsedMilliseconds+1500;StartEyes();ScheduleBlink();}}}
  void Draw(bool dirty){if(disposed||options.hidden)return;double start=clock.Elapsed.TotalMilliseconds,cpu=diagnostics?MotionApi.CpuMs():0;if(dirty)frame.flags|=32;

@@ -53,7 +53,7 @@ struct Renderer {
   hr=composition->CreateEffectGroup(&opacity);if(FAILED(hr))return hr;hr=visual->SetEffect(opacity.Get());if(FAILED(hr))return hr;
   hr=target->SetRoot(visual.Get());if(FAILED(hr))return hr;
   hr=DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(text.GetAddressOf()));if(FAILED(hr))return hr;
-  return dc->CreateSolidColorBrush(D2D1::ColorF(1,1,1,1),&brush);
+  hr=dc->CreateSolidColorBrush(D2D1::ColorF(1,1,1,1),&brush);if(FAILED(hr))return hr;dc->CreateLayer(&maskLayer);for(float size:{12.f,15.f,16.f,42.f}){textFormat(size,false);textFormat(size,true);} /* warm the first paint: layer and DirectWrite formats exist before the first frame */ return S_OK;
  }
  HRESULT resize(UINT w,UINT h){if(width==w&&height==h)return S_OK;dc->SetTarget(nullptr);HRESULT hr;
   if(swap)hr=swap->ResizeBuffers(2,w,h,DXGI_FORMAT_B8G8R8A8_UNORM,0);
