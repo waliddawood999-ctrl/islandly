@@ -137,9 +137,13 @@ sealed class ForegroundWatcher:IDisposable {
  [DllImport("user32.dll")] static extern bool UnhookWinEvent(IntPtr hook);
  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
  readonly EventProc callback;readonly Form owner;readonly string adapter;IntPtr foreground,location;int queued;bool disposed;
+ [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window,out uint process);
+ // The location hook listens to the foreground window's thread only: a system-wide hook wakes the host for every cursor move and every window move on the desktop.
+ void HookLocation(IntPtr window){if(location!=IntPtr.Zero){UnhookWinEvent(location);location=IntPtr.Zero;}if(window==IntPtr.Zero)return;uint process;uint thread=GetWindowThreadProcessId(window,out process);if(thread==0)return;location=SetWinEventHook(0x800b,0x800b,IntPtr.Zero,callback,process,thread,2);}
  public ForegroundWatcher(Form form,Action changed){owner=form;callback=delegate(IntPtr h,uint ev,IntPtr window,int obj,int child,uint thread,uint time){if(disposed||window==IntPtr.Zero||ev==0x800b&&(obj!=0||window!=GetForegroundWindow()))return;
+  if(ev==3)HookLocation(window);
   if(Interlocked.CompareExchange(ref queued,1,0)==0)try{owner.BeginInvoke((Action)delegate{Interlocked.Exchange(ref queued,0);if(!disposed)changed();});}catch(InvalidOperationException){}};
-  foreground=SetWinEventHook(3,3,IntPtr.Zero,callback,0,0,2);location=SetWinEventHook(0x800b,0x800b,IntPtr.Zero,callback,0,0,2);
+  foreground=SetWinEventHook(3,3,IntPtr.Zero,callback,0,0,2);HookLocation(GetForegroundWindow());
  }
  public void Dispose(){disposed=true;if(foreground!=IntPtr.Zero)UnhookWinEvent(foreground);if(location!=IntPtr.Zero)UnhookWinEvent(location);}
 }
