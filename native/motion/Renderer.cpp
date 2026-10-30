@@ -177,26 +177,29 @@ extern "C" __declspec(dllexport) void __cdecl MotionAdapter(void*p,wchar_t*name,
 // absolute-schedule high-resolution waitable timer at 16.0 ms (never later than a 60 Hz display period, drift-free),
 // not by Sleep (whose 15.6 ms granularity gave 31 ms frames). The vblank is re-probed only by MotionBurst() at the start of a burst, never in the middle of one (a mid-burst probe returned a frame at once and re-anchored the schedule).
 static HANDLE paceTimer=nullptr;static LARGE_INTEGER paceFrequency={};static LONGLONG paceNext=0;static bool paced=false;static int paceProbe=0,instantWaits=0;
-// Fallback pace where the compositor gives no vblank (headless/virtual displays, CI): 15 ms keeps a 60 Hz budget of 16.667 ms with 1.6 ms of scheduling slack; a 16.0 ms target left 0.67 ms and p95 sat on the line. Real displays pace on DwmFlush instead.
+// Fallback pace where the compositor gives no vblank (headless/virtual displays, CI), never later than a 60 Hz period. Real displays pace on DwmFlush instead.
 static const double kFallbackPaceMs=16.0;
+static bool paceHighRes=false;
+typedef LONG (NTAPI*NtQueryTimerResolutionFn)(PULONG,PULONG,PULONG);
+static ULONG timerResolution100ns(){static NtQueryTimerResolutionFn q=reinterpret_cast<NtQueryTimerResolutionFn>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"NtQueryTimerResolution"));ULONG a=0,b=0,c=0;if(q&&q(&a,&b,&c)>=0)return c;return 156250;}
+// The wait is sleep-then-spin: a timer wakes the thread ~1.5 ms early and the rest is a yield loop on the QPC clock. A plain timed wait fired a whole 15.6 ms tick late (31 ms intervals) whenever the system timer resolution was not 1 ms. Without a high-resolution timer (or at coarse resolution) the thread only yields.
 static HRESULT paceWait(double periodMs){
- if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);QueryPerformanceFrequency(&paceFrequency);}
+ if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);paceHighRes=paceTimer!=nullptr;if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);QueryPerformanceFrequency(&paceFrequency);}
  LARGE_INTEGER now;QueryPerformanceCounter(&now);const LONGLONG period=LONGLONG(paceFrequency.QuadPart*periodMs/1000.0);
  if(paceNext==0||now.QuadPart-paceNext>4*period)paceNext=now.QuadPart;paceNext+=period;
  if(paceNext<=now.QuadPart){paceNext=now.QuadPart;return S_OK;} // already late: run the frame now and re-anchor
- if(!paceTimer){WaitForSingleObject(GetCurrentThread(),DWORD(periodMs));return S_OK;}
- LARGE_INTEGER due;due.QuadPart=-LONGLONG(double(paceNext-now.QuadPart)*10000000.0/double(paceFrequency.QuadPart));
- if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))return S_OK;WaitForSingleObject(paceTimer,INFINITE);return S_OK;
+ const bool sleepOk=paceTimer&&(paceHighRes||timerResolution100ns()<=20000);
+ for(;;){QueryPerformanceCounter(&now);LONGLONG left=paceNext-now.QuadPart;if(left<=0)break;double ms=double(left)*1000.0/double(paceFrequency.QuadPart);
+  if(sleepOk&&ms>2.0){LARGE_INTEGER due;due.QuadPart=-LONGLONG((double(left)*10000000.0/double(paceFrequency.QuadPart))-15000.0);if(due.QuadPart>=0)due.QuadPart=-1;if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))SwitchToThread();else WaitForSingleObject(paceTimer,INFINITE);}
+  else SwitchToThread();}
+ return S_OK;
+}
+extern "C" __declspec(dllexport) void __cdecl MotionTimerInfo(int*highRes,unsigned*resolution100ns){*highRes=paceHighRes?1:0;*resolution100ns=timerResolution100ns();}
+extern "C" __declspec(dllexport) void __cdecl MotionBurst(){
+ // Burst start (worker thread, before the first frame): restart the schedule. No vblank probe here: a DwmFlush that really blocks cost one frame period at every burst start.
+ paceNext=0;instantWaits=0;
 }
 extern "C" __declspec(dllexport) void __cdecl MotionApplyRegion(void*p){auto&r=*static_cast<Renderer*>(p);if(r.haveShape)r.applyRegion(r.lastShape,r.lastRegionScale);}
-extern "C" __declspec(dllexport) void __cdecl MotionBurst(){
- // Burst start (worker thread, before the first frame): only a timer-paced loop needs a re-probe, and there DwmFlush is the cheap case. A display that has gained a working vblank returns to it.
- paceNext=0;instantWaits=0;
- if(!paced)return;
- for(int i=0;i<2;i++){LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);HRESULT hr=DwmFlush();QueryPerformanceCounter(&b);
-  if(!(SUCCEEDED(hr)&&double(b.QuadPart-a.QuadPart)*1000.0/double(f.QuadPart)>=1.0))return;}
- paced=false;
-}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionWait(){
  if(paced)return paceWait(kFallbackPaceMs);
  LARGE_INTEGER a,b,f;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);HRESULT hr=DwmFlush();QueryPerformanceCounter(&b);
