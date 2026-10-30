@@ -116,7 +116,7 @@ struct Renderer {
   for(auto& cache:eyeProperties)cache.invalidate();eyeDpi=dpi;eyeLight=light;return S_OK;
  }
  HRESULT updateEyes(const Frame&f,const motion::Shape&s,bool baked){HRESULT hr=prepareEyes(f.scale,(f.flags&1)!=0);if(FAILED(hr))return hr;bool rtl=(f.flags&2)!=0;float a=baked?0:float(motion::clamp(1-model.body.x/.25,0,1));if(!model.eyeVisible())a=0;
-  if(a==0){for(int i=0;i<2;i++)if(eyeProperties[i].changed(4,0))eyeOpacity[i]->SetOpacity(0);return S_OK;}
+  if(a==0){for(int i=0;i<2;i++)if(eyeProperties[i].changed(4,0))eyeOpacity[i]->SetOpacity(0.0f);return S_OK;}
   for(int i=0;i<2;i++){float slot=rtl?(i==0?96.f:118.f):(i==0?20.f:42.f);float cx=float(s.x)+slot+float(4*model.gx);bool farSide=(model.gx>0&&i==0)||(model.gx<0&&i==1);auto& cache=eyeProperties[i];
    float sx=float((farSide?1-.18*std::abs(model.gx):1)*(1+.1*model.squint)),sy=float((1-.12*std::abs(model.gy))*(1-.4*model.squint)*(1-.1*model.lid/.54));
    auto matrix=motion::eyePose(sx,sy,float(18+3*model.gy-.5*model.squint)*f.scale,f.scale);
