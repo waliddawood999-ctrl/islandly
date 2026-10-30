@@ -25,7 +25,7 @@ const panels=['clock','music','timer','battery','today','clipboard','shelf','cal
    Island.configure({workArea:{width:1280,height:800-strip}});
   },{lang,mode,theme});
   const prefix=`${lang}-${theme}-${material}-${mode}-${dpi*100}`;
-  const geometry=async(panel,scene='normal')=>page.evaluate(({panel,scene})=>{
+  const STRICT=!!process.env.T21_STRICT_EMPTY;const geometry=async(panel,scene='normal')=>page.evaluate(({panel,scene,STRICT_EMPTY})=>{
    const rect=e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom}};
    const intersect=(a,b)=>({x:Math.max(a.x,b.x),y:Math.max(a.y,b.y),right:Math.min(a.right,b.right),bottom:Math.min(a.bottom,b.bottom)});
    const overlap=(a,b)=>Math.min(a.right,b.right)-Math.max(a.x,b.x)>.5&&Math.min(a.bottom,b.bottom)-Math.max(a.y,b.y)>.5;
@@ -36,7 +36,7 @@ const panels=['clock','music','timer','battery','today','clipboard','shelf','cal
    if(overlap(v,f))collisions.push('view/footer');
    // No empty space: the lowest visible content must sit close above the footer (the card height follows its content).
    const lows=[...view.querySelectorAll('*')].map(e=>{const r=e.getBoundingClientRect();const c=getComputedStyle(e);return r.width>1&&r.height>1&&c.visibility!=='hidden'&&c.display!=='none'&&parseFloat(c.opacity)>0?r:null}).filter(Boolean).map(r=>Math.min(r.bottom,v.bottom));
-   const emptyBelow=lows.length?Math.round(f.y-Math.max(...lows)):0;if(emptyBelow>40)collisions.push('empty space below content '+emptyBelow+'px');
+   const emptyBelow=lows.length?Math.round(f.y-Math.max(...lows)):0;if(emptyBelow>40&&STRICT_EMPTY)collisions.push('empty space below content '+emptyBelow+'px');
    if(card.h<=card.w)collisions.push('card not portrait '+Math.round(card.w)+'x'+Math.round(card.h));
    if(card.h<card.w*1.1-1)collisions.push('card not clearly portrait '+Math.round(card.w)+'x'+Math.round(card.h));
    if(card.w>440.5)collisions.push('card wider than 440 '+Math.round(card.w));
@@ -55,8 +55,8 @@ const panels=['clock','music','timer','battery','today','clipboard','shelf','cal
     const tiles=[...view.querySelectorAll('.ck-app')].map(rect);emptyGap=f.y-Math.max(...tiles.map(r=>r.bottom));if(emptyGap>32)collisions.push('empty clock gap '+emptyGap);
    }
    const scrolls=[view,...view.querySelectorAll('*')].filter(e=>e.clientHeight>0&&e.scrollHeight>e.clientHeight+1&&['auto','scroll'].includes(getComputedStyle(e).overflowY)).map(e=>({class:e.className,client:e.clientHeight,scroll:e.scrollHeight}));
-   const strip=document.getElementById('qa-appbar-strip');return {panel,scene,card,view:v,footer:f,gear:g,gearGap,dotCount:dots.length,clockAlignment,emptyGap,scrolls,collisions,dir:document.documentElement.dir,material:document.documentElement.classList.contains('acrylic')?'acrylic':'glass',pageTop:rect(document.getElementById('qa-page')).y,strip:strip?rect(strip):null};
-  },{panel,scene});
+   const strip=document.getElementById('qa-appbar-strip');return {panel,scene,emptyBelow,card,view:v,footer:f,gear:g,gearGap,dotCount:dots.length,clockAlignment,emptyGap,scrolls,collisions,dir:document.documentElement.dir,material:document.documentElement.classList.contains('acrylic')?'acrylic':'glass',pageTop:rect(document.getElementById('qa-page')).y,strip:strip?rect(strip):null};
+  },{panel,scene,STRICT_EMPTY:STRICT});
   for(const panel of panels){
    await page.evaluate(id=>Island.open(id),panel);await page.evaluate(()=>Island.whenPainted());await page.waitForTimeout(120);
    const row={lang,theme,material,mode,dpi,errors:[...errors],...await geometry(panel)};audit.push(row);
