@@ -208,7 +208,7 @@ try{
  # DWM's nominal60 Hz period is16.667ms. Retain every raw interval and fail missed budgets.
  $late=@($active|Where-Object {$_.interval-gt 16.667}).Count
  $wall=@($active|ForEach-Object{$_.wallMs});$wallP95=Quantile $wall .95;$wallAvg=($wall|Measure-Object -Average).Average;$maxInterval=($active.interval|Measure-Object -Maximum).Maximum
- $slow=@($active|Where-Object{$_.interval-gt 20}|Select-Object -First 14|ForEach-Object{"i=$($_.index) interval=$([Math]::Round($_.interval,1)) body=$([Math]::Round($_.body,3)) wait=$([Math]::Round($_.waitMs,1)) gate=$([Math]::Round($_.gateMs,1)) wall=$([Math]::Round($_.wallMs,1)) hiRes=$($_.timerHighRes) res100ns=$($_.timerRes100ns) tid=$($_.tid)"})
+ $slow=@($active|Where-Object{$_.interval-gt 20}|Select-Object -First 14|ForEach-Object{"i=$($_.index) interval=$([Math]::Round($_.interval,1)) body=$([Math]::Round($_.body,3)) wait=$([Math]::Round($_.waitMs,1)) gate=$([Math]::Round($_.gateMs,1)) wall=$([Math]::Round($_.wallMs,1)) hiRes=$($_.timerHighRes) tid=$($_.tid) target=$([Math]::Round($_.paceTargetMs,1)) actual=$([Math]::Round($_.paceActualMs,1)) paced=$($_.paced) gc0=$($_.gc0)"})
  Write-Output ("SLOW FRAMES ($Mode): "+($slow-join ' | '))
  $trace=@($active|Select-Object -First 36|ForEach-Object{"$($_.index):$([Math]::Round($_.interval,1))/w$([Math]::Round($_.waitMs,1))/t$($_.tid)"})
  Write-Output ("BURST TRACE ($Mode) index:interval/wait/thread: "+($trace-join ' '))

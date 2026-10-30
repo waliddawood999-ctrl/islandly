@@ -183,17 +183,21 @@ static bool paceHighRes=false;
 typedef LONG (NTAPI*NtQueryTimerResolutionFn)(PULONG,PULONG,PULONG);
 static ULONG timerResolution100ns(){static NtQueryTimerResolutionFn q=reinterpret_cast<NtQueryTimerResolutionFn>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"NtQueryTimerResolution"));ULONG a=0,b=0,c=0;if(q&&q(&a,&b,&c)>=0)return c;return 156250;}
 // The wait is sleep-then-spin: with a true high-resolution timer it wakes ~1.5 ms early and yields the rest on the QPC clock; without one it only yields (a burst lasts a few hundred milliseconds, and this path is used only where the compositor gives no vblank to wait on).
+static double paceTargetMs=0,paceActualMs=0;
 static HRESULT paceWait(double periodMs){
  if(!paceTimer){paceTimer=CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_ALL_ACCESS);paceHighRes=paceTimer!=nullptr;if(!paceTimer)paceTimer=CreateWaitableTimerExW(nullptr,nullptr,0,TIMER_ALL_ACCESS);QueryPerformanceFrequency(&paceFrequency);}
  LARGE_INTEGER now;QueryPerformanceCounter(&now);const LONGLONG period=LONGLONG(paceFrequency.QuadPart*periodMs/1000.0);
  if(paceNext==0||now.QuadPart-paceNext>4*period)paceNext=now.QuadPart;paceNext+=period;
- if(paceNext<=now.QuadPart){paceNext=now.QuadPart;return S_OK;} // already late: run the frame now and re-anchor
+ if(paceNext<=now.QuadPart){paceNext=now.QuadPart;paceTargetMs=0;paceActualMs=0;return S_OK;} // already late: run the frame now and re-anchor
+ const LONGLONG paceStart=now.QuadPart;paceTargetMs=double(paceNext-now.QuadPart)*1000.0/double(paceFrequency.QuadPart);
  const bool sleepOk=paceTimer&&paceHighRes; /* CI evidence: no high-resolution timer there (hiRes=0) and, although NtQueryTimerResolution reports 1 ms, a normal timer still fired a full 15.6 ms tick late (waits of 30-32 ms) because the 1 ms request is not honoured for this process; only a yield loop on the QPC clock is exact */
  for(;;){QueryPerformanceCounter(&now);LONGLONG left=paceNext-now.QuadPart;if(left<=0)break;double ms=double(left)*1000.0/double(paceFrequency.QuadPart);
   if(sleepOk&&ms>2.0){LARGE_INTEGER due;due.QuadPart=-LONGLONG((double(left)*10000000.0/double(paceFrequency.QuadPart))-15000.0);if(due.QuadPart>=0)due.QuadPart=-1;if(!SetWaitableTimer(paceTimer,&due,0,nullptr,nullptr,FALSE))YieldProcessor();else WaitForSingleObject(paceTimer,INFINITE);}
   else YieldProcessor();} /* a busy spin: SwitchToThread hands the processor to any ready thread, which then keeps it for a whole scheduler quantum (15.6 ms) */
+ QueryPerformanceCounter(&now);paceActualMs=double(now.QuadPart-paceStart)*1000.0/double(paceFrequency.QuadPart);
  return S_OK;
 }
+extern "C" __declspec(dllexport) void __cdecl MotionPaceInfo(double*target,double*actual,int*isPaced){*target=paceTargetMs;*actual=paceActualMs;*isPaced=paced?1:0;}
 extern "C" __declspec(dllexport) void __cdecl MotionTimerInfo(int*highRes,unsigned*resolution100ns){*highRes=paceHighRes?1:0;*resolution100ns=timerResolution100ns();}
 extern "C" __declspec(dllexport) void __cdecl MotionBurst(){
  // Burst start (worker thread, before the first frame): restart the schedule. No vblank probe here: a DwmFlush that really blocks cost one frame period at every burst start.
