@@ -19,11 +19,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - name: Verify native source is frozen at the user-requested T21 base
+      - name: Verify native source is frozen at the user-approved T23 base (a2b255b)
         shell: pwsh
         run: |
-          git fetch --depth=1 origin 38e50a21602e7835ee8be59d031d2eb3e6f89dec
-          git diff --exit-code 38e50a21602e7835ee8be59d031d2eb3e6f89dec HEAD -- native scripts/build-native.ps1 scripts/build-motion.ps1 scripts/native-toolchain.ps1
+          git fetch --depth=1 origin a2b255b4de6b88119d12dfca9f08f07f9772f7c6
+          git diff --exit-code a2b255b4de6b88119d12dfca9f08f07f9772f7c6 HEAD -- native scripts/build-native.ps1 scripts/build-motion.ps1 scripts/native-toolchain.ps1
           if($LASTEXITCODE -ne 0){throw 'T22 must not change native binary source/toolchain'}
       - name: Build identity-preserved runtime and installer (no additional executable)
         shell: pwsh
