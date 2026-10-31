@@ -1,7 +1,7 @@
 name: T21 native motion
 on:
   pull_request:
-    branches: [codex/T20-laptop-fixes]
+    branches: [dev, codex/T20-laptop-fixes]
   workflow_dispatch:
 permissions:
   contents: read
