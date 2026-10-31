@@ -46,12 +46,12 @@ sealed class NativeMotion:IDisposable {
  readonly List<object> samples=new List<object>();long cursorReads,renders,inputSequence;double firstResponse=-1,lastFrame,eyeDirtyX,eyeDirtyY,eyeDirtyLid,eyeDirtyBlink;bool fading,resizing;long resizeAt;float resizeFromW,resizeFromH,resizeToW,resizeToH;Action presentPanel;float paintedAnticipation,paintedBody=-1,paintedDrop=-1,paintedGx,paintedGy,paintedLid,paintedBlink;int paintedEyes=-1;string paintedLabel="";bool paintedLoading;
  float cardWidth=360,cardHeight=440;bool introAsked;
  // Distance-banded eye tick: pointer within 120 DIP of the island centre 78 ms, within 400 150 ms, beyond 300 ms; a pointer unchanged for 1500 ms always 300 ms. eyeInterval mirrors eyesTimer.Interval (33 ms from the constructor) so the Timer is only touched when the band changes.
- float eyeDistance=float.MaxValue;int eyeInterval=33;
+ float eyeDistance=float.MaxValue;int eyeInterval=33;long blinkFastUntil;
  readonly object workerGate=new object();Thread worker;
  public NativeMotion(Form form,Action onHover,Action onLeave,Action onClick,bool measure){owner=form;hover=onHover;leave=onLeave;diagnostics=measure;
   MotionApi.Check(MotionApi.MotionCreate(owner.Handle,out renderer));var adapterName=new System.Text.StringBuilder(256);MotionApi.MotionAdapter(renderer,adapterName,adapterName.Capacity);adapter=adapterName.ToString();
   halo=new Halo();halo.MouseEnter+=delegate{if(options.hidden&&!options.hotZone.IsEmpty){if(Reveal!=null)Reveal();return;}PointerEvent();hover();};halo.MouseMove+=delegate{PointerEvent();};halo.MouseLeave+=delegate{leave();};halo.MouseClick+=delegate(object s,MouseEventArgs e){if(e.Button==MouseButtons.Left){PointerEvent();onClick();}};
-  eyesTimer.Interval=33;eyesTimer.Tick+=delegate{EyeTick();};blinkTimer.Tick+=delegate{Counters.blinks++;blinkTimer.Stop();bool live=tracking&&eyesTimer.Enabled;MotionApi.Check(MotionApi.MotionBlink(renderer,live?1:0));if(live){eyeUntil=clock.ElapsedMilliseconds+600;lastMove=clock.ElapsedMilliseconds;StartEyes();}else ScheduleBlink();};
+  eyesTimer.Interval=33;eyesTimer.Tick+=delegate{EyeTick();};blinkTimer.Tick+=delegate{Counters.blinks++;blinkTimer.Stop();bool live=tracking&&eyesTimer.Enabled&&clock.ElapsedMilliseconds-lastMove<1500;MotionApi.Check(MotionApi.MotionBlink(renderer,live?1:0));if(live){eyeUntil=clock.ElapsedMilliseconds+600;blinkFastUntil=clock.ElapsedMilliseconds+600;StartEyes();}else ScheduleBlink();}; /* a blink is not pointer movement: it must not reset lastMove (the 1500 ms stillness clock); a still pointer blinks on the GPU path without raising the tick */
   fadeTimer.Interval=120;fadeTimer.Tick+=delegate{fadeTimer.Stop();fading=false;owner.Hide();halo.Hide();};
  }
  public event Action<double> FrameChanged;
@@ -115,7 +115,7 @@ sealed class NativeMotion:IDisposable {
   float oldAnticipation=anticipation;float edgeX=Math.Max(0,Math.Abs(dx)-IslandGeometry.HalfW),edgeY=Math.Max(0,Math.Abs(dy)-IslandGeometry.HalfH),edgeDistance=(float)Math.Sqrt(edgeX*edgeX+edgeY*edgeY);anticipation=options.mode=="full"&&!options.eco&&target==0?.1f*Math.Max(0,1-edgeDistance/48):0;frame.anticipation=0;MotionApi.MotionApproach(renderer,anticipation);
   Step(0);if(snapshot.visible!=0||Math.Abs(oldAnticipation-anticipation)>.00001f)Input();if(snapshot.visible!=0&&options.mode=="full")StartEyes();if(snapshot.moving!=0)StartLoop();
  }
- int EyeWant(){return clock.ElapsedMilliseconds-lastMove>=1500?300:eyeDistance<=120?78:eyeDistance<=400?150:300;}
+ int EyeWant(){return clock.ElapsedMilliseconds<blinkFastUntil?78:clock.ElapsedMilliseconds-lastMove>=1500?300:eyeDistance<=120?78:eyeDistance<=400?150:300;}
  // Assigning Interval on a running WinForms Timer kills and re-creates it: only when the band changes.
  void SetEyeInterval(){int want=EyeWant();if(want!=eyeInterval){eyeInterval=want;eyesTimer.Interval=want;}}
  void StartEyes(){if(snapshot.visible==0||options.mode!="full"||options.eco||options.hidden)return;SetEyeInterval();if(!eyesTimer.Enabled)eyesTimer.Start();}
