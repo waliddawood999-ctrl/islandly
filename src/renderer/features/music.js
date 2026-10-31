@@ -1,55 +1,89 @@
+// Music: what is playing in any app (Windows media session), in three sizes.
+//   compact   round album art + live sound wave (resting pill)
+//   peek      "mini player": round art, title/artist, wave, previous/play/next (shown when the track changes)
+//   expanded  big player: square art, title/artist, a thin full-width progress bar, controls,
+//             and a lyrics strip under the island when lyrics are available ('lyrics:update').
 Island.register({
   id: 'music',
-  icon: ICONS.note,
+  icon: ICONS.music,
   media: null,
   unavailable: false,
   progressTimer: 0,
   caps: { next: true, prev: true, seek: true, toggle: true },
   dragging: false,
   wasExpanded: false,
+  lyricData: null,
+  lyricIndex: -2,
 
   init() {
-    this.art = h('div', { class: 'art' });
+    // ---- compact
+    this.cArt = h('div', { class: 'art round xs' });
+    this.cWave = this.wave('sm');
+    this.compact = h('div', { class: 'view music-compact', dir: 'ltr' }, this.cArt, this.cWave);
+
+    // ---- peek: mini player
+    this.pArt = h('div', { class: 'art round md' });
+    this.pTitle = h('div', { class: 'm-title', dir: 'auto' });
+    this.pArtist = h('div', { class: 'm-artist', dir: 'auto' });
+    this.pWave = this.wave('xs');
+    this.pPrev = this.button(ICONS.prev, 'prev', 'mini');
+    this.pPlay = this.button(ICONS.play, 'playpause', 'mini main');
+    this.pNext = this.button(ICONS.next, 'next', 'mini');
+    this.peekEl = h(
+      'div',
+      { class: 'view music-mini' },
+      this.pArt,
+      h('div', { class: 'm-text' }, h('div', { class: 'mini-top' }, this.pTitle, this.pWave), this.pArtist),
+      h('div', { class: 'mini-ctls', dir: 'ltr' }, this.pPrev, this.pPlay, this.pNext)
+    );
+
+    // ---- expanded: big player
+    this.art = h('div', { class: 'art square' });
     this.bg = h('div', { class: 'm-bg' });
-    this.title = h('div', { class: 'm-title lg' });
-    this.artist = h('div', { class: 'm-artist' });
-
-    // compact: [art] title [equalizer]
-    this.cArt = h('div', { class: 'art sm' });
-    this.cTitle = h('span', { class: 'c-title' });
-    this.eq = h('div', { class: 'eq' }, h('i'), h('i'), h('i'), h('i'));
-    this.compact = h('div', { class: 'view music-compact' }, this.cArt, this.cTitle, this.eq);
-
-    // peek: bigger art + title/artist, shown when the track changes
-    this.pArt = h('div', { class: 'art md' });
-    this.pTitle = h('div', { class: 'm-title' });
-    this.pArtist = h('div', { class: 'm-artist' });
-    this.peekEl = h('div', { class: 'view music-peek' }, this.pArt, h('div', { class: 'm-text' }, this.pTitle, this.pArtist));
-
-    // expanded
+    this.title = h('div', { class: 'm-title lg', dir: 'auto' });
+    this.artist = h('div', { class: 'm-artist', dir: 'auto' });
+    this.xWave = this.wave('xs');
     this.fill = h('i');
     this.knob = h('b');
     this.bubble = h('span', { class: 'bubble', dir: 'ltr' });
-    this.bar = h('div', { class: 'bar', dir: 'ltr' }, this.fill, this.knob, this.bubble);
-    this.posLabel = h('span', { dir: 'ltr' }, '0:00');
-    this.durLabel = h('span', { dir: 'ltr' }, '0:00');
-    this.prevBtn = this.button('prev', ICONS.prev, 'prev');
-    this.backBtn = h('button', { class: 'ctl', onclick: () => this.skip(-10) }, html(ICONS.back10));
-    this.playBtn = h('button', { class: 'ctl main', onclick: () => this.control('playpause') });
-    this.fwdBtn = h('button', { class: 'ctl', onclick: () => this.skip(10) }, html(ICONS.fwd10));
-    this.nextBtn = this.button('next', ICONS.next, 'next');
+    this.bar = h('div', { class: 'bar thin', dir: 'ltr' }, this.fill, this.knob, this.bubble);
+    this.posLabel = h('span', { dir: 'ltr' }, clock(0));
+    this.durLabel = h('span', { dir: 'ltr' }, clock(0));
+    this.prevBtn = this.button(ICONS.prev, 'prev');
+    this.backBtn = I18N.mark(h('button', { class: 'ctl', onclick: () => this.skip(-10) }, html(ICONS.back10)), 'back10', { n: 10 }, 'title');
+    this.playBtn = this.button(ICONS.play, 'playpause', 'main');
+    this.fwdBtn = I18N.mark(h('button', { class: 'ctl', onclick: () => this.skip(10) }, html(ICONS.fwd10)), 'fwd10', { n: 10 }, 'title');
+    this.nextBtn = this.button(ICONS.next, 'next');
     this.ctls = h('div', { class: 'ctls stagger', dir: 'ltr' }, this.prevBtn, this.backBtn, this.playBtn, this.fwdBtn, this.nextBtn);
-    this.empty = h('div', { class: 'm-empty' }, h('div', { class: 'm-title lg' }, t('nothingPlaying')), h('div', { class: 'm-artist' }, t('openPlayer')));
-    this.body = h('div', { class: 'm-body' }, this.title, this.artist, this.bar, h('div', { class: 'times' }, this.posLabel, this.durLabel), this.ctls);
-    this.expandedEl = h('div', { class: 'view auto music-expanded' }, this.bg, this.art, this.body, this.empty);
+    this.empty = h('div', { class: 'm-empty' }, h('div', { class: 'm-title lg' }, t('nothingPlaying')), h('div', { class: 'm-artist' }, T('openPlayer')));
+    this.head = h('div', { class: 'm-head' }, this.art, h('div', { class: 'm-text' }, h('div', { class: 'mini-top' }, this.title, this.xWave), this.artist));
+    this.body = h('div', { class: 'm-body' }, this.head, this.bar, h('div', { class: 'times' }, this.posLabel, this.durLabel), this.ctls);
+    this.expandedEl = h('div', { class: 'view auto music-expanded' }, this.bg, this.body, this.empty);
+
+    // ---- lyrics strip (under the island)
+    this.lyNow = h('div', { class: 'ly-now', dir: 'auto' });
+    this.lyNext = h('div', { class: 'ly-next', dir: 'auto' });
+    this.lyricsEl = h('div', { class: 'lyrics-strip' }, this.lyNow, this.lyNext);
 
     this.bindSeekBar();
     API.on('media:update', (m) => this.onUpdate(m));
+    API.on('lyrics:update', (d) => {
+      this.lyricData = d && Array.isArray(d.lines) ? d : null;
+      this.lyricIndex = -2;
+      this.paintLyrics();
+      Island.render();
+    });
     this.paint();
   },
 
-  button(cls, icon, action) {
-    return h('button', { class: 'ctl', onclick: () => this.control(action) }, html(icon));
+  /** Animated sound wave: bars that rise and fall smoothly (CSS transforms only, paused when nothing plays). */
+  wave(size) {
+    return h('div', { class: 'wave ' + size, 'aria-hidden': 'true' }, h('i'), h('i'), h('i'), h('i'), h('i'));
+  },
+
+  button(icon, action, extra = '') {
+    const label = { prev: 'prev', next: 'next', playpause: 'playPause' }[action];
+    return I18N.mark(h('button', { class: ('ctl ' + extra).trim(), onclick: () => this.control(action) }, html(icon)), label, null, 'title');
   },
 
   control(action) {
@@ -151,8 +185,8 @@ Island.register({
   },
 
   applyCaps() {
-    this.prevBtn.disabled = !this.caps.prev;
-    this.nextBtn.disabled = !this.caps.next;
+    this.prevBtn.disabled = this.pPrev.disabled = !this.caps.prev;
+    this.nextBtn.disabled = this.pNext.disabled = !this.caps.next;
     this.backBtn.disabled = this.fwdBtn.disabled = !this.caps.seek;
     this.bar.classList.toggle('locked', !this.caps.seek);
   },
@@ -182,7 +216,6 @@ Island.register({
     const has = !!m && !!m.title;
     this.body.style.display = has ? '' : 'none';
     this.empty.style.display = has ? 'none' : '';
-    this.art.style.display = has ? '' : 'none';
     this.bg.style.display = has ? '' : 'none';
     if (!has) {
       this.empty.firstChild.textContent = this.unavailable ? t('mediaUnavailable') : t('nothingPlaying');
@@ -190,13 +223,13 @@ Island.register({
     }
     this.title.textContent = this.pTitle.textContent = m.title;
     this.artist.textContent = this.pArtist.textContent = m.artist;
-    this.cTitle.textContent = m.title;
-    this.setArt(this.art, m.thumb);
-    this.setArt(this.cArt, m.thumb);
-    this.setArt(this.pArt, m.thumb);
+    for (const el of [this.art, this.cArt, this.pArt]) this.setArt(el, m.thumb);
     this.bg.style.backgroundImage = m.thumb ? `url("${m.thumb}")` : '';
-    this.playBtn.replaceChildren(html(m.playing ? ICONS.pause : ICONS.play));
-    this.eq.classList.toggle('on', m.playing);
+    const icon = m.playing ? ICONS.pause : ICONS.play;
+    this.playBtn.replaceChildren(html(icon));
+    this.pPlay.replaceChildren(html(icon));
+    for (const w of [this.cWave, this.pWave, this.xWave]) w.classList.toggle('on', m.playing);
+    for (const a of [this.cArt, this.pArt]) a.classList.toggle('playing', m.playing);
     this.applyCaps();
     this.updateProgress();
     this.syncProgressTimer();
@@ -211,6 +244,34 @@ Island.register({
     this.knob.style.left = f * 100 + '%';
     this.posLabel.textContent = clock(pos);
     this.durLabel.textContent = m.duration ? clock(m.duration) : '--:--';
+    this.paintLyrics();
+  },
+
+  hasLyrics() {
+    const d = this.lyricData;
+    return !!(d && this.media && this.media.title && (d.lines.length || (d.text && d.text.trim())));
+  },
+
+  // Current line (and the next one, faded) for timed lyrics; the first lines for plain text.
+  paintLyrics() {
+    if (!this.hasLyrics()) return;
+    const d = this.lyricData;
+    if (!d.lines.length) {
+      if (this.lyricIndex === -1) return;
+      this.lyricIndex = -1;
+      const lines = d.text.split(/\r?\n/).filter((x) => x.trim());
+      this.lyNow.textContent = lines[0] || '';
+      this.lyNext.textContent = lines[1] || '';
+      return;
+    }
+    const p = this.position();
+    let i = -1;
+    while (i + 1 < d.lines.length && d.lines[i + 1].at <= p) i++;
+    if (i === this.lyricIndex) return;
+    this.lyricIndex = i;
+    this.lyNow.textContent = i >= 0 ? d.lines[i].text || '♪' : '♪';
+    this.lyNext.textContent = d.lines[i + 1] ? d.lines[i + 1].text : '';
+    if (window.Motion && !Island.debug().reducedMotion) Motion.animate(this.lyNow, { opacity: [0.3, 1], y: [6, 0] }, { duration: 0.28, ease: 'easeOut' });
   },
 
   sync() {
@@ -236,9 +297,9 @@ Island.register({
 
   view(mode) {
     const has = this.media && this.media.title;
-    if (mode === 'compact') return has ? { el: this.compact, w: 236, h: 42 } : null;
-    if (mode === 'peek') return has ? { el: this.peekEl, w: 340, h: 80 } : null;
-    if (mode === 'expanded') return { el: this.expandedEl, w: 470, auto: true };
+    if (mode === 'compact') return has ? { el: this.compact, w: 128, h: 32 } : null;
+    if (mode === 'peek') return has ? { el: this.peekEl, w: 400, h: 68, radius: 24 } : null;
+    if (mode === 'expanded') return { el: this.expandedEl, w: 460, auto: true, below: this.hasLyrics() ? { el: this.lyricsEl, w: 460, h: 58 } : null };
     return null;
   },
 });

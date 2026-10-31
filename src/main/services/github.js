@@ -49,26 +49,36 @@ class GitHubWatcher {
     this.onChange = onChange;
     this.timer = null;
     this.seen = new Set();
+    this.paused = false;
     this.first = true;
   }
 
   start() {
     this.stop();
+    if (this.paused) return;
     if (!this.getToken()) {
       this.onChange({ status: 'off', items: [] });
       return;
     }
     this.first = true;
     this.poll();
-    this.timer = setInterval(() => this.poll(), 3 * 60 * 1000);
+    this.timer = this.paused ? null : setInterval(() => this.poll(), 3 * 60 * 1000);
   }
+
 
   stop() {
     clearInterval(this.timer);
     this.timer = null;
   }
 
+  setPaused(paused) {
+    if (paused === this.paused) return;
+    this.paused = paused;
+    if (paused) this.stop(); else this.start();
+  }
+
   async poll() {
+    if (this.paused) return;
     const token = this.getToken();
     if (!token) return this.stop();
     try {

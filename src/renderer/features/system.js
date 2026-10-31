@@ -7,12 +7,12 @@ Island.register({
 
   init() {
     this.cpuRing = ring(70, 8, '#60a5fa', 'rgba(255,255,255,.12)');
-    this.cpuText = h('div', { class: 'ring-label sm', dir: 'ltr' }, '–');
+    this.cpuText = h('div', { class: 'ring-label sm' }, '–');
     this.memFill = h('i');
-    this.memText = h('div', { class: 'm-artist', dir: 'ltr' });
+    this.memText = h('div', { class: 'm-artist' });
     this.uptime = h('div', { class: 'm-artist' });
     // quick controls: volume keys and laptop screen brightness
-    const vol = (action, icon, label) => h('button', { class: 'qc-btn', title: label, 'data-interactive': '1', onclick: () => API.send('controls:volume', action) }, html(icon));
+    const vol = (action, icon, label) => I18N.mark(h('button', { class: 'qc-btn', 'data-interactive': '1', onclick: () => API.send('controls:volume', action) }, html(icon)), label, null, 'title');
     this.bright = h('input', { class: 'qc-range', type: 'range', min: '0', max: '100', step: '5', dir: 'ltr', 'data-interactive': '1' });
     this.bright.addEventListener('change', () => API.call('controls:brightness', Number(this.bright.value)));
     this.brightRow = h('div', { class: 'qc-bright' }, h('span', { class: 'qc-ic' }, html(ICONS.sun)), this.bright);
@@ -20,7 +20,7 @@ Island.register({
     this.controls = h(
       'div',
       { class: 'qc' },
-      h('div', { class: 'qc-vol', dir: 'ltr' }, vol('voldown', ICONS.volDown, t('volDown')), vol('mute', ICONS.mute, t('mute')), vol('volup', ICONS.volUp, t('volUp'))),
+      h('div', { class: 'qc-vol', dir: 'ltr' }, vol('voldown', ICONS.volDown, 'volDown'), vol('mute', ICONS.mute, 'mute'), vol('volup', ICONS.volUp, 'volUp')),
       this.brightRow
     );
     this.expandedEl = h(
@@ -33,9 +33,9 @@ Island.register({
         h(
           'div',
           { class: 'sys-side' },
-          h('div', { class: 'p-title' }, t('cpu')),
-          h('div', { class: 'sys-label' }, t('memory')),
-          h('div', { class: 'meter', dir: 'ltr' }, this.memFill),
+          h('div', { class: 'p-title' }, T('cpu')),
+          h('div', { class: 'sys-label' }, T('memory')),
+          h('div', { class: 'meter' }, this.memFill),
           this.memText,
           this.uptime
         )
@@ -45,19 +45,23 @@ Island.register({
     API.on('system:sample', (d) => this.set(d));
   },
 
+  relang() {
+    if (this.data) this.set(this.data);
+  },
+
   set(d) {
     this.data = d;
     const color = d.cpu > 85 ? '#f87171' : d.cpu > 60 ? '#fbbf24' : '#60a5fa';
     this.cpuRing.set(d.cpu / 100);
     this.cpuRing.color(color);
-    this.cpuText.textContent = d.cpu + '%';
+    this.cpuText.textContent = I18N.pct(d.cpu / 100);
     const frac = d.memUsed / d.memTotal;
     this.memFill.style.width = frac * 100 + '%';
     this.memFill.style.background = frac > 0.9 ? '#f87171' : frac > 0.75 ? '#fbbf24' : '#34d399';
-    const gb = (b) => (b / 1024 ** 3).toFixed(1);
-    this.memText.textContent = `${gb(d.memUsed)} / ${gb(d.memTotal)} GB`;
+    const gb = (b) => I18N.num(b / 1024 ** 3, { style: 'unit', unit: 'gigabyte', maximumFractionDigits: 1 });
+    this.memText.textContent = t('memOf', { used: gb(d.memUsed), total: gb(d.memTotal) });
     const hrs = Math.floor(d.uptime / 3600);
-    this.uptime.textContent = t('uptime', { h: num(hrs), m: num(Math.floor((d.uptime % 3600) / 60)) });
+    this.uptime.textContent = t('uptime', { h: hrs, m: Math.floor((d.uptime % 3600) / 60) });
   },
 
   sync() {

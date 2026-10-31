@@ -1,0 +1,18 @@
+# T21 native motion implementation and verification
+
+Base T20 ac6b06f, design reference Claude 9a22597; no source branch merge. Native rendering uses Direct2D 1.1, a premultiplied BGRA composition swap chain, DirectComposition and DirectWrite in Islandly's process. Hardware D3D11 is attempted first, WARP is an explicit platform fallback. No new executable, process, Electron idle session, web view, raw-input sink or low-level mouse hook. The rendering DLL uses the statically linked CRT. Native host/DLL changes need a laptop SAC retest; frozen panels/Islandly.exe remains exactly 758E43CF25850408FA42D7DE76565561AE329B353B8FACC508ECE9875BCD1592.
+
+The design's BODY 520/40 and DROP 900/28 springs integrate elapsed time in <=1ms steps and retain velocity on reversal. The path is filled by Direct2D and flattened from that exact geometry for SetWindowRgn; no blur/threshold filter. A short-lived DwmFlush-paced thread posts at most one outstanding UI frame and exits at rest. Reduced/Eco use120ms ease-out; Off snaps. The ready native placeholder fades via a DirectComposition opacity animation, without a per-frame window resize. The placeholder uses T20's known360x440 default until the actual panel dimensions arrive. Main aligns the actual painted card to the host's physical anchor, clamps it inward, then sends internal panel:ready with physical dimensions.
+
+Eyes are two filled13x26 capsules,22px centres,-11deg identical physical tilt in both languages. Only inline-start order mirrors; gaze does not. Blink narrows the fill; sleepy lids use a clip, not an overlay. Reduced is static; fullscreen/Eco/Off/other compact activity hides eyes and their timers. floating/idleEyes default false. Native time obeys digits. Floating uses Tier1 highlight/ring,14px gap,20px side anchors and58px AppBar strip at scale1; no free dragging or shadow HWND.
+
+An input-only alpha1/255 halo HWND on the same thread prevents acrylic from blurring an enlarged invisible input region. It is not a process and carries no shadow. Halo dwell120ms, pending-launch leave grace200ms. Cursor reads start from near/halo input, run at30Hz while moving/converging and10Hz while resting nearby, and stop beyond240px or when hidden. This intentionally follows the user's stricter near-only polling requirement rather than the document's continuous far tracking. The last far direction is retained for sleepy eyes. Blink is a one-shot wakeup; it never polls the cursor at a distance.
+
+Verification is split explicitly:
+
+- Linux: actual production C++ model tests (g++), JS main/settings/contracts and npm test.
+- Windows CI: MSVC production model tests, two-root reproducibility, Direct2D GPU-surface screenshots, strict geometry/alpha/DPI checks, real Win32-dispatched motion timing and raw per-frame CPU/wall/input data, eyes-idle/moving/hidden RAM/CPU/cursor-read guards, original native ownership/lifecycle and byte-identity guards.
+- Screenshot matrix: ar/en x light/dark x overlay/AppBar x acrylic/glass x floating/flush x100/150/200% render scale. Material PNGs are the native premultiplied drawing surface, not desktop backdrop pixels; final Windows acrylic still needs manual visual QA. Offset secondary-monitor clamps are model-tested; no physical second monitor or144Hz CI display is claimed.
+- Manual laptop SAC, actual dual-monitor mixed DPI,60/144Hz hardware and physical input/display latency: NOT RUN here. CI software timing is not a physical latency measurement. Reference boards remain Claude's design simulations, not Windows results.
+
+CI results, host/DLL hashes, raw measurements and artifact links will be recorded in the draft PR after verification. Any remaining visual/measurement gaps must be reported, not described as passing.

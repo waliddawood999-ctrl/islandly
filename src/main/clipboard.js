@@ -1,4 +1,5 @@
 const { clipboard } = require('electron');
+const native = require('./native-perf');
 const { evaluate } = require('./services/calc');
 
 const MAX_ITEMS = 30;
@@ -43,13 +44,20 @@ class ClipboardHistory {
     this.seq = 1;
   }
 
-  start() {
-    if (this.timer) return;
+  start(interval = 800) {
+    if (this.timer && this.interval === interval) return;
+    if (this.timer) { clearInterval(this.timer); this.interval = interval; this.timer = setInterval(() => this.poll(), interval); return; }
+    this.interval = interval;
+    this.sequence = null;
     this.last = null;
-    this.timer = setInterval(() => this.poll(), 800);
+    this.generation = (this.generation || 0) + 1;
+    this.timer = setInterval(() => this.poll(), interval);
   }
 
+  setEco(eco) { if (this.timer) this.start(eco ? 4000 : 800); }
+
   stop() {
+    this.generation = (this.generation || 0) + 1;
     clearInterval(this.timer);
     this.timer = null;
   }
@@ -58,9 +66,13 @@ class ClipboardHistory {
   async poll() {
     if (this.busy) return;
     this.busy = true;
+    const generation = this.generation;
     try {
+      const sequence = native.clipboardSequence();
+      if (sequence !== null && sequence === this.sequence) return;
       const text = await clipboard.readText();
-      if (typeof text !== 'string') return;
+      if (generation !== this.generation || typeof text !== 'string') return;
+      this.sequence = sequence;
       const first = this.last === null;
       if (text === this.last) return;
       this.last = text;

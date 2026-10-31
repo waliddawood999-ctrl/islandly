@@ -11,10 +11,15 @@ function load() {
     const shell32 = koffi.load('shell32.dll');
     const dwmapi = koffi.load('dwmapi.dll');
     const kernel32 = koffi.load('kernel32.dll');
+    const gdi32 = koffi.load('gdi32.dll');
     const RECT = koffi.struct('ISL_RECT', { left: 'int32', top: 'int32', right: 'int32', bottom: 'int32' });
     const MONITORINFO = koffi.struct('ISL_MONITORINFO', { cbSize: 'uint32', rcMonitor: RECT, rcWork: RECT, dwFlags: 'uint32' });
     api = {
       koffi,
+      CreateRoundRectRgn: gdi32.func('void * __stdcall CreateRoundRectRgn(int32 x1, int32 y1, int32 x2, int32 y2, int32 w, int32 h)'),
+      CombineRgn: gdi32.func('int32 __stdcall CombineRgn(void *dest, void *a, void *b, int32 mode)'),
+      DeleteObject: gdi32.func('bool __stdcall DeleteObject(void *object)'),
+      SetWindowRgn: user32.func('int32 __stdcall SetWindowRgn(uintptr_t hwnd, void *region, bool redraw)'),
       GetForegroundWindow: user32.func('void * __stdcall GetForegroundWindow()'),
       IsWindowVisible: user32.func('bool __stdcall IsWindowVisible(void *hWnd)'),
       IsIconic: user32.func('bool __stdcall IsIconic(void *hWnd)'),
@@ -138,4 +143,38 @@ function mediaKey(action) {
   }
 }
 
-module.exports = { foreground, mediaKey, available: () => !!load(), loadError: () => loadError };
+// A successful SetWindowRgn transfers ownership to Windows. Failed calls retain ownership.
+function setPillRegion(hwnd, rect, native = load()) {
+  if (!native) return false;
+  let region = null;
+  try {
+    if (Buffer.isBuffer(hwnd)) {
+      if (![4, 8].includes(hwnd.length)) return false;
+      hwnd = hwnd.length === 8 ? hwnd.readBigUInt64LE(0) : BigInt(hwnd.readUInt32LE(0));
+    }
+    if (!hwnd) return false;
+    if (rect !== null) {
+      const rects = Array.isArray(rect) ? rect : [rect];
+      if (!rects.length || rects.length > 2) return false;
+      for (const item of rects) {
+        if (!item || !['x', 'y', 'width', 'height', 'radius'].every((k) => Number.isSafeInteger(item[k])) ||
+            item.x < 0 || item.y < 0 || item.width <= 0 || item.height <= 0 || item.radius < 0 ||
+            item.x + item.width > 1000000 || item.y + item.height > 1000000) return false;
+        const { x, y, width, height, radius } = item;
+        const part = native.CreateRoundRectRgn(x, y, x + width + 1, y + height + 1, radius * 2, radius * 2);
+        if (!part) return false;
+        if (!region) region = part;
+        else {
+          try { if (!native.CombineRgn(region, region, part, 2)) return false; }
+          finally { native.DeleteObject(part); }
+        }
+      }
+    }
+    if (!native.SetWindowRgn(hwnd, region, true)) return false;
+    region = null;
+    return true;
+  } catch (_) { return false; }
+  finally { if (region) native.DeleteObject(region); }
+}
+
+module.exports = { setPillRegion, foreground, mediaKey, available: () => !!load(), loadError: () => loadError };

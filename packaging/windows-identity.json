@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "electron": {
+    "version": "45.1.0",
+    "path": "panels/Islandly.exe",
+    "size": 249798656,
+    "sha256": "758e43cf25850408fa42d7de76565561ae329b353b8facc508ece9875bcd1592",
+    "reportedPrefix": "758e",
+    "referenceUrl": null,
+    "referenceArchiveSha256": "23b80c7f766bdb4050221dd7e0122185e643828712e7e4cebb24b50f4140c13e",
+    "referenceOrigin": "Original Islandly-win64.zip from claude.ai, laptop-reported; no public URL",
+    "reproduction": {
+      "packager": "20.3.0",
+      "appVersion": "0.4.0",
+      "appName": "Islandly",
+      "electronVersion": "45.1.0",
+      "arch": "x64"
+    }
+  },
+  "host": {
+    "path": "Islandly.exe",
+    "baselineSha256": "c7a5f5998c0a148e8da8bc38ce649ad172c3e8d7086cd24990245fb71cf1f501",
+    "laptopAcceptedSha256": "c7a5f5998c0a148e8da8bc38ce649ad172c3e8d7086cd24990245fb71cf1f501",
+    "laptopAcceptedSource": "T18 laptop test reported by Walid: Windows11 SAC On, zero CodeIntegrity events, 43–48MB idle",
+    "legacyArchiveSha256": "89913f4327f1b112343e0a4c9b8730f5c60d8013f46ae7eed0c227940e5d3575"
+  }
+}

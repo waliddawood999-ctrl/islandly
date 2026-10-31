@@ -1,0 +1,6 @@
+{
+  "nativeSourceCommit": "38e50a21602e7835ee8be59d031d2eb3e6f89dec",
+  "source": "Unchanged requested T21 sources at 38e50a2, reproduced by Windows CI run 41133578937 (artifact islandly-t21-native-motion-windows); not SAC laptop accepted",
+  "hostSha256": "dca1440bcb98bdf642d457600e36c4934ed009758ddeacce5198266ac38d61f4",
+  "motionSha256": "5471774111abf2cd7137a44435fda80a7e687bd6f7e1c05643e569d6ee3917be"
+}

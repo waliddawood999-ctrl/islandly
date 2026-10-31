@@ -9,6 +9,7 @@ class Weather {
     this.timer = null;
     this.loc = null;
     this.last = null;
+    this.paused = false;
   }
 
   configure(loc, enabled) {
@@ -21,11 +22,11 @@ class Weather {
       return;
     }
     this.refresh();
-    this.timer = setInterval(() => this.refresh(), REFRESH_MS);
+    this.timer = this.paused ? null : setInterval(() => this.refresh(), REFRESH_MS);
   }
 
   async refresh() {
-    if (!this.loc) return;
+    if (!this.loc || this.paused) return;
     const { lat, lng } = this.loc;
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1`;
     try {
@@ -44,6 +45,13 @@ class Weather {
     } catch (_) {
       /* keep the last good reading */
     }
+  }
+
+  setPaused(paused) {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    clearInterval(this.timer); this.timer = null;
+    if (!paused && this.loc) { this.refresh(); this.timer = setInterval(() => this.refresh(), REFRESH_MS); }
   }
 
   stop() {

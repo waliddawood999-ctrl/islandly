@@ -1,0 +1,123 @@
+name: T9 native idle and on-demand panels
+on:
+  pull_request:
+    branches: [dev, codex/T17-integration, codex/T18-sac-reputation, codex/T19-contracts, codex/T20-laptop-fixes]
+    paths:
+      - 'src/**'
+      - 'native/**'
+      - 'packaging/**'
+      - 'scripts/**'
+      - 'test/**'
+      - 'package*.json'
+      - '.github/workflows/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Application-control error policy and signing guards
+        shell: pwsh
+        run: |
+          ./test/launch-policy.ps1
+          ./test/sign-windows.test.ps1
+      - name: Reproducible frozen host (two clean build roots)
+        shell: pwsh
+        run: ./test/native-reproducible.ps1
+      - name: Ownership snapshot concurrent publication regression
+        shell: pwsh
+        run: ./test/status-io.ps1
+      - name: Live AppBar ownership reads after opening settings
+        shell: pwsh
+        run: ./test/status-live.ps1
+      - name: Slow first launch, native responsiveness and hotkey conflict regression
+        shell: pwsh
+        run: ./test/t20-startup.ps1
+      - name: Cold-launch readiness and complete shutdown smoke
+        shell: pwsh
+        run: ./test/native-footprint.ps1 -Smoke -Mode reserved-bar
+      - name: Native-only idle, settings panel, complete shutdown and reopen
+        shell: pwsh
+        run: ./test/native-footprint.ps1 -Output native-perf-overlay.json -Mode overlay
+      - name: Reserved-bar ownership and work-area recovery with on-demand panels
+        shell: pwsh
+        run: ./test/native-footprint.ps1 -Output native-perf-reserved-bar.json -Mode reserved-bar
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t9-native-footprint
+          path: |
+            native-perf-*.json
+            out/host-identity.json
+            out/t20-startup/**
+            out/status-diagnostics/**
+            out/status-live/**
+          if-no-files-found: warn
+  packaged-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Package native launcher and on-demand runtime
+        shell: pwsh
+        run: ./scripts/package-native.ps1 -SkipArchive
+      - name: Archive identity-checked unsigned package
+        shell: pwsh
+        run: ./scripts/archive-native.ps1
+      - name: Packaged startup, state handoff and crash containment
+        shell: pwsh
+        run: ./test/native-footprint.ps1 -Smoke -Mode reserved-bar -Executable out/Islandly-native-win64/Islandly.exe
+      - name: Exact reference EXE hash and full executable inventory
+        run: node scripts/windows-identity.js out/Islandly-native-win64
+      - name: Packaged real hover click hotkey and recoverable launch errors
+        shell: pwsh
+        run: ./test/packaged-input.ps1
+      - name: Packaged native-only idle and panel RAM (overlay)
+        shell: pwsh
+        run: |
+          ./test/native-footprint.ps1 -Mode overlay -Output native-perf-packaged-overlay.json -Executable out/Islandly-native-win64/Islandly.exe
+          node test/performance-check.js native-perf-packaged-overlay.json overlay
+          if($LASTEXITCODE -ne 0){throw 'Packaged overlay raw-sample guard failed'}
+      - name: Packaged native-only idle and panel RAM (AppBar)
+        shell: pwsh
+        run: |
+          ./test/native-footprint.ps1 -Mode reserved-bar -Output native-perf-packaged-appbar.json -Executable out/Islandly-native-win64/Islandly.exe
+          node test/performance-check.js native-perf-packaged-appbar.json reserved-bar
+          if($LASTEXITCODE -ne 0){throw 'Packaged AppBar raw-sample guard failed'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t18-packaged-footprint-and-identities
+          path: |
+            native-perf-packaged-*.json
+            out/status-diagnostics/**
+            out/Islandly-native-win64/EXECUTABLE-IDENTITY.json
+            out/Islandly-native-win64/EXE-SHA256.txt
+            out/Islandly-native-win64/EXE-VERSION-RESOURCES.json
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t17-packaged-input-diagnostics
+          path: out/input-diagnostics
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        with:
+          name: islandly-t21-native-motion-windows
+          path: out/Islandly-sac-reputation-win64.zip
+          if-no-files-found: error

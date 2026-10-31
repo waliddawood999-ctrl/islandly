@@ -2,12 +2,21 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 
+const { ISLAMIC_DEFAULTS } = require('./services/store');
 const DEFAULTS = {
+  floating: false, idleEyes: false,
+  uiLang: 'auto', digits: 'latn', fontPairing: 'plex',
+  monitorId: '', // Existing T1/T7 display-selection contract; primary fallback.
+  islandMode: 'overlay', // Existing T6/T7 contract: overlay | appbar; native owner reserves the strip.
+  ...ISLAMIC_DEFAULTS,
+  material: require('./services/store').MATERIAL_DEFAULT,
+  ...require('./services/store').ECO_DEFAULTS,
   lang: 'ar', // 'auto' | 'ar' | 'en'
   autoHide: 'auto', // 'auto' (shrink after a few seconds) | 'never' | 'always' (thin line until hovered)
   position: 'center', // 'center' | 'left' | 'right'
   scale: 0.8, // UI size: 0.7 small, 0.8 medium, 1 large
   hideFullscreen: true,
+  islandVisibility: 'always', // 'always' | 'approach' (hidden until the cursor nears the island); read by the native host
   icsUrl: '',
   clipboard: true,
   updates: true,
@@ -24,6 +33,8 @@ const DEFAULTS = {
   timeTracking: true,
   micCamIndicator: true,
   workspaces: '', // one per line: Name: path-or-url | path-or-url
+  islandMode: 'overlay', // 'overlay' (floats over the page, tinted to match) | 'appbar' (reserved strip, never covers windows)
+  shortcuts: 'Edge, File Explorer, Calculator, Notepad', // app shortcuts in the clock panel
   hasAiKey: false,
   hasGithubToken: false,
 };
@@ -39,6 +50,11 @@ function init() {
   file = path.join(app.getPath('userData'), 'settings.json');
   try {
     data = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+    if (data.islandMode === 'reserved-bar') data.islandMode = 'appbar';
+    if (!['acrylic', 'glass'].includes(data.material)) data.material = DEFAULTS.material;
+    for (const key of ['ecoMode', 'ecoAuto', 'floating', 'idleEyes']) if (typeof data[key] !== 'boolean') data[key] = DEFAULTS[key];
+    if (!['full', 'reduced', 'off'].includes(data.motion)) data.motion = DEFAULTS.motion;
+    if (!['always', 'approach'].includes(data.islandVisibility)) data.islandVisibility = DEFAULTS.islandVisibility;
   } catch (_) {
     /* first run */
   }
@@ -53,7 +69,23 @@ function set(patch) {
   const prev = data;
   data = { ...data }; // keeps data.secrets
   for (const key of Object.keys(DEFAULTS)) {
-    if (key in patch && typeof patch[key] === typeof DEFAULTS[key]) data[key] = patch[key];
+    if (key === 'uiLang' && !['auto', 'ar', 'en'].includes(patch[key])) continue;
+    if (key === 'digits' && !['latn', 'arab'].includes(patch[key])) continue;
+    if (key === 'motion' && !['full', 'reduced', 'off'].includes(patch[key])) continue;
+    if (key === 'material' && !['acrylic', 'glass'].includes(patch[key])) continue;
+    if (key === 'islandVisibility' && !['always', 'approach'].includes(patch[key])) continue;
+    if (!(key in patch)) continue;
+    if (key === 'prayerIqamaMinutes') {
+      if (patch[key] && typeof patch[key] === 'object' && !Array.isArray(patch[key])) {
+        const next = { ...ISLAMIC_DEFAULTS.prayerIqamaMinutes, ...data[key] };
+        for (const name of Object.keys(ISLAMIC_DEFAULTS.prayerIqamaMinutes)) if (Number.isInteger(patch[key][name]) && patch[key][name] >= 0 && patch[key][name] <= 60) next[name] = patch[key][name];
+        data[key] = next;
+      }
+    } else if (key === 'prayerPreMinutes') {
+      if (Number.isInteger(patch[key]) && patch[key] >= 0 && patch[key] <= 60) data[key] = patch[key];
+    } else if (key === 'ramadanMode') {
+      if (['auto', 'on', 'off'].includes(patch[key])) data[key] = patch[key];
+    } else if (typeof patch[key] === typeof DEFAULTS[key]) data[key] = patch[key];
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(data, null, 2));

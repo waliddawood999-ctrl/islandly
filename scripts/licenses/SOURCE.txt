@@ -1,0 +1,2 @@
+OFL.txt files copied verbatim from https://github.com/google/fonts (commit 9862abc), ofl/<family>/OFL.txt.
+Each family METADATA.pb there says license: "OFL". Used by scripts/build-fonts.js.

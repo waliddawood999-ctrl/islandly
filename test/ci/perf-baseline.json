@@ -1,0 +1,13 @@
+{
+  "architecture": "native-win32",
+  "sourceCommit": "1f78cb0fe4feb6a9d894ea058638ced74e60c5df",
+  "evidence": "https://github.com/waliddawood999-ctrl/islandly/actions/runs/40809880548/artifacts/12870680145",
+  "warmupSeconds": 15,
+  "sampleCount": 60,
+  "sampleIntervalSeconds": 1,
+  "limits": { "ramExclusiveMaxMB": 180, "cpuExclusiveMaxPercent": 1 },
+  "modes": {
+    "overlay": { "idleMB": 39.4305338541667, "idleCPU": 0.208832533725071, "returnedIdleMB": 30.99921875 },
+    "reserved-bar": { "idleMB": 39.7611328125, "idleCPU": 0.390864019076457, "returnedIdleMB": 31.6725911458333 }
+  }
+}

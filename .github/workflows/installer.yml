@@ -1,0 +1,74 @@
+name: T22 per-user installer
+on:
+  pull_request:
+    branches: [codex/T21-native-motion]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  installer-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Verify native source is frozen at the user-requested T21 base
+        shell: pwsh
+        run: |
+          git fetch --depth=1 origin 38e50a21602e7835ee8be59d031d2eb3e6f89dec
+          git diff --exit-code 38e50a21602e7835ee8be59d031d2eb3e6f89dec HEAD -- native scripts/build-native.ps1 scripts/build-motion.ps1 scripts/native-toolchain.ps1
+          if($LASTEXITCODE -ne 0){throw 'T22 must not change native binary source/toolchain'}
+      - name: Build identity-preserved runtime and installer (no additional executable)
+        shell: pwsh
+        run: |
+          ./scripts/package-native.ps1 -SkipArchive
+          node scripts/package-installer.cjs
+          if($LASTEXITCODE -ne 0){throw 'Installer packaging failed'}
+      - name: Install update uninstall and byte identity regression
+        shell: pwsh
+        run: ./test/installer-windows.ps1
+      - name: Installed overlay idle and on-demand panels (all owned processes)
+        shell: pwsh
+        run: |
+          cmd /d /c "out\Islandly-install\Install.cmd /quiet"
+          if($LASTEXITCODE -ne 0){throw 'Install failed'}
+          ./test/native-footprint.ps1 -Mode overlay -Output out/t22-overlay.json -Executable "$env:LOCALAPPDATA/Islandly/Islandly.exe"
+          node test/performance-check.js out/t22-overlay.json overlay
+          if($LASTEXITCODE -ne 0){throw 'Overlay RAM/CPU guard failed'}
+      - name: Installed AppBar idle and on-demand panels (all owned processes)
+        shell: pwsh
+        run: |
+          ./test/native-footprint.ps1 -Mode reserved-bar -Output out/t22-appbar.json -Executable "$env:LOCALAPPDATA/Islandly/Islandly.exe"
+          node test/performance-check.js out/t22-appbar.json reserved-bar
+          if($LASTEXITCODE -ne 0){throw 'AppBar RAM/CPU guard failed'}
+      - name: Uninstall installed footprint test and report
+        shell: pwsh
+        run: |
+          cmd /d /c "`"`"$env:LOCALAPPDATA\Islandly\Uninstall.cmd`" /uninstall /quiet`""
+          if($LASTEXITCODE -ne 0){throw 'Uninstall failed'}
+          Get-Content out/Islandly-install/IDENTITY.json >> $env:GITHUB_STEP_SUMMARY
+          foreach($mode in @('overlay','appbar')) {
+            $r=Get-Content "out/t22-$mode.json" -Raw | ConvertFrom-Json
+            "`n$mode`n" >> $env:GITHUB_STEP_SUMMARY
+            $r | ConvertTo-Json -Depth 3 >> $env:GITHUB_STEP_SUMMARY
+          }
+      - name: Single release zip
+        shell: pwsh
+        run: |
+          Copy-Item out/t22-*.json out/Islandly-install
+          & 7z a -tzip -mx=9 out/Islandly-install-win64.zip ./out/Islandly-install/*
+          if($LASTEXITCODE -ne 0){throw 'Archive failed'}
+          "Release ZIP MB: $([math]::Round((Get-Item out/Islandly-install-win64.zip).Length/1MB,2))" >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: islandly-t22-installer-windows
+          path: out/Islandly-install-win64.zip
+          compression-level: 0
+          if-no-files-found: error

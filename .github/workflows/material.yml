@@ -1,0 +1,22 @@
+name: T15 material verification
+on:
+  pull_request:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  material:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Real HWND acrylic, clipping and region timing
+        run: npx electron test/material-native.js

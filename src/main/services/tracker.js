@@ -15,7 +15,7 @@ const NAMES = {
   telegram: 'Telegram', slack: 'Slack', notepad: 'Notepad', windowsterminal: 'Terminal', zoom: 'Zoom',
 };
 // system surfaces and this app itself are not "apps you used"
-const SKIP = new Set(['', 'electron', 'islandly', 'lockapp', 'searchhost', 'searchapp', 'shellexperiencehost', 'startmenuexperiencehost', 'textinputhost']);
+const SKIP = new Set(['', 'electron', 'islandly', 'islandlypanels', 'lockapp', 'searchhost', 'searchapp', 'shellexperiencehost', 'startmenuexperiencehost', 'textinputhost']);
 
 const key = (exe) => String(exe || '').toLowerCase().replace(/\.exe$/, '');
 
@@ -55,8 +55,8 @@ class Tracker {
     const exe = key(this.app);
     if (SKIP.has(exe)) return;
     if (powerMonitor.getSystemIdleTime() >= 60) return; // away from the keyboard
-    const key = dayKey();
-    const day = (this.data[key] = this.data[key] || {});
+    const dk = dayKey();
+    const day = (this.data[dk] = this.data[dk] || {});
     // Store apps all run inside ApplicationFrameHost; their window title is the app's name (e.g. "Calculator")
     const name = exe === 'applicationframehost' ? this.title.split(' - ').pop().trim().slice(0, 40) || 'Store app' : prettyName(this.app);
     day[name] = (day[name] || 0) + TICK;

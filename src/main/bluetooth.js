@@ -8,21 +8,33 @@ class BluetoothWatcher {
     this.onChange = onChange;
     this.timer = null;
     this.last = '';
+    this.generation = 0;
+    this.busy = false;
+    this.paused = false;
   }
 
   start() {
-    if (!isWindows || this.timer) return;
+    if (!isWindows || this.timer || this.paused) return;
+    this.generation++;
     this.poll();
     this.timer = setInterval(() => this.poll(), POLL_MS);
   }
 
+  setPaused(paused) { if (paused === this.paused) return; this.paused = paused; if (paused) this.stop(); else this.start(); }
+
   stop() {
+    this.generation++;
     clearInterval(this.timer);
     this.timer = null;
   }
 
   async poll() {
-    const out = await runOnce('bt-battery.ps1', 20000);
+    if (this.busy) return;
+    this.busy = true;
+    const generation = this.generation;
+    let out;
+    try { out = await runOnce('bt-battery.ps1', 20000); } finally { this.busy = false; }
+    if (generation !== this.generation) return;
     if (!out) return;
     try {
       const parsed = JSON.parse(out);

@@ -26,4 +26,7 @@ function jsonStore(name, fallback) {
   };
 }
 
-module.exports = { jsonStore };
+const ISLAMIC_DEFAULTS = require('./prayer-defaults');
+const MATERIAL_DEFAULT = 'acrylic';
+const ECO_DEFAULTS = { ecoMode: false, ecoAuto: false, motion: 'full' };
+module.exports = { ECO_DEFAULTS, jsonStore, ISLAMIC_DEFAULTS, MATERIAL_DEFAULT };
