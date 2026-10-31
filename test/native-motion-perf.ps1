@@ -157,7 +157,7 @@ try{
  # Reserving or releasing the strip moves other windows (Windows Terminal under the box showed 46,46,46 in the hidden reference and wallpaper in the shot): minimize them so both captures see the bare desktop.
  [void](New-Object -ComObject Shell.Application).MinimizeAll();Start-Sleep -Milliseconds 800
  $configuration.islandVisibility='approach';Save-Settings;[Windows.Forms.Cursor]::Position=$far;$s=Wait-Island $false;Start-Sleep -Milliseconds 900
- $barBox=@(($cx-[int](69*$sc)),$ty,[int][Math]::Ceiling(138*$sc),[int][Math]::Ceiling(36*$sc));$cardBox=@(($cx-[int](220*$sc)),$ty,[int][Math]::Ceiling(440*$sc),[int][Math]::Ceiling(480*$sc)) # 40 px of margin each side: the open spring overshoots the nominal 360 px card, so the box corners must lie clear of the animated shape
+ $barBox=@(($cx-[int](84*$sc)),$ty,[int][Math]::Ceiling(168*$sc),[int][Math]::Ceiling(36*$sc));$cardBox=@(($cx-[int](220*$sc)),$ty,[int][Math]::Ceiling(440*$sc),[int][Math]::Ceiling(480*$sc)) # 40 px of margin each side: the open spring overshoots the nominal 360 px card, so the box corners must lie clear of the animated shape
  $barReference=Grab $barBox[0] $barBox[1] $barBox[2] $barBox[3];$cardReference=Grab $cardBox[0] $cardBox[1] $cardBox[2] $cardBox[3]
  $diagBounds=[Windows.Forms.Screen]::PrimaryScreen.Bounds;$fullReference=Grab 0 0 $diagBounds.Width $diagBounds.Height
  # The shot is taken with the island visible and the cursor FAR (Always visible): a cursor on the island makes it lean toward the pointer (anticipation, drop=0.1), which grows the pill over the box corner.
