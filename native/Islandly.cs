@@ -80,7 +80,9 @@ sealed class IslandHost : Form {
     StreamWriter childInput;
     NamedPipeServerStream sessionPipe;
     readonly System.Windows.Forms.Timer launchRetry = new System.Windows.Forms.Timer();
-    bool launching, policyBlockedHover, loadingPainted;
+    bool launching, policyBlockedHover, loadingPainted, loadingShown;
+    long loadingShownAt;
+    readonly System.Windows.Forms.Timer loadingGate = new System.Windows.Forms.Timer();
     string retryCommand="";
     long nextLaunchAt, lastFailureNotice;
     IntPtr job;
@@ -146,7 +148,8 @@ sealed class IslandHost : Form {
         MouseMove += delegate { if(motion!=null)motion.PointerEvent(); };
         MouseLeave += delegate { LeaveHover(); };
         MouseClick += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) OpenPanel("expand","click"); };
-        leaveGrace.Interval=200; leaveGrace.Tick+=delegate { leaveGrace.Stop(); if(motion!=null&&!motion.ContainsPointer()){motion.LeaveApproach();if(revealed){revealed=false;Position();}if(hoverLaunch&&motion.Opening&&!ready){NativeLog.Write("hover-cancel","pointer outside current card+16 after200ms");cancelLaunch=true;motion.Open(false);Send("close");}}if(motion!=null&&!motion.Opening)Position(); };
+        leaveGrace.Interval=200; leaveGrace.Tick+=delegate { leaveGrace.Stop(); if(motion!=null&&!motion.ContainsPointer()){motion.LeaveApproach();if(revealed){revealed=false;Position();}if(hoverLaunch&&motion.Opening&&!ready){NativeLog.Write("hover-cancel","pointer outside current card+16 after200ms");cancelLaunch=true;loadingGate.Stop();motion.Open(false);Send("close");RefreshLoading("hover-cancel");Invalidate();}}if(motion!=null&&!motion.Opening)Position(); /* after a hover-cancel Opening is false: this Position() redraws the native frame without the caption in the same tick, not at session end */ };
+        loadingGate.Interval=310; loadingGate.Tick+=delegate { loadingGate.Stop(); if(launching&&hoverLaunch&&!cancelLaunch)Position(); }; // a hover launch may show the caption only after 300 ms: wake Position() once then, no polling
         hoverDwell.Interval = 120; hoverDwell.Tick += delegate { hoverDwell.Stop(); if(hoverArmed && !measuring && !Fullscreen()) OpenPanel("expand","hover"); };
         launchRetry.Interval=1500;
         launchRetry.Tick+=delegate { launchRetry.Stop(); string requested=retryCommand; retryCommand=""; if(requested!="") OpenPanel(requested,"retry",true); };
@@ -286,7 +289,7 @@ sealed class IslandHost : Form {
         if(privacyLabel != "" && Setting("micCamIndicator","True") != "False" || hoverArmed || launching || child!=null && !ready) sliver=false;
         if(Setting("idleEyes","False")=="True" && autoHide!="always") sliver=false;
         int strip=Setting("floating","False")=="True"?58:44;
-        int w = (int)((sliver ? 84 : 138)*scale), height = Math.Max(4,(int)((sliver ? 5 : 36)*scale));
+        int w = (int)((sliver ? 84 : IslandGeometry.W)*scale), height = Math.Max(4,(int)((sliver ? 5 : IslandGeometry.H)*scale));
         if (bar) {
             // QUERYPOS/SETPOS only when the screen, the strip height or the scale changed (or the bar was just registered): every call makes the shell re-lay out the work area.
             string barKey=screen.ToString()+"|"+(int)(strip*scale);
@@ -300,15 +303,16 @@ sealed class IslandHost : Form {
         int x = pos == "left" ? screen.Left+16 : pos == "right" ? screen.Right-w-16 : screen.Left+(screen.Width-w)/2;
         bool floating=Setting("floating","False")=="True";
         if(floating) x=pos=="left"?screen.Left+(int)(20*scale):pos=="right"?screen.Right-w-(int)(20*scale):x;
-        float anchorMargin=(floating?20:16)*scale;float center=pos=="left"?screen.Left+anchorMargin+69*scale:pos=="right"?screen.Right-anchorMargin-69*scale:screen.Left+screen.Width/2f,top=screen.Top+(sliver?0:(floating?14:8)*scale);
+        float anchorMargin=(floating?20:16)*scale;float center=pos=="left"?screen.Left+anchorMargin+IslandGeometry.HalfW*scale:pos=="right"?screen.Right-anchorMargin-IslandGeometry.HalfW*scale:screen.Left+screen.Width/2f,top=screen.Top+(sliver?0:(floating?14:8)*scale);
         Rectangle hotZone=Rectangle.Empty;
-        if(motion!=null && hide && !hidden){ int zx=(int)(center-69*scale-(approach?24*scale:0)), zw=(int)(138*scale+(approach?48*scale:0)); hotZone=new Rectangle(zx,screen.Top,zw,approach?(int)(top-screen.Top+36*scale+16*scale):Math.Max(2,(int)(2*scale))); }
+        if(motion!=null && hide && !hidden){ int zx=(int)(center-IslandGeometry.HalfW*scale-(approach?24*scale:0)), zw=(int)(IslandGeometry.W*scale+(approach?48*scale:0)); hotZone=new Rectangle(zx,screen.Top,zw,approach?(int)(top-screen.Top+IslandGeometry.H*scale+16*scale):Math.Max(2,(int)(2*scale))); }
         if(motion!=null){
             bool light=nativeLight;
             bool compact=TimerHasState()||privacyLabel!=""||SystemInformation.PowerStatus.BatteryChargeStatus!=BatteryChargeStatus.NoSystemBattery&&SystemInformation.PowerStatus.BatteryLifePercent<.2f;
             string lang=Setting("uiLang",Setting("lang","ar"));if(lang=="auto")lang=Setting("lang","ar");
+            bool loadingNow=RefreshLoading("position");
             string label=MotionLabel();
-            lastMotion=new MotionOptions{screen=screen,scale=scale,center=center,top=top,eyes=Setting("idleEyes","False")=="True",eco=nativeEco,mode=Setting("motion","full"),fullscreen=Fullscreen(false),hotZone=hotZone,compact=compact,sliver=sliver,light=light,rtl=lang!="en",acrylic=false,floating=floating,hidden=hide,loading=launching||child!=null&&!ready,label=label,date=DateTime.Now.ToString("D",System.Globalization.CultureInfo.GetCultureInfo(lang=="en"?"en-US":"ar-SA"))};motion.Configure(lastMotion);
+            lastMotion=new MotionOptions{screen=screen,scale=scale,center=center,top=top,eyes=Setting("idleEyes","False")=="True",eco=nativeEco,mode=Setting("motion","full"),fullscreen=Fullscreen(false),hotZone=hotZone,compact=compact,sliver=sliver,light=light,rtl=lang!="en",acrylic=false,floating=floating,hidden=hide,loading=loadingNow,label=label,date=DateTime.Now.ToString("D",System.Globalization.CultureInfo.GetCultureInfo(lang=="en"?"en-US":"ar-SA"))};motion.Configure(lastMotion);
             if(!hide && !ready && !Visible){Show();motion.PlaceHaloNow();}
             return;
         }
@@ -349,8 +353,17 @@ sealed class IslandHost : Form {
         if (TimerHasState()) { long end = Convert.ToInt64(state["endAt"]); var left = TimerRunning() ? Math.Max(0,(end-DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())/1000) : (long)Math.Ceiling(Convert.ToDouble(state["remaining"])); label = (left/60).ToString("00")+":"+(left%60).ToString("00"); }
         if(privacyLabel != "" && Setting("micCamIndicator","True") != "False") label = privacyLabel;
         else if(!TimerRunning() && SystemInformation.PowerStatus.BatteryChargeStatus != BatteryChargeStatus.NoSystemBattery && SystemInformation.PowerStatus.BatteryLifePercent < .2f) label = ((int)(SystemInformation.PowerStatus.BatteryLifePercent*100))+"%";
-        if(launching || child!=null && !ready) label=Setting("uiLang",Setting("lang","ar"))=="en"?"Loading…":"جارٍ التحميل…";
+        if(RefreshLoading("label")) label=Setting("uiLang",Setting("lang","ar"))=="en"?"Loading…":"جارٍ التحميل…";
         return label;
+    }
+    // The "Loading…" caption. Click launch: shown at once. Hover launch: only after 300 ms and while the pointer is still on the island. A cancelled launch never shows it, even though the session lives on until it ends. Show and clear are logged with timestamps.
+    bool RefreshLoading(string reason) {
+        bool want=!cancelLaunch&&(launching||child!=null&&!ready)&&(!hoverLaunch||clock.ElapsedMilliseconds-requestAt>300&&motion!=null&&motion.ContainsPointer());
+        if(want==loadingShown) return want;
+        loadingShown=want; long now=clock.ElapsedMilliseconds;
+        if(want) { loadingShownAt=now; NativeLog.Write("loading-label","show at="+now+" sinceRequestMs="+(now-requestAt)+" origin="+(hoverLaunch?"hover":"click")); }
+        else NativeLog.Write("loading-label","clear at="+now+" shownMs="+(now-loadingShownAt)+" reason="+reason);
+        return want;
     }
     bool TimerHasState() { object remaining,total; return TimerRunning() || state.TryGetValue("remaining",out remaining) && state.TryGetValue("total",out total) && Convert.ToDouble(remaining)>0 && Convert.ToDouble(remaining)<Convert.ToDouble(total); }
     bool TimerRunning() { object running; return state.TryGetValue("running",out running) && running is bool && (bool)running; }
@@ -373,7 +386,7 @@ sealed class IslandHost : Form {
         if(closing || launching || clock.ElapsedMilliseconds<nextLaunchAt) return;
         if(child!=null) { if(ready) Send(command); return; }
         cancelLaunch=false;hoverLaunch=origin=="hover"; if(command=="expand"&&motion!=null)motion.Open(true);
-        launchRetry.Stop(); retryCommand=""; launching=true; requestAt=clock.ElapsedMilliseconds; loadingPainted=false; Position(); Update();
+        launchRetry.Stop(); retryCommand=""; launching=true; requestAt=clock.ElapsedMilliseconds; loadingPainted=false; loadingGate.Stop(); if(hoverLaunch) loadingGate.Start(); Position(); Update();
         try { await OpenPanelCore(command,origin); if(cancelLaunch){EndSession();return;} policyBlockedHover=false; }
         catch(Exception ex) {
             // Capture API errors at the call site, before any disposal/positioning calls.
@@ -419,7 +432,7 @@ sealed class IslandHost : Form {
             foreach(DictionaryEntry entry in Environment.GetEnvironmentVariables()) environment[(string)entry.Key]=(string)entry.Value;
             environment["ISLANDLY_NATIVE_PIPE"]=pipeName; environment["ISLANDLY_NATIVE_SESSION"]="1";
             var anchor=TargetScreen().Bounds;float anchorScale;Single.TryParse(Setting("scale","0.8"),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out anchorScale);anchorScale=Math.Max(.5f,Math.Min(2f,anchorScale))*CreateGraphicsDpi();string anchorPosition=Setting("position","center");float margin=(Setting("floating","False")=="True"?20:16)*anchorScale;
-            environment["ISLANDLY_NATIVE_ANCHOR"]=json.Serialize(new{center=anchorPosition=="left"?anchor.Left+margin+69*anchorScale:anchorPosition=="right"?anchor.Right-margin-69*anchorScale:anchor.Left+anchor.Width/2f,top=anchor.Top+(Setting("floating","False")=="True"?14:8)*anchorScale});
+            environment["ISLANDLY_NATIVE_ANCHOR"]=json.Serialize(new{center=anchorPosition=="left"?anchor.Left+margin+IslandGeometry.HalfW*anchorScale:anchorPosition=="right"?anchor.Right-margin-IslandGeometry.HalfW*anchorScale:anchor.Left+anchor.Width/2f,top=anchor.Top+(Setting("floating","False")=="True"?14:8)*anchorScale});
             environment["ISLANDLY_NATIVE_PROFILE"]=profile; environment["ISLANDLY_NATIVE_COMMAND"]=command;
             if(probe!="") environment["ISLANDLY_NATIVE_PROBE"]="1";
             string block=String.Join("\0",environment.Select(pair=>pair.Key+"="+pair.Value))+"\0\0";
@@ -656,7 +669,7 @@ sealed class IslandHost : Form {
     void Cleanup() {
         leaveGrace.Stop();leaveGrace.Dispose();if(motion!=null){motion.Dispose();motion=null;}
         if(closing) return; closing=true;if(foregroundWatcher!=null)foregroundWatcher.Dispose();
-        launchRetry.Stop(); launchRetry.Dispose(); ticker.Stop(); hoverDwell.Stop();
+        launchRetry.Stop(); launchRetry.Dispose(); loadingGate.Stop(); loadingGate.Dispose(); ticker.Stop(); hoverDwell.Stop();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= DisplayChanged;
         Microsoft.Win32.SystemEvents.PowerModeChanged -= PowerChanged;
         Microsoft.Win32.SystemEvents.UserPreferenceChanged -= ThemeChanged;
