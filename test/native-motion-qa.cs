@@ -22,7 +22,7 @@ static class NativeMotionQa {
     double gap=lang=="en"?68-rightEyeEdge:(96+4*gx-(13*Math.Cos(11*Math.PI/180)+26*Math.Sin(11*Math.PI/180))/2)-70;
     Require(gap>=11,"Eye/time overlap at "+name+"/"+pose);Require(Math.Abs(gx*4)<=4.001&&Math.Abs(gy*3)<=3.001,"Gaze left its fixed slot");
     using(var image=new Bitmap(file)){Require(image.Width==(int)frame.width&&image.Height==(int)frame.height,"DPI capture dimensions changed");Require(image.GetPixel(0,0).A==0,"Square backdrop outside the clipped shape");if(!hidden){
-     float pillLeft=frame.center-69;float[] slots=lang=="ar"?new[]{96f,118f}:new[]{20f,42f};
+     float pillLeft=frame.center-84;float[] slots=lang=="ar"?new[]{126f,148f}:new[]{20f,42f};
      foreach(float slot in slots){int minX=image.Width,minY=image.Height,maxX=-1,maxY=-1,countPixels=0;float cx=pillLeft+slot+4*gx,cy=frame.top+18+3*gy-.5f*snap.squint;
       for(int py=Math.Max(0,(int)((frame.top+1)*dpi));py<Math.Min(image.Height,(int)((frame.top+35)*dpi));py++)for(int px=Math.Max(0,(int)((pillLeft+slot-10+4*gx)*dpi));px<Math.Min(image.Width,(int)((pillLeft+slot+10+4*gx)*dpi));px++){
        Color pixel=image.GetPixel(px,py);bool ink=pixel.A>180&&(light?pixel.R<70&&pixel.G<70&&pixel.B<80:pixel.R>200&&pixel.G>200&&pixel.B>200);

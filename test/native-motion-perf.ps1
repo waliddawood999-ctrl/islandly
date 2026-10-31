@@ -54,7 +54,7 @@ foreach($name in @('Read-SharedJson','Read-Status')){$node=$ast.Find({param($n)$
 function Refresh {[void][MotionInput]::SendMessage(([MotionInput]::Host($hostProcess.Id)),0x8022,[IntPtr]::Zero,[IntPtr]::Zero)}
 function Capture-Native {
  Refresh;$s=Read-Status;$m=$s.motion;$scale=$m.scale
- $x=[int]($m.center-69*$scale);$y=[int]$m.top;$bitmap=[Drawing.Bitmap]::new([int][Math]::Ceiling(138*$scale),[int][Math]::Ceiling(36*$scale));$graphics=[Drawing.Graphics]::FromImage($bitmap)
+ $x=[int]($m.center-84*$scale);$y=[int]$m.top;$bitmap=[Drawing.Bitmap]::new([int][Math]::Ceiling(168*$scale),[int][Math]::Ceiling(36*$scale));$graphics=[Drawing.Graphics]::FromImage($bitmap)
  try{$graphics.CopyFromScreen($x,$y,0,0,$bitmap.Size);New-Item "$root/out/t21" -ItemType Directory -Force|Out-Null;$file="$root/out/t21/native-desktop-$Mode.png";$bitmap.Save($file,[Drawing.Imaging.ImageFormat]::Png)
   $expected=if($m.light){@(12,12,18)}else{@(247,248,252)}
   foreach($centerX in @(20,42)){$ink=0;for($py=[int](4*$scale);$py-lt [int](34*$scale);$py++){for($px=[int](($centerX-10)*$scale);$px-lt [int](($centerX+10)*$scale);$px++){$p=$bitmap.GetPixel($px,$py);if([Math]::Abs($p.R-$expected[0])-le 8-and [Math]::Abs($p.G-$expected[1])-le 8-and [Math]::Abs($p.B-$expected[2])-le 8){$ink++}}}if($ink-lt 15){throw "Composited eye missing from real desktop: $centerX ink=$ink"}}
