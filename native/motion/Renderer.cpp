@@ -76,9 +76,14 @@ struct Renderer {
   hr=dc->CreateBitmapFromDxgiSurface(surface.Get(),&props,&bitmap);if(FAILED(hr))return hr;dc->SetTarget(bitmap.Get());width=w;height=h;return composition->Commit();
  }
  ComPtr<ID2D1PathGeometry> outline(const motion::Shape&s){ComPtr<ID2D1PathGeometry> p;factory->CreatePathGeometry(&p);ComPtr<ID2D1GeometrySink> sink;p->Open(&sink);
-  float x=float(s.x),y=float(s.y),w=float(s.w),h=float(s.h),r=float(s.r),q=r*.55228475f,c=x+w/2,l=float(s.wl),b=float(s.bulge);
+  float x=float(s.x),y=float(s.y),w=float(s.w),h=float(s.h),r=float(s.r),q=r*.55228475f,c=x+w/2,l=float(s.wl),b=float(s.bulge),ne=float(s.nw0)/2,nd=float(s.nw1)/2;
   auto point=[](float a,float z){return D2D1::Point2F(a,z);};
-  sink->BeginFigure(point(x+r,y),D2D1_FIGURE_BEGIN_FILLED);sink->AddLine(point(x+w-r,y));
+  sink->SetFillMode(D2D1_FILL_MODE_WINDING); /* the drop's top edge can be shorter than the neck base: the few sub-pixel back-tracked segments must not become holes */
+  sink->BeginFigure(point(x+r,y),D2D1_FIGURE_BEGIN_FILLED);
+  if(ne>.05f&&y>.5f){ /* liquid-drop intro: the neck from the drop up to the screen edge (y=0) is one cubic-Bezier pair on the top edge of the same outline */
+   sink->AddLine(point(c-nd,y));sink->AddBezier(D2D1::BezierSegment(point(c-nd,y*.45f),point(c-ne,y*.55f),point(c-ne,0)));
+   sink->AddLine(point(c+ne,0));sink->AddBezier(D2D1::BezierSegment(point(c+ne,y*.55f),point(c+nd,y*.45f),point(c+nd,y)));}
+  sink->AddLine(point(x+w-r,y));
   sink->AddBezier(D2D1::BezierSegment(point(x+w-r+q,y),point(x+w,y+r-q),point(x+w,y+r)));sink->AddLine(point(x+w,y+h-r));
   sink->AddBezier(D2D1::BezierSegment(point(x+w,y+h-r+q),point(x+w-r+q,y+h),point(x+w-r,y+h)));
   if(b>.5f&&l>0){sink->AddLine(point(c+l,y+h));sink->AddBezier(D2D1::BezierSegment(point(c+.5f*l,y+h),point(c+.55f*l,y+h+b),point(c,y+h+b)));sink->AddBezier(D2D1::BezierSegment(point(c-.55f*l,y+h+b),point(c-.5f*l,y+h),point(c-l,y+h)));}
@@ -108,10 +113,10 @@ struct Renderer {
   }
   eyeDpi=dpi;eyeLight=light;return S_OK;
  }
- HRESULT updateEyes(const Frame&f,const motion::Shape&s,bool baked){HRESULT hr=prepareEyes(f.scale,(f.flags&1)!=0);if(FAILED(hr))return hr;bool rtl=(f.flags&2)!=0;float a=baked?0:float(motion::clamp(1-model.body.x/.25,0,1));if(!model.eyeVisible())a=0;
-  for(int i=0;i<2;i++){float slot=rtl?(i==0?96.f:118.f):(i==0?20.f:42.f);float cx=float(s.x)+slot+float(4*model.gx),cy=float(s.y)+18+float(3*model.gy-.5*model.squint);bool farSide=(model.gx>0&&i==0)||(model.gx<0&&i==1);
+ HRESULT updateEyes(const Frame&f,const motion::Shape&s,bool baked){HRESULT hr=prepareEyes(f.scale,(f.flags&1)!=0);if(FAILED(hr))return hr;bool rtl=(f.flags&2)!=0;float a=baked?0:float(motion::clamp(1-model.body.x/.25,0,1)*model.introContent());if(!model.eyeVisible())a=0;const float mid=float(motion::kIslandH)/2,iw=float(motion::kIslandW);
+  for(int i=0;i<2;i++){float slot=rtl?(i==0?iw-42:iw-20):(i==0?20.f:42.f);float cx=float(s.x)+slot+float(4*model.gx),cy=float(s.y)+mid+float(3*model.gy-.5*model.squint);bool farSide=(model.gx>0&&i==0)||(model.gx<0&&i==1);
    baseEyeScale[i]=float((farSide?1-.18*std::abs(model.gx):1)*(1+.1*model.squint));eyeScale[i]->SetScaleX(baseEyeScale[i]*float(model.blink));eyeScale[i]->SetScaleY(float((1-.12*std::abs(model.gy))*(1-.4*model.squint)*(1-.1*model.lid/.54)));
-   eyes[i]->SetOffsetX((cx-16)*f.scale);eyes[i]->SetOffsetY((cy-20)*f.scale);eyeClip[i]->SetLeft((cx-15)*f.scale);eyeClip[i]->SetRight((cx+15)*f.scale);eyeClip[i]->SetTop((float(s.y)+3+float(model.lid*30))*f.scale);eyeClip[i]->SetBottom((float(s.y)+33)*f.scale);eyeOpacity[i]->SetOpacity(a);
+   eyes[i]->SetOffsetX((cx-16)*f.scale);eyes[i]->SetOffsetY((cy-20)*f.scale);eyeClip[i]->SetLeft((cx-15)*f.scale);eyeClip[i]->SetRight((cx+15)*f.scale);eyeClip[i]->SetTop((float(s.y)+mid-15+float(model.lid*30))*f.scale);eyeClip[i]->SetBottom((float(s.y)+mid+15)*f.scale);eyeOpacity[i]->SetOpacity(a);
   }return S_OK;
  }
  HRESULT blink(bool animateModel){if(!eyeSurface)return S_FALSE;double duration=model.nearby?.28:.38;gpuBlinkAt=GetTickCount64();gpuBlinkDuration=duration;gpuOnlyBlink=!animateModel;if(animateModel)model.blinkStart=model.age;
@@ -123,7 +128,7 @@ struct Renderer {
   D3D11_TEXTURE2D_DESC desc;back->GetDesc(&desc);desc.BindFlags=0;desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;desc.Usage=D3D11_USAGE_STAGING;desc.MiscFlags=0;
   ComPtr<ID3D11Texture2D> staging;hr=gpu->CreateTexture2D(&desc,nullptr,&staging);if(FAILED(hr))return hr;gpuContext->CopyResource(staging.Get(),back.Get());
   D3D11_MAPPED_SUBRESOURCE pixels;hr=gpuContext->Map(staging.Get(),0,D3D11_MAP_READ,0,&pixels);if(FAILED(hr))return hr;
-  float k=f.scale;int x0=int(std::floor((s.x-6)*k)),x1=int(std::ceil((s.x+s.w+6)*k)),y0=int(std::floor((s.y-6)*k)),y1=int(std::ceil((s.y+s.h+s.bulge+6)*k));
+  float k=f.scale;int x0=int(std::floor((s.x-6)*k)),x1=int(std::ceil((s.x+s.w+6)*k)),y0=s.nw0>0?0:int(std::floor((s.y-6)*k)),y1=int(std::ceil((s.y+s.h+s.bulge+6)*k));
   for(UINT y=0;y<desc.Height;y++){const BYTE*row=static_cast<const BYTE*>(pixels.pData)+size_t(y)*pixels.RowPitch;for(UINT x=0;x<desc.Width;x++){
     if(int(x)>=x0&&int(x)<=x1&&int(y)>=y0&&int(y)<=y1)continue;if(row[x*4+3]!=0){if(leakCount==0){leakX=int(x);leakY=int(y);}leakCount++;}}}
   gpuContext->Unmap(staging.Get(),0);return S_OK;}
@@ -143,7 +148,7 @@ struct Renderer {
   if((f.flags&32)&&eyeSurface){hr=updateEyes(f,s,false);if(FAILED(hr))return hr;return composition->Commit();}
   auto path=outline(s);
   auto scale=D2D1::Matrix3x2F::Scale(f.scale,f.scale);dc->SetTransform(scale);dc->BeginDraw();
-  D2D1_RECT_F dirty=D2D1::RectF(float(s.x)+(rtl?78.f:2.f),float(s.y),float(s.x)+(rtl?136.f:60.f),float(s.y)+36);
+  D2D1_RECT_F dirty=D2D1::RectF(float(s.x)+(rtl?float(motion::kIslandW)-60:2.f),float(s.y),float(s.x)+(rtl?float(motion::kIslandW)-2:60.f),float(s.y)+float(motion::kIslandH));
   if(f.flags&128)dirty=D2D1::RectF(std::max(0.f,float(s.x)-2),std::max(0.f,float(s.y)-2),float(s.x+s.w)+2,float(s.y+s.h)+2); /* label/date-only redraw of the collapsed pill: the clip is the pill plus 2 px, the layer mask still keeps everything inside the outline, and the window region is untouched */
   const bool clipped=(f.flags&(32|128))!=0;
   if(clipped)dc->PushAxisAlignedClip(dirty,D2D1_ANTIALIAS_MODE_ALIASED);
@@ -152,25 +157,29 @@ struct Renderer {
   if(!maskLayer)dc->CreateLayer(&maskLayer);dc->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),path.Get()),maskLayer.Get());
   if(floating){brush->SetColor(D2D1::ColorF(1,1,1,.06f));dc->DrawGeometry(path.Get(),brush.Get(),4.f);}
   /* Edge: a light island on a light desktop needs a visible contour (grey 241 on 237 was invisible); the stroke is centred on the outline and the layer mask keeps the inner 1 px. */ if(light){brush->SetColor(D2D1::ColorF(0,0,0,.30f));dc->DrawGeometry(path.Get(),brush.Get(),2.f);}else{brush->SetColor(D2D1::ColorF(1,1,1,.12f));dc->DrawGeometry(path.Get(),brush.Get(),1.f);}
-  float a=float(motion::clamp(1-model.body.x/.25,0,1));float x=float(s.x),y=float(s.y),w=float(s.w),h=float(s.h);
-  if(h<12){}else if(model.eyeVisible()&&a>0){float centers[2]={rtl?96.f:20.f,rtl?118.f:42.f};
-   if(file&&*file)for(int i=0;i<2;i++){float cx=x+centers[i]+float(4*model.gx),cy=y+18+float(3*model.gy-.5*model.squint);
+  float a=float(motion::clamp(1-model.body.x/.25,0,1)*model.introContent());float x=float(s.x),y=float(s.y),w=float(s.w),h=float(s.h);
+  const float mid=float(motion::kIslandH)/2,iw=float(motion::kIslandW),lift=(iw-138)/2; /* eyes and clock were laid out for the old 138 px pill: the clock is re-centred in the wider island */
+  if(h<12){}else if(model.eyeVisible()&&a>0){float centers[2]={rtl?iw-42:20.f,rtl?iw-20:42.f};
+   if(file&&*file)for(int i=0;i<2;i++){float cx=x+centers[i]+float(4*model.gx),cy=y+mid+float(3*model.gy-.5*model.squint);
     bool farSide=(model.gx>0&&i==0)||(model.gx<0&&i==1);float ew=float(13*(farSide?1-.18*std::abs(model.gx):1)*(1+.1*model.squint)*model.blink),eh=float(26*(1-.12*std::abs(model.gy))*(1-.4*model.squint)*(1-.1*model.lid/.54));
-    dc->PushAxisAlignedClip(D2D1::RectF(cx-15,y+3+float(model.lid*30),cx+15,y+33),D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    dc->PushAxisAlignedClip(D2D1::RectF(cx-15,y+mid-15+float(model.lid*30),cx+15,y+mid+15),D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
     dc->SetTransform(D2D1::Matrix3x2F::Rotation(-11,D2D1::Point2F(cx,cy))*scale);
     brush->SetColor(light?D2D1::ColorF(12/255.f,12/255.f,18/255.f,a):D2D1::ColorF(247/255.f,248/255.f,252/255.f,a));
     dc->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(cx-ew/2,cy-eh/2,cx+ew/2,cy+eh/2),ew/2,ew/2),brush.Get());dc->SetTransform(scale);dc->PopAxisAlignedClip();
    }
-   label(clock,15,D2D1::RectF(x+(rtl?8:68),y,x+(rtl?70:130),y+36),false,a,light);
-  }else{brush->SetColor(D2D1::ColorF(.33f,.8f,.5f,a));dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x+(rtl?120:18),y+18),3,3),brush.Get());label(clock,15,D2D1::RectF(x+25,y,x+w-10,y+h),false,a,light);}
+   label(clock,15,D2D1::RectF(x+(rtl?8:68)+lift,y,x+(rtl?70:130)+lift,y+float(motion::kIslandH)),false,a,light);
+  }else{brush->SetColor(D2D1::ColorF(.33f,.8f,.5f,a));dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x+(rtl?iw-18:18),y+mid),3,3),brush.Get());label(clock,15,D2D1::RectF(x+25,y,x+w-10,y+h),false,a,light);}
   float content=float(motion::clamp((model.body.x-.3)/.5,0,1));label(clock,42,D2D1::RectF(x+24,y+22,x+w-24,y+85),false,content,light);label(date,16,D2D1::RectF(x+24,y+90,x+w-24,y+125),rtl,content*.75f,light);
   if(f.flags&64)label(rtl?L"جارٍ التحميل…":L"Loading…",12,D2D1::RectF(x+24,y+140,x+w-24,y+162),rtl,content*.65f,light);
   double t0=nowMs();dc->PopLayer();if(clipped)dc->PopAxisAlignedClip();hr=dc->EndDraw();if(FAILED(hr))return hr;drawTimes[0]=nowMs()-t0;if(file&&*file){hr=capture(file);if(FAILED(hr))return hr;}if(auditAlpha&&!clipped){hr=auditLeak(s,f);if(FAILED(hr))return hr;}
   double t1=nowMs();
   if(!clipped){auto sink=new OutlineSink();path->Simplify(D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,&scale,.75f,sink); /* window-region polygon: 0.75 px flattening tolerance keeps it to a few dozen points; SetWindowRgn per frame was the heaviest call */
-  if(sink->points.size()>=3){HRGN region=CreatePolygonRgn(sink->points.data(),int(sink->points.size()),WINDING);if(region&&!SetWindowRgn(window,region,FALSE))DeleteObject(region);}sink->Release();}
+  HRGN region=sink->points.size()>=3?CreatePolygonRgn(sink->points.data(),int(sink->points.size()),WINDING):nullptr;
+  /* liquid-drop intro: the region follows the outline (neck included); in the first frames the polygon is degenerate, so the path's bounding box stands in. Never the whole window: input must not be captured outside the visible shape. */
+  if(!region&&model.introActive()){D2D1_RECT_F b;if(SUCCEEDED(path->GetBounds(&scale,&b)))region=CreateRectRgn(int(std::floor(b.left)),int(std::floor(b.top)),int(std::ceil(b.right)),int(std::ceil(b.bottom)));}
+  if(region&&!SetWindowRgn(window,region,FALSE))DeleteObject(region);sink->Release();}
   drawTimes[1]=nowMs()-t1;double t2=nowMs();
-  hr=updateEyes(f,s,file&&*file);if(FAILED(hr))return hr;opacity->SetOpacity(f.opacity);drawTimes[2]=nowMs()-t2;double t3=nowMs();if(clipped){RECT rect={std::max(0L,LONG(std::floor(dirty.left*f.scale))),std::max(0L,LONG(std::floor(dirty.top*f.scale))),std::min(LONG(width),LONG(std::ceil(dirty.right*f.scale))),std::min(LONG(height),LONG(std::ceil(dirty.bottom*f.scale)))}; /* a dirty rectangle outside the back buffer is DXGI_ERROR_INVALID_CALL (top=0 pill: y-2 < 0) */
+  hr=updateEyes(f,s,file&&*file);if(FAILED(hr))return hr;opacity->SetOpacity(f.opacity*float(model.introOpacity()));drawTimes[2]=nowMs()-t2;double t3=nowMs();if(clipped){RECT rect={std::max(0L,LONG(std::floor(dirty.left*f.scale))),std::max(0L,LONG(std::floor(dirty.top*f.scale))),std::min(LONG(width),LONG(std::ceil(dirty.right*f.scale))),std::min(LONG(height),LONG(std::ceil(dirty.bottom*f.scale)))}; /* a dirty rectangle outside the back buffer is DXGI_ERROR_INVALID_CALL (top=0 pill: y-2 < 0) */
    if(rect.right>rect.left&&rect.bottom>rect.top){DXGI_PRESENT_PARAMETERS p={};p.DirtyRectsCount=1;p.pDirtyRects=&rect;hr=swap->Present1(0,0,&p);}else hr=DXGI_ERROR_INVALID_CALL;
    if(hr==DXGI_ERROR_INVALID_CALL)hr=swap->Present(0,0);}else hr=swap->Present(0,0);if(FAILED(hr))return hr;drawTimes[3]=nowMs()-t3;if(presentedEvent)SetEvent(presentedEvent);double t4=nowMs();HRESULT committed=composition->Commit();drawTimes[4]=nowMs()-t4;return committed;
  }
@@ -178,11 +187,12 @@ struct Renderer {
 extern "C" __declspec(dllexport) void __cdecl MotionDrawTimes(double*out){for(int i=0;i<5;i++)out[i]=drawTimes[i];}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionCreate(HWND hwnd,void**out){if(!out)return E_POINTER;*out=nullptr;auto r=new Renderer();HRESULT hr=r->initialize(hwnd);if(FAILED(hr)){delete r;return hr;}*out=r;return S_OK;}
 extern "C" __declspec(dllexport) void __cdecl MotionDestroy(void*p){delete static_cast<Renderer*>(p);}
-extern "C" __declspec(dllexport) void __cdecl MotionStep(void*p,float dt,int flags,float dx,float dy,int pointer,int target,Snapshot*out){auto&r=*static_cast<Renderer*>(p);auto&m=r.model;m.eyes=(flags&1)!=0;m.eco=(flags&2)!=0;m.mode=(flags&8)?2:(flags&4)?1:0;m.fullscreen=(flags&16)!=0;m.compact=(flags&32)!=0;if(pointer>=0)m.pointer(dx,dy,pointer!=0,pointer==2);if(r.gpuOnlyBlink){double elapsed=(GetTickCount64()-r.gpuBlinkAt)/1000.;if(elapsed<r.gpuBlinkDuration)m.blinkStart=m.age-elapsed;else m.blinkStart=-1;r.gpuOnlyBlink=false;}m.nextBlink=1e30;m.target(target!=0);m.step(dt);*out={float(m.body.x),float(m.drop.x),float(m.gx),float(m.gy),float(m.lid),float(m.squint),float(m.blink),m.eyeVisible()?1:0,m.moving()?1:0};}
+extern "C" __declspec(dllexport) void __cdecl MotionStep(void*p,float dt,int flags,float dx,float dy,int pointer,int target,Snapshot*out){auto&r=*static_cast<Renderer*>(p);auto&m=r.model;m.eyes=(flags&1)!=0;m.eco=(flags&2)!=0;m.mode=(flags&8)?2:(flags&4)?1:0;m.fullscreen=(flags&16)!=0;m.compact=(flags&32)!=0;if(pointer>=0)m.pointer(dx,dy,pointer!=0,pointer==2);if(r.gpuOnlyBlink){double elapsed=(GetTickCount64()-r.gpuBlinkAt)/1000.;if(elapsed<r.gpuBlinkDuration)m.blinkStart=m.age-elapsed;else m.blinkStart=-1;r.gpuOnlyBlink=false;}m.nextBlink=1e30;m.target(target!=0);m.step(dt);*out={float(m.body.x),float(m.drop.x),float(m.gx),float(m.gy),float(m.lid),float(m.squint),float(m.blink),m.eyeVisible()?1:0,(m.moving()?1:0)|(m.introActive()?2:0)};} /* moving: bit 0 any motion, bit 1 the first-reveal intro is running */
 extern "C" __declspec(dllexport) void __cdecl MotionAudit(void*p,int on){auto&r=*static_cast<Renderer*>(p);r.auditAlpha=on!=0;if(on){r.leakCount=0;r.leakX=-1;r.leakY=-1;}}
 extern "C" __declspec(dllexport) void __cdecl MotionLeak(void*p,unsigned*count,int*x,int*y){auto&r=*static_cast<Renderer*>(p);*count=r.leakCount;*x=r.leakX;*y=r.leakY;}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionDraw(void*p,const Frame*f,const wchar_t*time,const wchar_t*date,const wchar_t*file){return static_cast<Renderer*>(p)->draw(*f,time,date,file);}
 extern "C" __declspec(dllexport) void __cdecl MotionApproach(void*p,float value){auto&m=static_cast<Renderer*>(p)->model;m.anticipation=motion::clamp(value,0,.1);if(!m.opening)m.drop.target=m.anticipation;}
+extern "C" __declspec(dllexport) void __cdecl MotionIntro(void*p){static_cast<Renderer*>(p)->model.intro();} // first reveal after process start; later calls are ignored
 extern "C" __declspec(dllexport) void __cdecl MotionPose(void*p,const Snapshot*s){auto&m=static_cast<Renderer*>(p)->model;m.body.x=s->body;m.drop.x=s->drop;m.body.v=m.drop.v=0;m.body.target=s->body;m.drop.target=s->drop;m.gx=s->gx;m.gy=s->gy;m.lid=s->lid;m.squint=s->squint;m.blink=s->blink;m.opening=s->body>.05;m.eyes=s->visible!=0;m.mode=0;m.eco=false;m.fullscreen=false;m.compact=false;}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionFade(void*p){auto&r=*static_cast<Renderer*>(p);ComPtr<IDCompositionAnimation> a;HRESULT hr=r.composition->CreateAnimation(&a);if(FAILED(hr))return hr;a->AddCubic(0,1,-1.f/.12f,0,0);a->End(.12,0);hr=r.opacity->SetOpacity(a.Get());if(FAILED(hr))return hr;return r.composition->Commit();}
 extern "C" __declspec(dllexport) HRESULT __cdecl MotionBlink(void*p,int animateModel){return static_cast<Renderer*>(p)->blink(animateModel!=0);}
