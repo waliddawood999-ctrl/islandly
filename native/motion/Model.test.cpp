@@ -32,8 +32,9 @@ int main(){
   auto done=motion::shape(d,500,8,0,1000);assert(done.w==168&&done.h==34&&done.r==10&&done.y==8&&done.nw0==0&&done.nw1==0&&d.introContent()==1);
   assert(!d.moving());d.intro();d.step(0);assert(!d.introActive()); /* once per process */}
  // T23: the stretch phase is well formed too: the drop is at the resting top when the snap starts, and the neck is 10 -> 4 wide.
- {motion::Model d;d.intro();d.step(0);d.step(.3);auto mid=motion::shape(d,500,8,0,1000);assert(mid.nw0==10&&mid.nw1==4&&mid.w==14&&mid.h==14&&mid.y>0&&mid.y<8);
-  d.step(.15);auto snap=motion::shape(d,500,8,0,1000);assert(std::abs(snap.y-8)<1e-3&&snap.nw0>9.9&&snap.nw1>3.9);}
+ // Model::step clamps dt to .25 s, so a single step(.3) would only advance .25 s: advance in .15 s steps (.3 s = mid-fall, .45 s = the instant the drop reaches its resting top and the snap begins).
+ {motion::Model d;d.intro();d.step(0);d.step(.15);d.step(.15);auto mid=motion::shape(d,500,8,0,1000);assert(mid.nw0==10&&mid.nw1==4&&mid.w==14&&mid.h==14&&mid.y>0&&mid.y<8);
+  d.step(.15);assert(std::abs(d.introT-.45)<1e-9);auto snap=motion::shape(d,500,8,0,1000);assert(std::abs(snap.y-8)<1e-3&&snap.nw0>9.9&&snap.nw1>3.9);}
  // T23: eco and reduced motion skip the drop and fade the (final-shaped) island in over 150 ms; motion off plays nothing.
  for(int kind=0;kind<2;kind++){motion::Model e;if(kind==0)e.eco=true;else e.mode=1;e.intro();e.step(0);assert(e.introActive()&&e.introFade);
   double last=-1;for(int i=0;i<20&&e.introActive();i++){auto s=motion::shape(e,500,8,0,1000);assert(s.w==168&&s.h==34&&s.r==10&&s.nw0==0&&s.y==8);
