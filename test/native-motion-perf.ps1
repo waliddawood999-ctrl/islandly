@@ -62,7 +62,7 @@ function Capture-Native {
  }finally{$graphics.Dispose();$bitmap.Dispose()}
 }
 function Quantile($values,$q){$ordered=@($values|Sort-Object);return $ordered[[Math]::Min($ordered.Count-1,[Math]::Floor($q*$ordered.Count))]}
-function Phase($name,$moving){
+function Phase($name,$moving,$parked=$false){
  Refresh;$before=Read-Status
  Start-Sleep -Seconds 15;$samples=@();$watch=[Diagnostics.Stopwatch]::StartNew();$next=1000
  $hostProcess.Refresh();$lastCpu=$hostProcess.TotalProcessorTime.TotalMilliseconds;$lastTime=$watch.Elapsed.TotalMilliseconds
@@ -84,7 +84,7 @@ function Phase($name,$moving){
  Write-Output "MOTION PHASE RAW: $Mode $name RAM=$avg/$peak CPU=$cpu renders=$($after.motion.renders-$before.motion.renders) cursorReads=$($after.motion.cursorReads-$before.motion.cursorReads) start=$($before.motion|ConvertTo-Json -Compress) end=$($after.motion|ConvertTo-Json -Compress)"
  if($peak-ge 180){throw "$name RAM exceeds180 MB"}
  $limit=if($moving){.5}else{.1};if($cpu-ge $limit){throw "$name CPU $cpu exceeds $limit% of one core"}
- if(!$moving-and $after.motion.cursorReads-ne $before.motion.cursorReads){throw "$name polled a far/hidden cursor"}
+ if(!$moving-and !$parked-and $after.motion.cursorReads-ne $before.motion.cursorReads){throw "$name polled a far/hidden cursor"}
  Write-Output "NATIVE MOTION PERF: $Mode $name RAM avg=$avg peak=$peak MB; CPU=$cpu%; cursorReads=$($after.motion.cursorReads-$before.motion.cursorReads)"
  return @{name=$name;averageMB=$avg;peakMB=$peak;averageCPU=$cpu;samples=$samples;before=$before.motion;after=$after.motion;method='external process CPU/working set,15s warmup/60samples; diagnostic status disk writes disabled; Toolhelp child detection; original T9 JobObject full guards remain separate'}
 }
@@ -98,6 +98,11 @@ try{
  [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$center,[int]($top+18));Start-Sleep -Milliseconds 150
  $moving=Phase 'eyes-moving' $true
  if($moving.after.cursorReads-$moving.before.cursorReads-lt 600){throw 'Moving eyes did not actually poll/track the near cursor'}
+ # Pointer parked 30 px below the island (within the 48 px anticipation range) for the whole 15 s warmup + 60 s window: the eyes settle, the banded tick drops to 300 ms and unchanged gaze is not redrawn. Same .1% eyes-idle CPU limit as the far-cursor phase (Phase applies it to every non-moving phase).
+ [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$center,[int]($top+17*$initial.motion.scale+17*$initial.motion.scale+30*$initial.motion.scale));Start-Sleep -Milliseconds 300
+ $parked=Phase 'eyes-parked' $false $true
+ if($parked.after.cursorReads-$parked.before.cursorReads-lt 50){throw 'Parked eyes did not poll the near cursor at the slow band'}
+ if($parked.after.eyeIntervalMs-ne 300){throw "Parked pointer left the eye tick at $($parked.after.eyeIntervalMs) ms instead of the 300 ms still band"}
  [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$center,[int]($top+400));Start-Sleep -Seconds 2
  $configuration.ecoMode=$true;Save-Settings;Refresh
  $hidden=Phase 'eyes-hidden' $false
@@ -122,6 +127,9 @@ try{
  function Wait-Island($visible){$until=[DateTime]::UtcNow.AddSeconds(3);do{Refresh;$s=Read-Status;if([bool]$s.motion.eyesVisible-eq $visible){return $s};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow-lt $until);throw "Island visibility never became $visible"}
  $configuration.islandVisibility='approach';Save-Settings;$s=Wait-Island $false
  if($s.motion.cursorTimer-or $s.motion.frameLoop){throw 'Approach mode left timers running while hidden'}
+ # Hidden island: not a single cursor read (eye tick, pointer events, hit tests) over a 3 s hold.
+ $hiddenReads=$s.motion.cursorReads;Start-Sleep -Seconds 3;Refresh;$held=Read-Status
+ if($held.motion.cursorReads-ne $hiddenReads){throw "Approach mode read the cursor while hidden ($hiddenReads -> $($held.motion.cursorReads))"}
  [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$s.motion.center,[int]($s.motion.top+10));$s=Wait-Island $true
  [Windows.Forms.Cursor]::Position=[Drawing.Point]::new([int]$s.motion.center,[int]($s.motion.top+500));$s=Wait-Island $false
  $configuration.islandVisibility='always';Save-Settings;$s=Wait-Island $true
