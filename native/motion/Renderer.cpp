@@ -134,7 +134,14 @@ struct Renderer {
   ComPtr<IWICImagingFactory> wic;ComPtr<IWICStream> stream;ComPtr<IWICBitmapEncoder> encoder;ComPtr<IWICBitmapFrameEncode> frame;ComPtr<IPropertyBag2> options;
   hr=CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&wic));
   if(SUCCEEDED(hr))hr=wic->CreateStream(&stream);if(SUCCEEDED(hr))hr=stream->InitializeFromFilename(file,GENERIC_WRITE);if(SUCCEEDED(hr))hr=wic->CreateEncoder(GUID_ContainerFormatPng,nullptr,&encoder);if(SUCCEEDED(hr))hr=encoder->Initialize(stream.Get(),WICBitmapEncoderNoCache);if(SUCCEEDED(hr))hr=encoder->CreateNewFrame(&frame,&options);if(SUCCEEDED(hr))hr=frame->Initialize(options.Get());if(SUCCEEDED(hr))hr=frame->SetSize(width,height);
-  WICPixelFormatGUID format=GUID_WICPixelFormat32bppPBGRA;if(SUCCEEDED(hr))hr=frame->SetPixelFormat(&format);if(SUCCEEDED(hr))hr=frame->WritePixels(height,pixels.RowPitch,pixels.RowPitch*height,static_cast<BYTE*>(pixels.pData));if(SUCCEEDED(hr))hr=frame->Commit();if(SUCCEEDED(hr))hr=encoder->Commit();gpuContext->Unmap(staging.Get(),0);return hr;
+  WICPixelFormatGUID format=GUID_WICPixelFormat32bppPBGRA;if(SUCCEEDED(hr))hr=frame->SetPixelFormat(&format);// PNG negotiates straight BGRA, while the DXGI surface is premultiplied. WritePixels
+  // would reinterpret those bytes (light acrylic .94*.46 became110 instead of240).
+  // Convert from the declared source format before encoding; drawing/pacing is untouched.
+  ComPtr<IWICBitmap> source;ComPtr<IWICFormatConverter> converted;
+  if(SUCCEEDED(hr))hr=wic->CreateBitmapFromMemory(width,height,GUID_WICPixelFormat32bppPBGRA,pixels.RowPitch,pixels.RowPitch*height,static_cast<BYTE*>(pixels.pData),&source);
+  if(SUCCEEDED(hr))hr=wic->CreateFormatConverter(&converted);
+  if(SUCCEEDED(hr))hr=converted->Initialize(source.Get(),format,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom);
+  if(SUCCEEDED(hr))hr=frame->WriteSource(converted.Get(),nullptr);if(SUCCEEDED(hr))hr=frame->Commit();if(SUCCEEDED(hr))hr=encoder->Commit();gpuContext->Unmap(staging.Get(),0);return hr;
  }
  HRESULT draw(const Frame&f,const wchar_t*clock,const wchar_t*date,const wchar_t*file){HRESULT hr=resize(UINT(f.width),UINT(f.height));if(FAILED(hr))return hr;
   bool light=(f.flags&1)!=0,rtl=(f.flags&2)!=0,acrylic=(f.flags&4)!=0,floating=(f.flags&8)!=0;
